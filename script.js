@@ -80,7 +80,26 @@
         if (savedUser && (savedUser === 'luca' || savedUser === 'wouter')) {
             switchUser(savedUser);
         }
+        
+        // Set header height for mobile sticky tabs
+        setHeaderHeight();
     }
+
+    // Set header height CSS variable for sticky tabs positioning
+    function setHeaderHeight() {
+        if (window.innerWidth <= 600) {
+            const header = document.querySelector('.header');
+            if (header) {
+                const headerHeight = header.offsetHeight;
+                document.documentElement.style.setProperty('--header-height', headerHeight + 'px');
+            }
+        }
+    }
+    
+    // Update header height on resize
+    window.addEventListener('resize', () => {
+        setHeaderHeight();
+    }, { passive: true });
 
     // Start loading data when script loads
     loadCoasterData();
@@ -1081,11 +1100,17 @@
         const completed = completedPairs.size;
         const progressPercentage = totalPossible > 0 ? ((completed / totalPossible) * 100).toFixed(1) : 0;
         
-        document.getElementById('totalBattles').textContent = totalBattles;
-        document.getElementById('totalCoasters').textContent = totalCoasters;
-        document.getElementById('avgBattlesPerCoaster').textContent = avgBattles;
-        document.getElementById('progressMatchups').textContent = `${completed}/${totalPossible}`;
-        document.getElementById('progressPercentage').textContent = `${progressPercentage}%`;
+        const totalBattlesEl = document.getElementById('totalBattles');
+        const totalCoastersEl = document.getElementById('totalCoasters');
+        const avgBattlesEl = document.getElementById('avgBattlesPerCoaster');
+        const progressMatchupsEl = document.getElementById('progressMatchups');
+        const progressPercentageEl = document.getElementById('progressPercentage');
+        
+        if (totalBattlesEl) totalBattlesEl.textContent = totalBattles;
+        if (totalCoastersEl) totalCoastersEl.textContent = totalCoasters;
+        if (avgBattlesEl) avgBattlesEl.textContent = avgBattles;
+        if (progressMatchupsEl) progressMatchupsEl.textContent = `${completed}/${totalPossible}`;
+        if (progressPercentageEl) progressPercentageEl.textContent = `${progressPercentage}%`;
         
         const sorted = [...statsArray].sort((a, b) => {
             let aVal, bVal;
@@ -1194,19 +1219,16 @@
             `);
 
             // Card for mobile
+            const rankBadgeClass = rank <= 3 ? 'rank-badge top-3' : 'rank-badge';
             cardsHtml.push(`
                 <div class="ranking-card" data-rank="${rank}">
+                    <div class="${rankBadgeClass}">${rank}</div>
                     <div class="ranking-left">
-                        <div class="rank">${rank}</div>
                         <div class="name">${coaster.name}</div>
-                        <div class="meta">${coaster.park} • ${coaster.manufacturer}</div>
+                        <div class="meta">${coaster.park} • ${coaster.manufacturer} • <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}-${coaster.losses}</span></div>
                     </div>
                     <div class="ranking-right">
                         <div class="elo">${Math.round(coaster.elo)}</div>
-                        <div class="stats">
-                            <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">W: ${coaster.wins}</span>
-                            <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">L: ${coaster.losses}</span>
-                        </div>
                     </div>
                 </div>
             `);
