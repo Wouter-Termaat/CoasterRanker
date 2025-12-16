@@ -1,0 +1,1030 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: white;
+    padding: 30px;
+    text-align: center;
+}
+
+/* Header layout helpers */
+.header-inner {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: nowrap;
+}
+
+.header-left, .header-right {
+    position: absolute;
+    top: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-left { left: 16px; }
+.header-right { right: 16px; }
+
+.header-center { display: flex; flex-direction: column; align-items: center; }
+
+.header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+}
+
+.keyboard-hint {
+    margin-top: 10px;
+    font-size: 0.9em;
+    opacity: 0.9;
+    text-align: center;
+}
+/* make the entire battle tab the positioning context so the hint sits at the bottom of the tab */
+#battle-tab { position: relative; }
+.keyboard-hint {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 6px 30px 6px 10px;
+    background: rgba(255,255,255,0.9);
+    color: #333;
+    border-radius: 8px;
+    font-size: 0.9em;
+    pointer-events: auto;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.keyboard-hint.hidden {
+    display: none;
+}
+
+.keyboard-hint-close {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #666;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.keyboard-hint-close:hover {
+    background: rgba(0,0,0,0.1);
+    color: #333;
+}
+
+.user-selector {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 10px;
+}
+
+/* Hamburger user menu */
+.hamburger-btn {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: 700;
+}
+
+.user-menu {
+    position: absolute;
+    right: 0;
+    top: 40px;
+    background: white;
+    color: #333;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    padding: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 2000;
+    min-width: 160px;
+}
+
+.user-menu.open { display: flex; }
+
+.user-menu .user-btn {
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: #333;
+    border-radius: 6px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+}
+
+.user-menu .user-btn:hover { background: #f1f1f1; }
+
+.user-menu .user-btn.active { background: #4CA1AF; color: white; }
+
+/* Responsive: stack badge and hamburger on narrow viewports */
+@media (max-width: 600px) {
+    .header {
+        text-align: left;
+        padding-right: 16px;
+        padding-left: 16px;
+    }
+
+    .header-inner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .header-center { align-items: flex-start; }
+    .header h1, .header p, .keyboard-hint { text-align: left; }
+
+    .current-user-badge, .hamburger-btn {
+        position: static;
+        margin: 6px 0;
+        left: auto;
+        top: auto;
+    }
+
+    .user-menu {
+        position: static;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+        margin-top: 6px;
+        right: auto;
+        top: auto;
+        min-width: 140px;
+    }
+    .keyboard-hint { display: none; }
+}
+
+.user-btn {
+    padding: 12px 30px;
+    border: 2px solid white;
+    background: transparent;
+    color: white;
+    border-radius: 8px;
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.user-btn:hover {
+    background: rgba(255,255,255,0.2);
+    transform: scale(1.05);
+}
+
+.user-btn.active {
+    background: white;
+    color: #4CA1AF;
+}
+
+.current-user-badge {
+    display: inline-block;
+    opacity: 0%;
+    background: rgba(255,255,255,0.2);
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 0.95em;
+    z-index: 2010;
+}
+
+.tabs {
+    display: flex;
+    background: #f5f5f5;
+    border-bottom: 2px solid #ddd;
+}
+
+.tab {
+    flex: 1;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: 600;
+    transition: all 0.3s;
+    border: none;
+    background: none;
+}
+
+.tab:hover {
+    background: #e0e0e0;
+}
+
+.tab.active {
+    background: white;
+    color: #4CA1AF;
+    border-bottom: 3px solid #4CA1AF;
+}
+
+.tab-content {
+    display: none;
+    padding: 40px;
+    min-height: 500px;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Battle Tab */
+.battle-container {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.coaster-card {
+    flex: 1;
+    min-width: 280px;
+    max-width: 400px;
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.coaster-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.coaster-card.winner {
+    animation: winShine 1.5s ease-out, winBounce 1.5s ease-out;
+    box-shadow: 0 12px 32px rgba(16, 185, 129, 0.3);
+}
+
+.coaster-card.loser {
+    transform: scale(0.95);
+    opacity: 0.6;
+    transition: all 0.4s ease;
+    animation: loserRecover 0.3s ease 1.3s forwards;
+}
+
+@keyframes loserRecover {
+    to {
+    transform: scale(1);
+    opacity: 1;
+    }
+}
+
+@keyframes winShine {
+    0% {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    20% {
+        box-shadow: 0 0 30px 10px rgba(212, 255, 132, 0.8),
+                    0 0 50px 20px rgba(255, 215, 0, 0.4),
+                    0 12px 32px rgba(16, 185, 129, 0.3);
+    }
+    40% {
+        box-shadow: 0 0 20px 5px rgba(162, 255, 0, 0.6),
+                    0 12px 32px rgba(16, 185, 129, 0.3);
+    }
+    100% {
+        box-shadow: 0 12px 32px rgba(16, 185, 129, 0.3);
+    }
+}
+
+@keyframes winBounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    10% {
+        transform: translateY(-15px);
+    }
+    20% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-10px);
+    }
+    40% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+    60% {
+        transform: translateY(0);
+    }
+}
+
+/*
+
+.coaster-card.left-card::before {
+    content: '← Linker pijltje';
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(102, 126, 234, 0.2);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.8em;
+    color: #4CA1AF;
+    font-weight: 600;
+    text-align: right;
+}
+
+
+
+.coaster-card.right-card::before {
+    content: 'Rechter pijltje →';
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(118, 75, 162, 0.2);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.8em;
+    color: #2C3E50;
+    font-weight: 600;
+    text-align: left;
+}
+
+    */
+
+@keyframes winPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* Rank climb animation */
+.rank-change-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    animation: badgePopIn 0.4s ease-out, badgeFadeOut 0.5s ease-in 3.5s forwards;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    z-index: 10;
+}
+
+.rank-change-badge .arrow {
+    font-size: 1.3em;
+    animation: arrowBounce 0.6s ease-in-out infinite;
+}
+
+.rank-change-badge .confetti {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 1.2em;
+    animation: confettiPop 0.6s ease-out;
+}
+
+@keyframes badgePopIn {
+    0% { 
+        transform: scale(0) rotate(-180deg);
+        opacity: 0;
+    }
+    60% {
+        transform: scale(1.2) rotate(10deg);
+    }
+    100% { 
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+}
+
+@keyframes badgeFadeOut {
+    to { 
+        opacity: 0;
+        transform: translateY(-20px) scale(0.8);
+    }
+}
+
+@keyframes arrowBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+}
+
+@keyframes confettiPop {
+    0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.5) rotate(180deg);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1) rotate(360deg) translateY(-30px);
+        opacity: 0;
+    }
+}
+
+/* New card design components */
+.coaster-image {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    color: #9ca3af;
+    font-weight: 600;
+    letter-spacing: 2px;
+    border-radius: 20px 20px 0 0;
+}
+
+.coaster-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.coaster-rank-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #374151;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95em;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 5;
+}
+
+.coaster-name {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.coaster-subtitle {
+    font-size: 0.95em;
+    color: #6b7280;
+    font-weight: 400;
+    display: flow-root;
+    line-height: 1.4;
+    align-items: center;
+    gap: 6px;
+}
+
+.coaster-subtitle .separator {
+    color: #9ca3af;
+    font-weight: 300;
+}
+
+
+.choose-btn {
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    margin-top: 10px;
+}
+
+.choose-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.vs-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    font-weight: bold;
+    color: #4CA1AF;
+    min-width: 50px;
+    padding: 15px;
+}
+
+/* Ranking Tab */
+.ranking-controls {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.stats-summary {
+    background: #f5f7fa;
+    padding: 20px;
+    border-radius: 10px;
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2em;
+    font-weight: bold;
+    color: #4CA1AF;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.reset-panel {
+    margin-top: 24px;
+    padding: 18px 20px;
+    background: #f7fafc;
+    border: 1px solid #e3e8ee;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    flex-wrap: wrap;
+}
+
+.reset-panel .reset-copy {
+    color: #445;
+    font-weight: 600;
+    font-size: 0.98em;
+}
+
+.reset-btn {
+    background: linear-gradient(135deg, #ff6b6b 0%, #f03e3e 100%);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 1em;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 25px rgba(240, 62, 62, 0.25);
+}
+
+.reset-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(240, 62, 62, 0.32);
+}
+
+.reset-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 6px 14px rgba(240, 62, 62, 0.2);
+}
+
+.ranking-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.ranking-table th {
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: white;
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ranking-table th:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
+}
+
+.ranking-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.ranking-table tr:hover {
+    background: #f5f7fa;
+}
+
+.rank-medal {
+    font-size: 1.2em;
+    margin-right: 5px;
+}
+
+.elo-score {
+    font-weight: bold;
+    color: #4CA1AF;
+    font-size: 1.1em;
+}
+
+.clickable-stat {
+    cursor: pointer;
+    color: #4CA1AF;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.clickable-stat:hover {
+    color: #2C3E50;
+    text-decoration: underline;
+}
+
+.autocomplete-container {
+    position: relative;
+    display: inline-block;
+    max-width: 360px;
+    width: 100%;
+}
+
+.autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    display: none;
+}
+
+.autocomplete-dropdown.show {
+    display: block;
+}
+
+.autocomplete-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover {
+    background: #f5f7fa;
+}
+
+.autocomplete-item.selected {
+    background: #e8f4f8;
+}
+
+.no-battles {
+    text-align: center;
+    padding: 60px;
+    color: #999;
+    font-size: 1.2em;
+}
+
+/* Mobile card view for ranking */
+.ranking-cards {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    background: transparent;
+}
+
+.ranking-card {
+    background: white;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.ranking-left { display: flex; flex-direction: column; gap: 6px; }
+.ranking-right { text-align: right; }
+.ranking-card .rank { font-weight: 800; color: #333; font-size: 1.1em; }
+.ranking-card .name { font-weight: 700; font-size: 1em; }
+.ranking-card .meta { color: #888; font-size: 0.85em; }
+.ranking-card .elo { color: #4CA1AF; font-weight: 800; font-size: 1.05em; }
+.ranking-card .stats { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+
+@media (max-width: 820px) {
+    .ranking-table { display: none; }
+    .ranking-cards { display: flex; }
+}
+
+/* History styles */
+.history-row {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+}
+
+.winner-pill {
+    display: inline-block;
+    background: #e6fbec;
+    color: #0b6f35;
+    padding: 6px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+}
+
+.history-delete {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 1.05em;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+}
+
+.history-delete:hover {
+    color: #d00;
+    background: rgba(0,0,0,0.03);
+}
+
+.history-switch {
+    background: transparent;
+    border: none;
+    color: #4CA1AF;
+    font-size: 1.05em;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    margin-right: 4px;
+}
+
+.history-switch:hover {
+    color: #2C3E50;
+    background: rgba(76, 161, 175, 0.1);
+}
+
+.history-pair {
+    text-align: center;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(6px);
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 220ms ease, transform 220ms ease;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.search-box {
+    padding: 12px 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1em;
+    width: 100%;
+    max-width: 400px;
+    transition: border 0.3s;
+}
+
+.search-box:focus {
+    outline: none;
+    border-color: #4CA1AF;
+}
+
+.search-input-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.clear-search-btn:hover {
+    color: #333;
+    background: rgba(0,0,0,0.05);
+}
+
+.pairing-help {
+    text-align: center;
+    color: #666;
+    font-size: 0.9em;
+    max-width: 760px;
+    margin: 6px auto 14px auto;
+    line-height: 1.4;
+}
+
+/* Segmented pairing toggle */
+.pair-toggle { background: #fff; }
+.pair-toggle .pair-option {
+    padding: 8px 14px;
+    border: none;
+    background: white;
+    cursor: pointer;
+    font-weight: 600;
+    color: #333;
+    position: relative;
+    min-width: 110px;
+}
+.pair-toggle .pair-option + .pair-option { border-left: 1px solid #eee; }
+.pair-toggle .pair-option.active {
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: #fff;
+}
+.pair-option .help-pop {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.85em;
+    z-index: 999;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+}
+.pair-option:hover .help-pop { display: block; }
+
+/* Floating tooltip that follows cursor (used for pair-option help) */
+.floating-help {
+    position: fixed;
+    pointer-events: none;
+    background: rgba(0,0,0,0.80);
+    color: #fff;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    transition: opacity 180ms ease, transform 180ms ease;
+    z-index: 10000;
+    white-space: nowrap;
+}
+.floating-help.show { opacity: 1; transform: translate(-50%, 0); }
+
+.pairing-controls-wrapper { display:flex;flex-direction:column;align-items:center; }
+#pairingControls { max-height: 240px; opacity: 1; }
+#pairingControls.collapsed { max-height: 0; opacity: 0; padding: 0; margin: 0; pointer-events: none; }
+.pairing-toggle-btn { transition: transform 180ms ease, background 120ms ease; }
+.pairing-toggle-btn.collapsed { transform: rotate(180deg); }
+
+.filter-container {
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .battle-container {
+        flex-direction: row;
+        gap: 15px;
+    }
+
+    .vs-divider {
+        display: none;
+    }
+
+    .coaster-card {
+        max-width: 100%;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .coaster-image {
+        position: static;
+        opacity: 1;
+        border-radius: 20px 20px 0 0;
+        aspect-ratio: 1 / 1.6;
+        font-size: 1.5em;
+    }
+
+    .coaster-content {
+        position: static;
+        padding: 16px;
+        min-height: auto;
+    }
+
+    .coaster-rank-badge {
+        width: 36px;
+        height: 36px;
+        font-size: 0.85em;
+        top: 12px;
+        right: 12px;
+    }
+
+    .coaster-name {
+        font-size: 1.1em;
+        text-shadow: none;
+    }
+
+    .coaster-subtitle {
+        font-size: 0.85em;
+        text-shadow: none;
+    }
+
+    .user-selector {
+        flex-direction: column;
+    }
+}

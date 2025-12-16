@@ -1,0 +1,153 @@
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coaster Ranker</title>
+    <link rel="icon" href="/images/rollercoaster.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-inner">
+                <div class="header-left">
+                    <div class="current-user-badge" id="currentUserBadge">Selecteer een gebruiker</div>
+                </div>
+
+                <div class="header-center">
+                    <h1>Coaster Ranker</h1>
+                    <p>Ontdek jouw favoriete achtbaan</p>
+                </div>
+
+                <div class="header-right">
+                    <button id="userMenuToggle" class="hamburger-btn" aria-haspopup="true" aria-expanded="false" title="Gebruiker kiezen" onclick="toggleUserMenu()">☰</button>
+                    <div id="userMenu" class="user-menu" aria-hidden="true">
+                        <button class="user-btn" onclick="switchUser('luca')" id="btn-luca">👤 Luca</button>
+                        <button class="user-btn" onclick="switchUser('wouter')" id="btn-wouter">👤 Wouter</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('battle')">Battle</button>
+            <button class="tab" onclick="switchTab('ranking')">Ranking</button>
+            <button class="tab" onclick="switchTab('history')">History</button>
+        </div>
+
+        <div id="battle-tab" class="tab-content active">
+            <div class="vs-divider">VS</div>
+            <div class="battle-area">
+                <div class="battle-container" id="battleContainer">
+                    <div class="no-battles">Selecteer eerst een gebruiker hierboven! 👆</div>
+                </div>
+                <p class="keyboard-hint" id="keyboardHint">
+                    ⌨️ Tip: Gebruik de pijltjestoetsen! ← Links | Rechts →
+                    <button class="keyboard-hint-close" onclick="closeKeyboardHint()" title="Sluiten">✕</button>
+                </p>
+            </div>
+            <div class="pairing-controls-wrapper" style="margin:12px 0;">
+                <div style="display:flex;justify-content:center;align-items:center;">
+                    <div style="font-size:0.95em;color:#444;display:flex;align-items:center;gap:8px;"></div>
+                    <button id="pairingControlsToggle" class="pairing-toggle-btn" onclick="togglePairingControls()" aria-expanded="true" title="Verberg instellingen" style="margin-left:8px;padding:6px 8px;border-radius:8px;border:none;background:#fff;cursor:pointer;font-weight:700;">▾</button>
+                </div>
+
+                <div id="pairingControls" class="pairing-controls" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:8px;transition:max-height 260ms ease,opacity 180ms ease;overflow:hidden;">
+                    <div class="pair-toggle" style="display:flex;border:1px solid #ddd;border-radius:10px;overflow:hidden;">
+                        <button class="pair-option" data-value="hybrid" data-help="kiest eerst een onderbemonsterde achtbaan, daarna een tegenstander met vergelijkbare ELO (balanceert verkenning en verfijning)" onclick="setPairingStrategy('hybrid')">
+                            Hybrid
+                        </button>
+                        <button class="pair-option" data-value="exploration" data-help="beide keuzes geven prioriteit aan onderbemonsterde achtbanen (sneller coverage)" onclick="setPairingStrategy('exploration')">
+                            Exploration
+                        </button>
+                        <button class="pair-option" data-value="uniform" data-help="volledig willekeurig (geen bias)" onclick="setPairingStrategy('uniform')">
+                            Uniform
+                        </button>
+                    </div>
+
+                    <div style="display:flex;align-items:center;gap:8px;font-size:0.95em;color:#444;">
+                        ELO-proximity:
+                        <input id="eloProximityRange" type="range" min="0" max="4" step="0.1" value="1" oninput="setEloProximityPower(this.value)" style="width:180px;">
+                        <span id="eloProximityValue" style="min-width:36px;text-align:center;font-weight:700;color:#2c3e50;">1.0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="history-tab" class="tab-content">
+            <div style="display:flex;justify-content:center;align-items:center;margin-bottom:16px; gap:10px;">
+                <div class="autocomplete-container">
+                    <div class="search-input-wrapper">
+                        <input id="historySearch" type="text" class="search-box" placeholder="🔍 Zoek matchup..." oninput="handleHistorySearchInput()" onkeydown="handleHistorySearchKeydown(event)" onfocus="showHistoryAutocomplete()" style="width:100%;" />
+                        <button id="clearHistorySearchBtn" class="clear-search-btn" onclick="clearHistorySearch()" style="display:none;" title="Clear search">✕</button>
+                    </div>
+                    <div id="historyAutocomplete" class="autocomplete-dropdown"></div>
+                </div>
+            </div>
+            <div id="historyContainer" style="overflow:auto; max-height:420px;">
+                <div class="no-battles">Nog geen battles — start met kiezen om history op te bouwen.</div>
+            </div>
+        </div>
+
+        <div id="ranking-tab" class="tab-content">
+            <div class="ranking-controls">
+                <div class="stats-summary">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalBattles">0</div>
+                        <div class="stat-label">Totaal Battles</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalCoasters">0</div>
+                        <div class="stat-label">Achtbanen</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="avgBattlesPerCoaster">0</div>
+                        <div class="stat-label">Gem. Battles/Achtbaan</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="progressMatchups">0/0</div>
+                        <div class="stat-label">Matchups Voltooid</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="progressPercentage">0%</div>
+                        <div class="stat-label">Voortgang</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-container">
+                <input type="text" class="search-box" id="searchBox" placeholder="🔍 Zoek achtbaan, park of fabrikant..." onkeyup="filterRanking()">
+            </div>
+
+            <table class="ranking-table" id="rankingTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortRanking('rank')">Rank</th>
+                        <th onclick="sortRanking('name')">Naam</th>
+                        <th onclick="sortRanking('park')">Park</th>
+                        <th onclick="sortRanking('manufacturer')">Fabrikant</th>
+                        <th onclick="sortRanking('elo')">ELO ⬇️</th>
+                        <th onclick="sortRanking('battles')">Battles</th>
+                        <th onclick="sortRanking('wins')">Wins</th>
+                        <th onclick="sortRanking('losses')">Losses</th>
+                        <th onclick="sortRanking('winrate')">Win %</th>
+                    </tr>
+                </thead>
+                <tbody id="rankingBody">
+                    <tr><td colspan="9" class="no-battles">Selecteer eerst een gebruiker! 🎢</td></tr>
+                </tbody>
+            </table>
+
+            <div class="reset-panel">
+                <div class="reset-copy">Reset alle rankings, battles en geschiedenis voor de huidige gebruiker.</div>
+                <button class="reset-btn" onclick="resetRankings()">🔄 Reset Alles</button>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="download-btn" onclick="downloadRankingCSV()" style="background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%); color: white; border: none; padding: 12px 24px; border-radius: 10px; font-size: 1em; font-weight: 700; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: 0 4px 15px rgba(76, 161, 175, 0.3);">
+                    📥 Download Ranking als CSV
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body></html>
