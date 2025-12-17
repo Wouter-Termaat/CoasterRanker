@@ -55,7 +55,7 @@ body {
 
 
 /* ensure gear SVGs are centered inside compact buttons */
-.dev-toggle .icon-gear { display:block; margin:auto; vertical-align:middle; }
+.dev-toggle .icon-gear { display:block; margin:auto; }
 
 /* keep active dev toggle readable on hover (use tinted background) */
 .dev-toggle-data.active:hover { background: #eef9f8; }
@@ -67,7 +67,7 @@ body {
 .dev-toggle.dev-btn { min-width: 44px; width: 44px; padding: 0; justify-content: center; border-radius: 10px; }
 
 .dev-toggle {
-    position: absolute;
+    position: fixed;
     left: 16px;
     bottom: 16px;
     border-radius: 10px;
@@ -86,9 +86,9 @@ body {
     border: 1px solid #e6e6e6;
 }
 .dev-menu {
-    position: absolute;
+    position: fixed;
     left: 16px;
-    bottom: 86px;
+    bottom: 70px;
     min-width: 240px;
     background: #fff;
     border-radius: 12px;
@@ -109,7 +109,7 @@ body {
     transform: rotate(45deg);
     box-shadow: -2px 2px 6px rgba(0,0,0,0.06);
 }
-..dev-menu-header { font-weight: 700; margin-bottom: 8px; color: #111827; }
+.dev-menu-header { font-weight: 700; margin-bottom: 8px; color: #111827; }
 .dev-option { max-width: 320px; margin-bottom:6px; }
 /* Make dev menu buttons consistent width and alignment */
 .dev-menu .dev-btn {
@@ -432,6 +432,13 @@ body {
 
     #history-tab {
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 250px);
+    }
+    
+    #history-tab.active {
+        display: flex !important;
     }
 }
 
@@ -821,6 +828,19 @@ body {
 }
 
 /* History filters (All / Wins / Losses / Close fights) */
+.history-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 10px;
+}
+
+.history-header-row .autocomplete-container {
+    flex: 1;
+    min-width: 240px;
+}
+
 .history-filters {
     display:flex;
     gap:8px;
@@ -831,6 +851,7 @@ body {
     box-shadow: 0 6px 18px rgba(0,0,0,0.04);
     margin-bottom:12px;
     flex-wrap:wrap;
+    margin-left: 12px;
 }
 /* allow filters to sit to the right of the search input when placed inline */
 .history-filters { margin-left: auto; }
@@ -866,8 +887,43 @@ body {
 
 /* Compact variant for small screens */
 @media (max-width: 600px) {
-    .history-filters { padding:8px; gap:6px; }
-    .history-filters .filter-btn { padding:8px 10px; min-width:72px; font-size:0.95em; }
+    .history-header-row {
+        gap: 6px !important;
+        flex-wrap: nowrap !important;
+        padding: 0 8px;
+        margin-bottom: 12px !important;
+    }
+    
+    .history-header-row .autocomplete-container {
+        min-width: 80px !important;
+        max-width: 100px !important;
+        flex: 0 1 100px !important;
+    }
+    
+    .history-filters { 
+        padding: 4px 2px !important; 
+        gap: 2px !important; 
+        flex-wrap: nowrap !important;
+        white-space: nowrap;
+        margin-left: 0 !important;
+        margin-bottom: 0 !important;
+        flex-shrink: 1;
+        min-width: 0;
+    }
+    .history-filters .filter-btn { 
+        padding: 6px 4px !important; 
+        min-width: 0 !important;
+        font-size: 0.7em !important;
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .search-box {
+        font-size: 0.85em !important;
+        padding: 6px !important;
+    }
 }
 
 /* Utility: show filters enabled when body has .coaster-selected */
@@ -1403,12 +1459,30 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
 }
 
 @media (max-width: 768px) {
+    #battle-tab {
+        position: relative;
+    }
+
+    .battle-area {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 10px;
+        position: relative;
+    }
+
     .battle-container {
         flex-direction: row;
-        gap: 15px;
+        flex-wrap: nowrap;
+        gap: 16px;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        max-width: 100%;
     }
 
     .vs-divider {
+        display: flex;
         width: 60px;
         height: 60px;
         font-size: 1.5em;
@@ -1416,7 +1490,7 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
     }
 
     .coaster-card {
-        max-width: 100%;
+        max-width: none;
         min-width: 0;
         flex: 1;
     }
