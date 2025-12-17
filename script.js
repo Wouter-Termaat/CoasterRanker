@@ -44,9 +44,7 @@
             coastersDataLuca = parseCSV(lucaText);
             coastersDataWouter = parseCSV(wouterText);
             
-            console.log('Coaster data loaded successfully');
-            console.log('Luca:', coastersDataLuca.length, 'coasters');
-            console.log('Wouter:', coastersDataWouter.length, 'coasters');
+            console.info(`Loaded coaster data: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
             
             // Initialize the app after data is loaded
             initializeApp();
@@ -54,22 +52,61 @@
             console.error('Error loading coaster data:', error);
             console.error('Error details:', error.message);
             
-            // Show a more helpful error message
+            // Show a more helpful error message and offer a file-input fallback
             const errorDiv = document.createElement('div');
-            errorDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.3);max-width:500px;text-align:center;z-index:10000;';
+            errorDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.3);max-width:560px;text-align:center;z-index:10000;font-family:sans-serif;';
             errorDiv.innerHTML = `
-                <h2 style="color:#e74c3c;margin-bottom:15px;">⚠️ Fout bij laden data</h2>
-                <p style="margin-bottom:15px;">De achtbaan data kon niet worden geladen.</p>
-                <p style="font-size:0.9em;color:#666;margin-bottom:20px;">
-                    Controleer of je de pagina opent via een webserver (bijv. met Live Server in VS Code).
-                    <br><br>
-                    <strong>Foutmelding:</strong> ${error.message}
-                </p>
-                <button onclick="location.reload()" style="background:#3498db;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;">
-                    Probeer opnieuw
-                </button>
+                <h2 style="color:#e74c3c;margin-bottom:10px;">⚠️ Error loading data</h2>
+                <p style="margin:6px 0 12px;">The coaster CSVs could not be loaded with fetch (often when opened via <em>file://</em>).</p>
+                <div style="font-size:0.9em;color:#666;margin-bottom:12px;">${escapeHtml(error.message || String(error))}</div>
+                <div style="display:flex;gap:8px;justify-content:center;flex-direction:column;align-items:stretch;">
+                    <label style="font-weight:700;text-align:left;margin-bottom:6px;">Upload CSV for Luca</label>
+                    <input id="fallbackLucaFile" type="file" accept=".csv" />
+                    <label style="font-weight:700;text-align:left;margin-bottom:6px;margin-top:8px;">Upload CSV for Wouter</label>
+                    <input id="fallbackWouterFile" type="file" accept=".csv" />
+                    <button id="fallbackLoadBtn" style="margin-top:10px;padding:10px;border-radius:8px;border:none;background:#3498db;color:#fff;cursor:pointer;font-weight:700;">Load selected files</button>
+                    <button id="fallbackCloseBtn" style="margin-top:6px;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;color:#333;cursor:pointer;">Close</button>
+                </div>
             `;
             document.body.appendChild(errorDiv);
+
+            document.getElementById('fallbackCloseBtn').addEventListener('click', () => { errorDiv.remove(); displayBattle(); });
+            document.getElementById('fallbackLoadBtn').addEventListener('click', () => {
+                const fL = document.getElementById('fallbackLucaFile');
+                const fW = document.getElementById('fallbackWouterFile');
+                const fileL = fL && fL.files && fL.files[0] ? fL.files[0] : null;
+                const fileW = fW && fW.files && fW.files[0] ? fW.files[0] : null;
+                if (!fileL && !fileW) {
+                    alert('Select at least one CSV file to load.');
+                    return;
+                }
+
+                const readFile = (file) => new Promise((res, rej) => {
+                    const fr = new FileReader();
+                    fr.onload = () => res(fr.result);
+                    fr.onerror = rej;
+                    fr.readAsText(file);
+                });
+
+                Promise.all([
+                    fileL ? readFile(fileL) : Promise.resolve(null),
+                    fileW ? readFile(fileW) : Promise.resolve(null)
+                ]).then(([lText, wText]) => {
+                    try {
+                        if (lText) coastersDataLuca = parseCSV(lText);
+                        if (wText) coastersDataWouter = parseCSV(wText);
+                        errorDiv.remove();
+                        initializeApp();
+                    } catch (e) {
+                        alert('Error processing CSV: ' + (e && e.message ? e.message : String(e)));
+                    }
+                }).catch(e => {
+                    alert('Error reading files: ' + (e && e.message ? e.message : String(e)));
+                });
+            });
+
+            // Also ensure the battle UI updates (hide VS) when CSV loading fails
+            try { displayBattle(); } catch (e) { /* ignore */ }
         }
     }
 
@@ -83,6 +120,8 @@
         
         // Set header height for mobile sticky tabs
         setHeaderHeight();
+        // Post-initialization UI adjustments
+        postInitUISetup();
     }
 
     // Set header height CSS variable for sticky tabs positioning
@@ -95,21 +134,107 @@
             }
         }
     }
+
+    // Post-initialization UI setup: safe no-op if features missing
+    function postInitUISetup() {
+        try {
+            // Apply pairing/dev settings to UI if functions exist
+            try { applySettingsToUI(); } catch (e) {}
+            try { loadDevSettings(); } catch (e) {}
+            // Ensure correct battle visibility initially (hide until user selects).
+            // If a user is already selected, keep the battle visible.
+            try { if (!currentUser) setBattleVisibility(false); } catch (e) {}
+            // Sync sim input width
+            try { syncSimInputWidth(); } catch (e) {}
+        } catch (e) {
+            // swallow any unexpected errors to avoid breaking initialization
+            console.warn('postInitUISetup error', e);
+        }
+    }
+
+// Utility: debounce function to reduce frequency of hot handlers
+function debounce(fn, wait = 120) {
+    let t = null;
+    return (...args) => {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => { t = null; fn(...args); }, wait);
+    };
+}
+
+// Small DOM helper (convenience wrapper)
+const $id = (id) => document.getElementById(id);
     
-    // Update header height on resize
-    window.addEventListener('resize', () => {
-        setHeaderHeight();
-    }, { passive: true });
+    function syncSimInputWidth() {
+        try {
+            const btn = DOM.simulateBtn || $id('simulateBtn');
+            const input = DOM.simulateCount || $id('simulateCount');
+            if (btn && input) {
+                const w = btn.offsetWidth;
+                // use box-sizing aware width
+                input.style.width = w + 'px';
+            }
+        } catch (e) { /* ignore */ }
+    }
 
-    // Start loading data when script loads
-    loadCoasterData();
+// Consolidated debounced resize handler (handles header, sim input and dev-data positioning)
+const onResize = debounce(() => {
+    setHeaderHeight();
+    syncSimInputWidth();
+    if (devShowData) {
+        renderDevData();
+        setTimeout(positionDevData, 0);
+    }
+}, 120);
 
-    // Global variables
+window.addEventListener('resize', onResize, { passive: true });
     let currentUser = null;
     let coasters = [];
     let coasterStats = {};
     let totalBattlesCount = 0;
     let currentBattle = null;
+    let closeIntroTimeout = null; // handle for scheduled close-intro so we can cancel it
+    let closeIntroActive = false; // true while the intro animation is running
+    let resolvingBattle = false; // true while a winner choice is being processed
+    let closeIntroPrevVSDisplay = null;
+
+    // Cancel any pending or active close-intro/overlay immediately
+    function cancelCloseIntro(){
+        try{
+            closeIntroActive = false;
+            if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; }
+            // hide overlay/banner/burst immediately and remove visible classes
+            const overlay = document.getElementById('closeBattleOverlay');
+            const banner = document.getElementById('closeBanner');
+            const burst = document.getElementById('winnerBurst');
+            const vs = document.querySelector('.vs-divider');
+            if (banner) { banner.classList.remove('show'); banner.style.removeProperty('display'); }
+            if (burst) { burst.classList.remove('show','big'); burst.style.removeProperty('display'); }
+            if (overlay) {
+                overlay.classList.remove('show');
+                overlay.style.setProperty('display','none','important');
+                overlay.style.setProperty('opacity','0','important');
+                overlay.style.removeProperty('z-index');
+                overlay.setAttribute('aria-hidden','true');
+            }
+            // hide the original VS marker while overlay/intro is hidden
+            try{ if (vs) { vs.style.setProperty('display','none','important'); vs.setAttribute('data-cr-hidden','true'); } }catch(e){}
+            // clear dev force so it doesn't accidentally retrigger after hiding
+            try{ devForceCloseBattle = false; }catch(e){}
+        }catch(e){ /* swallow */ }
+    }
+
+    // Restore the original VS divider (remove any forced hiding)
+    function restoreVsDivider(){
+        try{
+            const vs = document.querySelector('.vs-divider');
+            if (!vs) return;
+            if (closeIntroPrevVSDisplay !== null && closeIntroPrevVSDisplay !== '') vs.style.display = closeIntroPrevVSDisplay; else vs.style.removeProperty('display');
+            vs.removeAttribute('data-cr-hidden');
+            // also remove any !important hide if present
+            try { vs.style.removeProperty('display'); } catch(e) {}
+            closeIntroPrevVSDisplay = null;
+        }catch(e){}
+    }
     let isProcessingChoice = false;
     let currentSort = { column: 'elo', ascending: false };
     // History: stores past battles for current user
@@ -119,6 +244,12 @@
     const MAX_UNDO_STACK = 50;
     // Exploration boost: favor coasters with few battles
     const EXPLORATION_POWER = 1; // higher => stronger preference for low-battles
+    // Automatic ELO tuning parameters (internal, no UI required)
+    const ELO_BASE = 1500;
+    const K0 = 64;           // initial K scale
+    const K_DECAY_C = 10;    // decay constant (larger -> slower decay)
+    const K_MIN = 8;         // minimum K to keep movement
+    const PRIOR_WEIGHT = 6;  // pseudo-battles pulling displayed ELO toward mean
     // ELO-proximity: prefer opponents whose ELO is similar (more informative matches)
     let ELO_PROXIMITY_POWER = 1; // higher => stronger preference for similar ELO
     const ELO_DIFF_SCALE = 400; // scale (in ELO points) used to normalize differences
@@ -130,14 +261,18 @@
     // Track all completed pairs to prevent duplicates
     let completedPairs = new Set();
 
-    // User management
+    // Dev UI: whether to show debug data beside cards
+    let devShowData = false;
+
+// Lightweight DOM cache for frequently used elements (populated on DOMContentLoaded)
+const DOM = {};
     function switchUser(user) {
         currentUser = user;
         
         // Update UI
         document.querySelectorAll('.user-btn').forEach(btn => btn.classList.remove('active'));
         document.getElementById('btn-' + user).classList.add('active');
-        document.getElementById('currentUserBadge').textContent = `Ingelogd als: ${user === 'luca' ? 'Luca' : 'Wouter'}`;
+        document.getElementById('currentUserBadge').textContent = `Logged in as: ${user === 'luca' ? 'Luca' : 'Wouter'}`;
         
         // Load user-specific data
         if (user === 'luca') {
@@ -172,6 +307,8 @@
         
         // load pairing settings for this user (if any)
         loadPairingSettings();
+        // load developer UI settings for this user
+        loadDevSettings();
     }
 
     function initializeStats() {
@@ -284,6 +421,50 @@
         saveData();
     }
 
+    // Developer UI settings (per-user)
+    function toggleDevData() {
+        // toggle state directly (do not refresh the current battle)
+        devShowData = !devShowData;
+        saveDevSettings();
+        const btn = document.getElementById('devToggleDataBtn');
+        if (btn) {
+            if (devShowData) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); } else { btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false'); }
+        }
+        renderDevData();
+    }
+
+    function saveDevSettings() {
+        if (!currentUser) return;
+        localStorage.setItem(`devShowData_${currentUser}`, JSON.stringify(devShowData));
+    }
+
+    function loadDevSettings() {
+        if (!currentUser) return;
+        try {
+            const raw = localStorage.getItem(`devShowData_${currentUser}`);
+            devShowData = raw ? JSON.parse(raw) : false;
+        } catch (e) { devShowData = false; }
+        const btn = document.getElementById('devToggleDataBtn');
+        if (btn) {
+            if (devShowData) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); } else { btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false'); }
+        }
+    }
+
+    function resetAllUserData() {
+        if (!currentUser) return;
+        const ok = confirm('Are you sure? This will delete rankings, history and pairing progress for the user.');
+        if (!ok) return;
+        coasterStats = initializeStats();
+        totalBattlesCount = 0;
+        coasterHistory = [];
+        completedPairs = new Set();
+        saveData();
+        updateRanking();
+        displayHistory();
+        displayBattle();
+        showToast('✅ Data reset for ' + currentUser);
+    }
+
     // User menu (hamburger) toggle and outside-click handling
     function toggleUserMenu() {
         const menu = document.getElementById('userMenu');
@@ -321,9 +502,234 @@
         }
     }
 
+    // Developer menu (bottom-left) toggle and outside-click handling
+    function toggleDevMenu() {
+        const menu = $id('devMenu');
+        const btn = $id('devToggleBtn');
+        if (!menu || !btn) return;
+        const open = menu.classList.toggle('open');
+        menu.setAttribute('aria-hidden', (!open).toString());
+        btn.setAttribute('aria-expanded', open.toString());
+        if (open) {
+            document.addEventListener('click', devOutsideClickHandler);
+            // sync the simulate input width when menu opens; use rAF to avoid layout thrash
+            try {
+                requestAnimationFrame(() => {
+                    try { syncSimInputWidth(); } catch (e) {}
+                    requestAnimationFrame(() => { try { syncSimInputWidth(); } catch (e) {} });
+                });
+            } catch (e) { /* ignore */ }
+        } else {
+            document.removeEventListener('click', devOutsideClickHandler);
+        }
+    }
+
+    function closeDevMenu() {
+        const menu = document.getElementById('devMenu');
+        const btn = document.getElementById('devToggleBtn');
+        if (!menu || !btn) return;
+        menu.classList.remove('open');
+        menu.setAttribute('aria-hidden', 'true');
+        btn.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('click', devOutsideClickHandler);
+    }
+
+    function devOutsideClickHandler(ev) {
+        const menu = document.getElementById('devMenu');
+        const btn = document.getElementById('devToggleBtn');
+        if (!menu || !btn) return;
+        if (!menu.contains(ev.target) && ev.target !== btn) {
+            closeDevMenu();
+        }
+    }
+
+    // Simulation: simulate X battles for the current user (updates ELO, history, rankings)
+    async function simulateBattlesFromUI() {
+        const input = document.getElementById('simulateCount');
+        const btn = document.getElementById('simulateBtn');
+        if (!input || !btn) return;
+        const count = parseInt(input.value, 10);
+        if (!currentUser) { showToast('Select a user first'); return; }
+        if (isNaN(count) || count <= 0) { showToast('Enter a valid number (≥1)'); return; }
+        btn.disabled = true;
+        try {
+            const result = await simulateBattles(count, (progress, total) => {
+                const el = document.getElementById('simulateProgress');
+                if (el) { el.style.display = 'block'; el.textContent = `Progress: ${progress} / ${total}`; }
+            });
+            showToast(`✅ Simulated: ${result} battles`);
+        } catch (e) {
+            showToast('Simulation error');
+            console.error(e);
+        } finally {
+            const el = document.getElementById('simulateProgress'); if (el) el.style.display = 'none';
+            btn.disabled = false;
+            // refresh UI
+            updateRanking();
+            displayHistory();
+            displayBattle();
+        }
+    }
+
+    async function simulateBattles(count, progressCallback) {
+        if (!currentUser) throw new Error('No user selected');
+        let simulated = 0;
+        // process in small batches to keep UI responsive
+        const batchSize = 200;
+        try {
+            for (let offset = 0; offset < count; offset += batchSize) {
+                const end = Math.min(count, offset + batchSize);
+                for (let i = offset; i < end; i++) {
+                    const pair = getRandomCoasters();
+                    if (!pair) {
+                        // no more unique pairs available
+                        return simulated;
+                    }
+
+                    // pick winner probabilistically according to current ELOs
+                    const a = pair[0], b = pair[1];
+                    // ensure stats exist for both coasters
+                    const aStats = ensureCoasterStats(a);
+                    const bStats = ensureCoasterStats(b);
+                    const aE = aStats.elo, bE = bStats.elo;
+                    const probA = 1 / (1 + Math.pow(10, (bE - aE) / 400));
+                    const rnd = (typeof rng === 'function') ? rng() : Math.random();
+                    const winnerIdx = (rnd < probA) ? 0 : 1;
+                    const winner = pair[winnerIdx], loser = pair[1 - winnerIdx];
+
+                    // update stats
+                    const winnerStats = ensureCoasterStats(winner);
+                    const loserStats = ensureCoasterStats(loser);
+                    const { newWinnerElo, newLoserElo } = calculateEloAdaptiveFromStats(winnerStats, loserStats);
+                    winnerStats.elo = newWinnerElo; winnerStats.battles++; winnerStats.wins++;
+                    loserStats.elo = newLoserElo; loserStats.battles++; loserStats.losses++;
+                    totalBattlesCount++;
+
+                    // record battle (keeps completedPairs) — skip immediate save to batch at the end
+                    recordBattle(pair[0], pair[1], winner.naam, loser.naam, { skipSave: true });
+
+                    simulated++;
+                    if (progressCallback && (simulated % 10 === 0)) progressCallback(simulated, count);
+                }
+                // yield to event loop between batches
+                await new Promise(r => setTimeout(r, 0));
+            }
+        } finally {
+            // ensure we persist progress even if an error occurs mid-run
+            try { saveData(); } catch (e) { /* ignore save errors */ }
+        }
+        return simulated;
+    }
+
+    // Render or remove dev-data overlays based on currentBattle and viewport
+    function renderDevData() {
+        const battleContainer = DOM.battleContainer || $id('battleContainer');
+        if (!battleContainer) return;
+        // remove existing overlays
+        battleContainer.querySelectorAll('.dev-data-side, .dev-data-inline').forEach(n => n.remove());
+
+        if (!devShowData) return;
+        if (!currentBattle || currentBattle.length < 2) return;
+
+        // compute the same dev-html used when battle is first rendered
+        const left = currentBattle[0], right = currentBattle[1];
+        const leftStats = coasterStats[left.naam] || { elo:1500, battles:0, wins:0, losses:0 };
+        const rightStats = coasterStats[right.naam] || { elo:1500, battles:0, wins:0, losses:0 };
+        // compute ELO scenarios once
+        const leftIfWin = calculateEloAdaptiveFromStats(leftStats, rightStats);
+        const leftIfLose = calculateEloAdaptiveFromStats(rightStats, leftStats);
+        const rightIfWin = calculateEloAdaptiveFromStats(rightStats, leftStats);
+        const rightIfLose = calculateEloAdaptiveFromStats(leftStats, rightStats);
+        const leftGainWin = Math.round(leftIfWin.newWinnerElo - leftStats.elo);
+        const leftLoseIfLose = Math.round(leftIfLose.newLoserElo - leftStats.elo);
+        const rightGainWin = Math.round(rightIfWin.newWinnerElo - rightStats.elo);
+        const rightLoseIfLose = Math.round(rightIfLose.newLoserElo - rightStats.elo);
+        const fmt = (n) => (n >= 0 ? '+' + n : n.toString());
+
+        const rank1 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.elo - a.elo); return sorted.findIndex(c => c.name === left.naam) + 1; })();
+        const rank2 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.elo - a.elo); return sorted.findIndex(c => c.name === right.naam) + 1; })();
+
+        const devLeftHtml = `
+            <div><strong>Rank:</strong> ${rank1}</div>
+            <div><strong>ELO:</strong> ${Math.round(leftStats.elo)}</div>
+            <div><strong>Δ (win):</strong> ${fmt(leftGainWin)}</div>
+            <div><strong>Δ (lose):</strong> ${fmt(leftLoseIfLose)}</div>
+            <div><strong>Battles:</strong> ${leftStats.battles}</div>
+            <div><strong>Wins:</strong> ${leftStats.wins}</div>
+            <div><strong>Losses:</strong> ${leftStats.losses}</div>
+        `;
+        const devRightHtml = `
+            <div><strong>Rank:</strong> ${rank2}</div>
+            <div><strong>ELO:</strong> ${Math.round(rightStats.elo)}</div>
+            <div><strong>Δ (win):</strong> ${fmt(rightGainWin)}</div>
+            <div><strong>Δ (lose):</strong> ${fmt(rightLoseIfLose)}</div>
+            <div><strong>Battles:</strong> ${rightStats.battles}</div>
+            <div><strong>Wins:</strong> ${rightStats.wins}</div>
+            <div><strong>Losses:</strong> ${rightStats.losses}</div>
+        `;
+
+        if (window.innerWidth > 600) {
+            // desktop: absolute side boxes
+            const leftBox = document.createElement('div');
+            leftBox.className = 'dev-data dev-data-side left';
+            leftBox.innerHTML = devLeftHtml;
+            const rightBox = document.createElement('div');
+            rightBox.className = 'dev-data dev-data-side right';
+            rightBox.innerHTML = devRightHtml;
+            battleContainer.appendChild(leftBox);
+            battleContainer.appendChild(rightBox);
+            setTimeout(positionDevData, 0);
+        } else {
+            // mobile: inline under each card
+            const items = battleContainer.querySelectorAll('.coaster-item');
+            if (items[0]) {
+                const leftInline = document.createElement('div');
+                leftInline.className = 'dev-data dev-data-inline';
+                leftInline.innerHTML = devLeftHtml;
+                items[0].appendChild(leftInline);
+            }
+            if (items[1]) {
+                const rightInline = document.createElement('div');
+                rightInline.className = 'dev-data dev-data-inline';
+                rightInline.innerHTML = devRightHtml;
+                items[1].appendChild(rightInline);
+            }
+        }
+    }
+
+    // Position dev-data boxes next to the cards (desktop) or inline (mobile)
+    function positionDevData() {
+        const battleContainer = DOM.battleContainer || $id('battleContainer');
+        if (!battleContainer) return;
+        const leftCard = battleContainer.querySelector('.coaster-card.left-card');
+        const rightCard = battleContainer.querySelector('.coaster-card.right-card');
+        const leftBox = battleContainer.querySelector('.dev-data-side.left');
+        const rightBox = battleContainer.querySelector('.dev-data-side.right');
+        if (!leftCard || !rightCard || !leftBox || !rightBox) return;
+
+        // compute positions relative to container
+        const containerRect = battleContainer.getBoundingClientRect();
+        const leftRect = leftCard.getBoundingClientRect();
+        const rightRect = rightCard.getBoundingClientRect();
+
+        // left box: place to the left of the left card
+        const leftTop = leftRect.top - containerRect.top + (leftRect.height - leftBox.offsetHeight) / 2;
+        const leftLeft = leftRect.left - containerRect.left - leftBox.offsetWidth - 12; // 12px gap
+        leftBox.style.top = Math.max(4, leftTop) + 'px';
+        leftBox.style.left = leftLeft + 'px';
+
+        // right box: place to the right of the right card
+        const rightTop = rightRect.top - containerRect.top + (rightRect.height - rightBox.offsetHeight) / 2;
+        const rightLeft = rightRect.right - containerRect.left + 12; // 12px gap
+        rightBox.style.top = Math.max(4, rightTop) + 'px';
+        rightBox.style.left = rightLeft + 'px';
+    }
+
+    // (resize handling consolidated into debounced onResize) // no-op
+
     // close on Escape
     document.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Escape') closeUserMenu();
+        if (ev.key === 'Escape') { closeUserMenu(); closeDevMenu(); }
     });
 
     // Floating help tooltip logic (delayed show, follows cursor)
@@ -397,7 +803,7 @@
     }
 
     // helper: record a battle into history
-    function recordBattle(a, b, winnerName, loserName) {
+    function recordBattle(a, b, winnerName, loserName, { skipSave = false } = {}) {
         const key = pairKey(a.naam, b.naam);
         const entry = {
             pairKey: key,
@@ -419,7 +825,7 @@
         const MAX_HISTORY_KEEP = 10000;
         if (coasterHistory.length > MAX_HISTORY_KEEP) coasterHistory.splice(0, coasterHistory.length - MAX_HISTORY_KEEP);
 
-        saveData();
+        if (!skipSave) saveData();
     }
 
     // Get total possible unique pairs
@@ -515,14 +921,14 @@
                 const indexFromExploration = () => sampleIndexFromWeights(weights, randomFn);
                 for (let t = 0; t < attempts; t++) {
                     const i = indexFromExploration();
-
-                    const eloI = (coasterStats && coasterStats[coasters[i].naam] && typeof coasterStats[coasters[i].naam].elo === 'number') ? coasterStats[coasters[i].naam].elo : 1500;
+                    // use displayedElo (regularized) for pairing proximity calculations
+                    const eloI = (coasterStats && coasterStats[coasters[i].naam]) ? displayedElo(coasterStats[coasters[i].naam]) : ELO_BASE;
                     const condWeights = new Array(length);
                     for (let k = 0; k < length; k++) {
                         if (k === i) { condWeights[k] = 0; continue; }
                         const nameK = coasters[k].naam;
-                        const eloK = (coasterStats && coasterStats[nameK] && typeof coasterStats[nameK].elo === 'number') ? coasterStats[nameK].elo : 1500;
-                        const diff = Math.abs(eloI - eloK) / ELO_DIFF_SCALE; // normalized diff
+                        const eloK = (coasterStats && coasterStats[nameK]) ? displayedElo(coasterStats[nameK]) : ELO_BASE;
+                        const diff = Math.abs(eloI - eloK) / ELO_DIFF_SCALE; // normalized diff (using displayed ELO)
                         const proximityFactor = 1 / Math.pow(1 + diff, ELO_PROXIMITY_POWER);
                         const base = isFinite(weights[k]) && weights[k] > 0 ? weights[k] : 1;
                         condWeights[k] = base * proximityFactor;
@@ -570,20 +976,477 @@
         return { newWinnerElo, newLoserElo };
     }
 
+    // Compute adaptive K based on number of battles (automatic, internal)
+    function computeAdaptiveK(battles) {
+        return Math.max(K_MIN, K0 / (1 + (battles || 0) / K_DECAY_C));
+    }
+
+    // Displayed ELO with Bayesian-like shrinkage towards population mean
+    function displayedElo(stats) {
+        if (!stats) return ELO_BASE;
+        const n = stats.battles || 0;
+        if (n === 0) return ELO_BASE;
+        return (stats.elo * n + ELO_BASE * PRIOR_WEIGHT) / (n + PRIOR_WEIGHT);
+    }
+
+    // Adaptive ELO calculation using each coaster's battle count to pick K
+    function calculateEloAdaptiveFromStats(winnerStats, loserStats) {
+        const wElo = (winnerStats && typeof winnerStats.elo === 'number') ? winnerStats.elo : ELO_BASE;
+        const lElo = (loserStats && typeof loserStats.elo === 'number') ? loserStats.elo : ELO_BASE;
+        const wBattles = (winnerStats && typeof winnerStats.battles === 'number') ? winnerStats.battles : 0;
+        const lBattles = (loserStats && typeof loserStats.battles === 'number') ? loserStats.battles : 0;
+
+        const Kw = computeAdaptiveK(wBattles);
+        const Kl = computeAdaptiveK(lBattles);
+        const K = Math.max(Kw, Kl);
+
+        const expectedWinner = 1 / (1 + Math.pow(10, (lElo - wElo) / 400));
+        const expectedLoser = 1 - expectedWinner;
+
+        const newWinnerElo = wElo + K * (1 - expectedWinner);
+        const newLoserElo = lElo + K * (0 - expectedLoser);
+
+        return { newWinnerElo, newLoserElo, K };
+    }
+
+    // Ensure a coaster has an entry in `coasterStats`. Returns the stats object.
+    function ensureCoasterStats(coaster) {
+        if (!coaster || !coaster.naam) return null;
+        const name = coaster.naam;
+        if (!coasterStats[name]) {
+            coasterStats[name] = {
+                name: name,
+                park: coaster.park || (coaster.park === undefined ? '' : coaster.park),
+                manufacturer: coaster.fabrikant || coaster.manufacturer || '',
+                elo: 1500,
+                battles: 0,
+                wins: 0,
+                losses: 0
+            };
+        }
+        return coasterStats[name];
+    }
+
+    /* ===== Close-battle system =====
+       - Rare epic overlay when two coasters are within 3 ranking spots
+       - Only for coasters with more than 3 battles
+       - Rare trigger once every 25-50 battles (per localStorage)
+       - If adjacent and triggered, force a visible swap in ranking
+    */
+    const CR_STORAGE_COUNTER = 'cr_rareBattleCounter';
+    const CR_STORAGE_THRESHOLD = 'cr_rareBattleThreshold';
+    function randInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
+    function getCoasterId(c){ return (c && (c.naam || c.name || c.id)) || String(Math.random()); }
+    function getCoasterName(c){ return (c && (c.naam || c.name)) || 'Coaster'; }
+
+    function initCloseBattleSystem(){
+        if (localStorage.getItem(CR_STORAGE_COUNTER)===null) localStorage.setItem(CR_STORAGE_COUNTER,'0');
+        if (localStorage.getItem(CR_STORAGE_THRESHOLD)===null) localStorage.setItem(CR_STORAGE_THRESHOLD,String(randInt(25,50)));
+    }
+
+    // Developer override: force the next matchup to be treated as a close battle (one-time)
+    let devForceCloseBattle = false;
+
+    // Find a random eligible close matchup (both >3 battles and rank difference <3)
+    function findCloseMatchup() {
+        const statsArray = Object.values(coasterStats || {});
+        if (!statsArray || statsArray.length < 2) return null;
+        // compute sorted ranks by displayedElo
+        const sorted = [...statsArray].sort((a,b) => displayedElo(b) - displayedElo(a));
+        const nameToRank = {};
+        sorted.forEach((s, idx) => { nameToRank[s.name] = idx + 1; });
+
+        // build eligible pairs
+        const eligible = [];
+        for (let i = 0; i < sorted.length; i++){
+            for (let j = i+1; j < sorted.length; j++){
+                const a = sorted[i], b = sorted[j];
+                if ((a.battles||0) <= 3 || (b.battles||0) <= 3) continue;
+                const diff = Math.abs(nameToRank[a.name] - nameToRank[b.name]);
+                if (diff < 3) eligible.push([a, b]);
+            }
+        }
+        if (eligible.length === 0) return null;
+        const idx = Math.floor(Math.random() * eligible.length);
+        // return original coaster objects from coasters array (to preserve .naam keys)
+        const pick = eligible[idx];
+        // try to map back to full coaster objects in `coasters`
+        const aObj = coasters.find(c => (c.naam || c.name) === pick[0].name) || pick[0];
+        const bObj = coasters.find(c => (c.naam || c.name) === pick[1].name) || pick[1];
+        return [aObj, bObj];
+    }
+
+    // Dev action: set up a close fight for the next displayed battle
+    function forceNextCloseFight(){
+        if (!currentUser) { showToast('Select a user first'); return; }
+        const pair = findCloseMatchup();
+        if (!pair) { showToast('No suitable close matchup available'); return; }
+        // set dev flag so triggerCloseBattleIfNeeded triggers the epic one-time
+        devForceCloseBattle = true;
+        // set currentBattle to the pair and re-render
+        currentBattle = pair;
+        displayBattle();
+        showToast('Close fight forced — choose winner');
+    }
+
+    function subtleCloseFlourish(a,b,winnerId){
+        return new Promise((res)=>{
+            try{
+                const overlay = document.getElementById('closeBattleOverlay');
+                const leftName = document.getElementById('cLeftName');
+                const rightName = document.getElementById('cRightName');
+                leftName.textContent = getCoasterName(a);
+                rightName.textContent = getCoasterName(b);
+                overlay.classList.add('show');
+                // stronger celebratory burst for close fights (longer)
+                const winnerBurst = document.getElementById('winnerBurst');
+                winnerBurst.classList.add('show');
+                // add slight scale/pop on winner text for effect
+                const winnerText = document.getElementById('winnerText');
+                winnerText.style.transform = 'scale(0.95)';
+                setTimeout(()=>{ winnerText.style.transform = 'scale(1.12)'; }, 80);
+                setTimeout(()=>{ winnerText.style.transform = ''; winnerBurst.classList.remove('show'); overlay.classList.remove('show'); res(); }, 1200);
+            }catch(e){ res(); }
+        });
+    }
+
+    function epicCloseBattleSequence(a,b, rankA, rankB, winnerId){
+        return new Promise((resolve)=>{
+            const overlay = document.getElementById('closeBattleOverlay');
+            const leftName = document.getElementById('cLeftName');
+            const rightName = document.getElementById('cRightName');
+            const cLeft = document.getElementById('cLeft');
+            const cRight = document.getElementById('cRight');
+            const winnerBurst = document.getElementById('winnerBurst');
+            const winnerText = document.getElementById('winnerText');
+
+            leftName.textContent = getCoasterName(a);
+            rightName.textContent = getCoasterName(b);
+            overlay.classList.add('show');
+
+            cLeft.classList.remove('win','lose');
+            cRight.classList.remove('win','lose');
+            winnerBurst.classList.remove('show');
+
+            setTimeout(()=>{
+                const leftIsWinner = (winnerId === getCoasterId(a));
+                if (leftIsWinner){ cLeft.classList.add('win'); cRight.classList.add('lose'); winnerText.textContent = `${getCoasterName(a)} wins!`; }
+                else { cRight.classList.add('win'); cLeft.classList.add('lose'); winnerText.textContent = `${getCoasterName(b)} wins!`; }
+                winnerBurst.classList.add('show');
+
+                const CELEBRATE_MS = 1600;
+                setTimeout(()=>{
+                    winnerBurst.classList.remove('show');
+                    overlay.classList.remove('show');
+                    const diff = Math.abs(rankA - rankB);
+                    const forcedSwap = diff === 1; // adjacent -> force swap
+                    resolve(forcedSwap);
+                }, CELEBRATE_MS);
+            }, 420);
+        });
+    }
+
+    // Show an intro animation/banner when a close fight appears
+    function showCloseIntro(a,b){
+        return new Promise((resolve)=>{
+            try{
+                // mark intro active so other flows don't re-trigger it
+                closeIntroActive = true;
+                // temporarily block choices to ensure user notices
+                const prevProcessing = isProcessingChoice;
+                isProcessingChoice = true;
+
+                const overlay = document.getElementById('closeBattleOverlay');
+                const banner = document.getElementById('closeBanner');
+                const cards = document.querySelectorAll('.coaster-card');
+                const battleContainerEl = DOM.battleContainer || document.getElementById('battleContainer');
+                // bring cards above overlay during intro
+                const prevZ = battleContainerEl && battleContainerEl.style ? battleContainerEl.style.zIndex : null;
+                if (battleContainerEl) battleContainerEl.style.zIndex = 10030;
+                // ensure any forced inline hiding is removed so the overlay can appear
+                try {
+                    if (overlay) {
+                        overlay.style.removeProperty('display');
+                        overlay.style.removeProperty('opacity');
+                        overlay.style.removeProperty('z-index');
+                        overlay.removeAttribute('aria-hidden');
+                    }
+                    if (banner) {
+                        banner.style.removeProperty('display');
+                        banner.removeAttribute('aria-hidden');
+                    }
+                } catch (e) {}
+                // set overlay to a visible intro state
+                overlay.classList.add('show');
+                banner.classList.add('show');
+                // highlight the two cards
+                if (cards[0]) { cards[0].classList.add('close-highlight'); cards[0].classList.add('close-hidden'); }
+                if (cards[1]) { cards[1].classList.add('close-highlight'); cards[1].classList.add('close-hidden'); }
+
+                // small attention animation on VS marker; hide the original VS while overlay shows its own
+                const vs = document.querySelector('.vs-divider');
+                try{
+                    if (vs) {
+                        closeIntroPrevVSDisplay = (vs.style && vs.style.display) ? vs.style.display : '';
+                        vs.style.setProperty('display','none','important');
+                        vs.setAttribute('data-cr-hidden','true');
+                        vs.animate([
+                            { transform: 'scale(1)', offset: 0 },
+                            { transform: 'scale(1.12)', offset: 0.5 },
+                            { transform: 'scale(1)', offset: 1 }
+                        ], { duration: 700, easing: 'cubic-bezier(.2,.9,.3,1)' });
+                    }
+                }catch(e){}
+
+                // play intro for a bit longer, then reveal cards one by one
+                const BANNER_MS = 2200; // slower intro
+                setTimeout(()=>{
+                    // reveal left then right with a small stagger
+                    if (cards[0]) {
+                        cards[0].classList.remove('close-hidden');
+                        cards[0].classList.add('revealed');
+                        cards[0].classList.add('pop');
+                        setTimeout(()=>{ cards[0].classList.remove('pop'); }, 700);
+                    }
+                    setTimeout(()=>{
+                        if (cards[1]) { cards[1].classList.remove('close-hidden'); cards[1].classList.add('revealed'); cards[1].classList.add('pop'); setTimeout(()=>{ cards[1].classList.remove('pop'); }, 700); }
+                        // hide banner and overlay after a short pause so cards are visible
+                        setTimeout(()=>{
+                            banner.classList.remove('show');
+                                overlay.classList.remove('show');
+                                if (cards[0]) cards[0].classList.remove('close-highlight');
+                                if (cards[1]) cards[1].classList.remove('close-highlight');
+                                // restore battle container z-index
+                                if (battleContainerEl) battleContainerEl.style.zIndex = prevZ || '';
+                                isProcessingChoice = prevProcessing;
+                                // mark intro finished
+                                closeIntroActive = false;
+                                // restore original VS marker display if we saved it
+                                try {
+                                    if (vs) {
+                                        if (closeIntroPrevVSDisplay !== null && closeIntroPrevVSDisplay !== '') vs.style.display = closeIntroPrevVSDisplay; else vs.style.removeProperty('display');
+                                        vs.removeAttribute('data-cr-hidden');
+                                        closeIntroPrevVSDisplay = null;
+                                    }
+                                } catch(e) {}
+                                resolve();
+                        }, 800);
+                    }, 520);
+                }, BANNER_MS);
+            }catch(e){ isProcessingChoice = false; resolve(); }
+        });
+    }
+
+    // Celebrate a winner by animating the existing card in-place and spawning confetti
+    function celebrateWinner(cardEl, winnerName){
+        return new Promise((resolve)=>{
+            try{
+                if (!cardEl) return resolve();
+
+                // Ensure intro overlay, banner and burst are hidden during celebration.
+                // Save inline styles so we can restore them after celebration (if needed).
+                try {
+                    const overlayEl = document.getElementById('closeBattleOverlay');
+                    const bannerEl = document.getElementById('closeBanner');
+                    const winnerBurst = document.getElementById('winnerBurst');
+                    // store previous inline styles
+                    const prev = {};
+                    if (overlayEl) {
+                        prev.overlayDisplay = overlayEl.style.display;
+                        prev.overlayOpacity = overlayEl.style.opacity;
+                        prev.overlayZ = overlayEl.style.zIndex;
+                        // Remove any visible state and force-hide the overlay immediately using !important
+                        overlayEl.classList.remove('show');
+                        overlayEl.style.setProperty('display', 'none', 'important');
+                        overlayEl.style.setProperty('opacity', '0', 'important');
+                        overlayEl.style.zIndex = '';
+                        overlayEl.setAttribute('aria-hidden', 'true');
+                    }
+                    if (bannerEl) { bannerEl.classList.remove('show'); }
+                    if (winnerBurst) { winnerBurst.classList.remove('show','big'); }
+                    // attach prev store on the card element so we can restore later
+                    cardEl._closeOverlayPrev = prev;
+                } catch (e) {}
+
+                // apply in-place celebration class to scale and bring forward
+                cardEl.classList.add('celebrate-in-place');
+
+                // spawn confetti pieces around center of the card
+                const rect = cardEl.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 3;
+
+                const colors = ['#ff3f6e','#ffd86b','#6ee7b7','#7dd3fc','#c084fc','#ffc4d6','#ffb86b'];
+                const confettiCount = 36;
+                const confettiEls = [];
+                for (let i=0;i<confettiCount;i++){
+                    const c = document.createElement('div');
+                    c.className = 'confetti-piece';
+                    const size = 6 + Math.floor(Math.random()*12);
+                    c.style.width = size + 'px'; c.style.height = Math.floor(size*1.2) + 'px';
+                    // randomize start position near the card center
+                    const left = cx + (Math.random()*rect.width - rect.width/2);
+                    const top = cy + (Math.random()*rect.height/2 - rect.height/4);
+                    c.style.left = left + 'px';
+                    c.style.top = top + 'px';
+                    c.style.background = colors[Math.floor(Math.random()*colors.length)];
+                    c.style.transform = `translateY(-6px) rotate(${Math.random()*360}deg)`;
+                    c.style.animationDuration = (900 + Math.floor(Math.random()*900)) + 'ms';
+                    document.body.appendChild(c);
+                    confettiEls.push(c);
+                }
+
+                // show winner burst briefly
+                const winnerBurst = document.getElementById('winnerBurst');
+                const winnerText = document.getElementById('winnerText');
+                if (winnerText) winnerText.textContent = `${winnerName} WINS!`;
+                if (winnerBurst) winnerBurst.classList.add('show','big');
+
+                const CELEBRATE_MS = 1400;
+                setTimeout(()=>{
+                    // cleanup
+                    try{
+                        if (winnerBurst) winnerBurst.classList.remove('show','big');
+                        confettiEls.forEach(c => c.remove());
+                        cardEl.classList.remove('celebrate-in-place');
+                        // restore overlay inline styles if we saved them
+                        const prev = cardEl._closeOverlayPrev;
+                        const overlayEl = document.getElementById('closeBattleOverlay');
+                        if (prev && overlayEl) {
+                            // restore prior inline values if they existed, otherwise remove the inline property
+                            if (typeof prev.overlayDisplay !== 'undefined' && prev.overlayDisplay !== null && prev.overlayDisplay !== '') overlayEl.style.display = prev.overlayDisplay; else overlayEl.style.removeProperty('display');
+                            if (typeof prev.overlayOpacity !== 'undefined' && prev.overlayOpacity !== null && prev.overlayOpacity !== '') overlayEl.style.opacity = prev.overlayOpacity; else overlayEl.style.removeProperty('opacity');
+                            if (typeof prev.overlayZ !== 'undefined' && prev.overlayZ !== null && prev.overlayZ !== '') overlayEl.style.zIndex = prev.overlayZ; else overlayEl.style.removeProperty('z-index');
+                            overlayEl.removeAttribute('aria-hidden');
+                            delete cardEl._closeOverlayPrev;
+                        }
+                        // restore original VS divider if we hid it earlier
+                        try { restoreVsDivider(); } catch(e) {}
+                    }catch(e){}
+                    resolve();
+                }, CELEBRATE_MS);
+            }catch(e){ resolve(); }
+        });
+    }
+
+    function triggerCloseBattleIfNeeded(coasterA, coasterB, rankA, rankB, winnerId){
+        return new Promise((resolve)=>{
+            // require >3 battles each
+            const aStats = coasterStats[(coasterA.naam || coasterA.name)];
+            const bStats = coasterStats[(coasterB.naam || coasterB.name)];
+            if (!aStats || !bStats) return resolve({triggered:false, forcedSwap:false});
+            if ((aStats.battles||0) <= 3 || (bStats.battles||0) <= 3) return resolve({triggered:false, forcedSwap:false});
+
+            const diff = Math.abs(rankA - rankB);
+            if (!(diff < 3)) return resolve({triggered:false, forcedSwap:false});
+
+            // If we're currently resolving a winner choice, don't trigger the intro
+            if (resolvingBattle) {
+                // ensure any visible overlay is hidden and don't trigger epic
+                try { cancelCloseIntro(); } catch(e){}
+                return resolve({triggered:false, forcedSwap:false});
+            }
+
+            // dev override: if developer forced a close battle, trigger epic once
+            if (typeof devForceCloseBattle !== 'undefined' && devForceCloseBattle) {
+                devForceCloseBattle = false; // one-time
+                // reset stored counters so rarity doesn't immediately retrigger
+                localStorage.setItem(CR_STORAGE_COUNTER,'0');
+                localStorage.setItem(CR_STORAGE_THRESHOLD,String(randInt(25,50)));
+                epicCloseBattleSequence(coasterA, coasterB, rankA, rankB, winnerId).then((forcedSwap)=>{
+                    resolve({triggered:true, forcedSwap: !!forcedSwap});
+                });
+                return;
+            }
+
+            // If the intro is already active or the overlay is visible, treat the epic as already shown
+            try {
+                const overlayCheck = document.getElementById('closeBattleOverlay');
+                if (closeIntroActive || (overlayCheck && overlayCheck.classList.contains('show'))) {
+                    // reset counter/threshold as if epic triggered
+                    localStorage.setItem(CR_STORAGE_COUNTER,'0');
+                    localStorage.setItem(CR_STORAGE_THRESHOLD,String(randInt(25,50)));
+                    const forcedSwap = diff === 1;
+                    return resolve({triggered:true, forcedSwap: !!forcedSwap});
+                }
+            } catch (e) { /* ignore */ }
+
+            let counter = Number(localStorage.getItem(CR_STORAGE_COUNTER) || 0);
+            let threshold = Number(localStorage.getItem(CR_STORAGE_THRESHOLD) || randInt(25,50));
+            counter++;
+            localStorage.setItem(CR_STORAGE_COUNTER, String(counter));
+
+            const shouldTrigger = counter >= threshold;
+            if (!shouldTrigger){
+                return subtleCloseFlourish(coasterA, coasterB, winnerId).then(()=> resolve({triggered:false, forcedSwap:false}));
+            }
+
+            // reset counter and set new threshold
+            localStorage.setItem(CR_STORAGE_COUNTER,'0');
+            localStorage.setItem(CR_STORAGE_THRESHOLD,String(randInt(25,50)));
+
+            epicCloseBattleSequence(coasterA, coasterB, rankA, rankB, winnerId).then((forcedSwap)=>{
+                resolve({triggered:true, forcedSwap: !!forcedSwap});
+            });
+        });
+    }
+
+    function animateSwapInRanking(idA, idB){
+        try{
+            const rowA = document.querySelector(`#rankingBody tr[data-id="${idA}"]`);
+            const rowB = document.querySelector(`#rankingBody tr[data-id="${idB}"]`);
+            if (!rowA || !rowB) return;
+            rowA.classList.add('cr-swap-animate'); rowB.classList.add('cr-swap-animate');
+            setTimeout(()=>{ rowA.classList.remove('cr-swap-animate'); rowB.classList.remove('cr-swap-animate'); }, 900);
+            const parent = rowA.parentNode;
+            if (parent && rowA && rowB){
+                const next = rowA.nextElementSibling === rowB ? rowB.nextElementSibling : rowA.nextElementSibling;
+                parent.insertBefore(rowB, rowA);
+                if (next) parent.insertBefore(rowA, next);
+            }
+        }catch(e){ console.warn('animateSwapInRanking failed',e); }
+    }
+
+    // initialize storage counters
+    initCloseBattleSystem();
+
     function displayBattle() {
+        const vsEl = $id('vsDivider') || document.querySelector('.vs-divider');
+        // ensure battle container visibility helper exists
+        const battleContainerEl = DOM.battleContainer || $id('battleContainer');
+        // If no user selected, show hint and hide VS
         if (!currentUser) {
-            document.getElementById('battleContainer').innerHTML = '<div class="no-battles">Selecteer eerst een gebruiker hierboven! 👆</div>';
+            (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">Select a user above first! 👆</div>';
+            if (vsEl) vsEl.style.display = 'none';
+            try { if (battleContainerEl) battleContainerEl.style.display = 'none'; } catch (e) {}
+            currentBattle = null;
             return;
         }
-        
-        currentBattle = getRandomCoasters();
-        const battleContainer = document.getElementById('battleContainer');
+
+        // if there aren't enough active coasters, show a helpful message
+        if (!coasters || coasters.length < 2) {
+            (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">No active coasters found for this user. Check your CSV or the "operational" column.</div>';
+            if (vsEl) vsEl.style.display = 'none';
+            currentBattle = null;
+            return;
+        }
+
+        // If developer forced a close battle and `currentBattle` is already set, don't overwrite it.
+        if (!devForceCloseBattle || !currentBattle) {
+            currentBattle = getRandomCoasters();
+        }
+        const battleContainer = DOM.battleContainer || $id('battleContainer');
         
         // Check if no more pairs available
         if (!currentBattle || currentBattle.length === 0) {
-            battleContainer.innerHTML = '<div class="no-battles">🎉 Gefeliciteerd!<br><br>Je hebt alle mogelijke matchups voltooid!<br><br>Check de ranking tab om je definitieve lijst te zien.</div>';
+            battleContainer.innerHTML = '<div class="no-battles">🎉 Congratulations!<br><br>You have completed all possible matchups!<br><br>Check the ranking tab to see your final list.</div>';
+            if (vsEl) vsEl.style.display = 'none';
             return;
         }
+
+        // show VS divider when an active battle is present
+        if (vsEl) vsEl.style.display = 'flex';
+        try { if (battleContainerEl) battleContainerEl.style.display = ''; } catch (e) {}
         
         // Get current rankings for both coasters
         const getRanking = (coasterName) => {
@@ -596,111 +1459,253 @@
         const rank1 = getRanking(currentBattle[0].naam);
         const rank2 = getRanking(currentBattle[1].naam);
         
+        // dev data calculations
+        const left = currentBattle[0], right = currentBattle[1];
+        const leftStats = coasterStats[left.naam] || { elo:1500, battles:0, wins:0, losses:0 };
+        const rightStats = coasterStats[right.naam] || { elo:1500, battles:0, wins:0, losses:0 };
+        // compute ELO scenarios once
+        const leftIfWin = calculateEloAdaptiveFromStats(leftStats, rightStats);
+        const leftIfLose = calculateEloAdaptiveFromStats(rightStats, leftStats);
+        const rightIfWin = calculateEloAdaptiveFromStats(rightStats, leftStats);
+        const rightIfLose = calculateEloAdaptiveFromStats(leftStats, rightStats);
+        const leftGainWin = Math.round(leftIfWin.newWinnerElo - leftStats.elo);
+        const leftLoseIfLose = Math.round(leftIfLose.newLoserElo - leftStats.elo);
+        const rightGainWin = Math.round(rightIfWin.newWinnerElo - rightStats.elo);
+        const rightLoseIfLose = Math.round(rightIfLose.newLoserElo - rightStats.elo);
+        const fmt = (n) => (n >= 0 ? '+' + n : n.toString());
+        
+        const devLeftHtml = `
+            <div><strong>Rank:</strong> ${rank1}</div>
+            <div><strong>ELO:</strong> ${Math.round(leftStats.elo)}</div>
+            <div><strong>Δ (win):</strong> ${fmt(leftGainWin)}</div>
+            <div><strong>Δ (lose):</strong> ${fmt(leftLoseIfLose)}</div>
+            <div><strong>Battles:</strong> ${leftStats.battles}</div>
+            <div><strong>Wins:</strong> ${leftStats.wins}</div>
+            <div><strong>Losses:</strong> ${leftStats.losses}</div>
+        `;
+        const devRightHtml = `
+            <div><strong>Rank:</strong> ${rank2}</div>
+            <div><strong>ELO:</strong> ${Math.round(rightStats.elo)}</div>
+            <div><strong>Δ (win):</strong> ${fmt(rightGainWin)}</div>
+            <div><strong>Δ (lose):</strong> ${fmt(rightLoseIfLose)}</div>
+            <div><strong>Battles:</strong> ${rightStats.battles}</div>
+            <div><strong>Wins:</strong> ${rightStats.wins}</div>
+            <div><strong>Losses:</strong> ${rightStats.losses}</div>
+        `;
+        
+        // Render only the cards; dev-data will be positioned separately (desktop) or in-flow (mobile)
         battleContainer.innerHTML = `
-            <div class="coaster-card left-card" onclick="chooseWinner(0)">
-                <div class="coaster-image">IMG</div>
-                <div class="coaster-rank-badge">${rank1}</div>
-                <div class="coaster-content">
-                    <div class="coaster-name">${currentBattle[0].naam}</div>
-                    <div class="coaster-subtitle">
-                        <span>${currentBattle[0].park}</span>
-                        <span class="separator">•</span>
-                        <span>${currentBattle[0].fabrikant}</span>
+            <div class="coaster-item">
+                <div class="coaster-card left-card" onclick="chooseWinner(0)">
+                    <div class="coaster-image">IMG</div>
+                    <div class="coaster-rank-badge">${rank1}</div>
+                    <div class="coaster-content">
+                        <div class="coaster-name">${left.naam}</div>
+                        <div class="coaster-subtitle">
+                            <span>${left.park}</span>
+                            <span class="separator">•</span>
+                            <span>${left.fabrikant}</span>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div class="coaster-card right-card" onclick="chooseWinner(1)">
-                <div class="coaster-image">IMG</div>
-                <div class="coaster-rank-badge">${rank2}</div>
-                <div class="coaster-content">
-                    <div class="coaster-name">${currentBattle[1].naam}</div>
-                    <div class="coaster-subtitle">
-                        <span>${currentBattle[1].park}</span>
-                        <span class="separator">•</span>
-                        <span>${currentBattle[1].fabrikant}</span>
+            <div class="coaster-item">
+                <div class="coaster-card right-card" onclick="chooseWinner(1)">
+                    <div class="coaster-image">IMG</div>
+                    <div class="coaster-rank-badge">${rank2}</div>
+                    <div class="coaster-content">
+                        <div class="coaster-name">${right.naam}</div>
+                        <div class="coaster-subtitle">
+                            <span>${right.park}</span>
+                            <span class="separator">•</span>
+                            <span>${right.fabrikant}</span>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
+
+        // If this matchup qualifies as a close fight, play the intro animation
+        const getRankingNum = (coasterName) => {
+            const statsArray = Object.values(coasterStats);
+            const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+            return sorted.findIndex(c => c.name === coasterName) + 1;
+        };
+        const r1 = getRankingNum(left.naam);
+        const r2 = getRankingNum(right.naam);
+        const leftStatsObj = coasterStats[left.naam] || { battles: 0 };
+        const rightStatsObj = coasterStats[right.naam] || { battles: 0 };
+        const isCloseEligible = ((Math.abs(r1 - r2) < 3) && (leftStatsObj.battles > 3) && (rightStatsObj.battles > 3));
+        // Determine whether an epic intro will fire on the next battle (rare event)
+        function willEpicTriggerOnNext(){
+            try{
+                const counter = Number(localStorage.getItem(CR_STORAGE_COUNTER) || 0);
+                const threshold = Number(localStorage.getItem(CR_STORAGE_THRESHOLD) || randInt(25,50));
+                return (counter + 1) >= threshold;
+            }catch(e){ return false; }
+        }
+
+        const willEpic = devForceCloseBattle || willEpicTriggerOnNext();
+
+        if (isCloseEligible) {
+            if (willEpic) {
+                // full intro sequence only for epic or dev forced
+                try { if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; } } catch (e) {}
+                closeIntroTimeout = setTimeout(() => { closeIntroTimeout = null; showCloseIntro(left, right).catch(()=>{}); }, 60);
+            } else {
+                // regular close matchup: subtle highlight only
+                const cards = document.querySelectorAll('.coaster-card');
+                if (cards[0]) cards[0].classList.add('close-subtle');
+                if (cards[1]) cards[1].classList.add('close-subtle');
+                // remove subtle after a short while so it doesn't persist
+                setTimeout(()=>{ if (cards[0]) cards[0].classList.remove('close-subtle'); if (cards[1]) cards[1].classList.remove('close-subtle'); }, 1600);
+            }
+        }
+
+        // Delegate overlay rendering to a dedicated function so we can update without reselecting the pair
+        renderDevData();
+        // sync input width after cards are rendered
+        setTimeout(syncSimInputWidth, 0);
+    }
+
+    // Explicitly hide/show the battle UI (cards + VS badge). Use this from tab switching
+    function setBattleVisibility(visible) {
+        const battleContainerEl = DOM.battleContainer || $id('battleContainer');
+        const vsEl = $id('vsDivider') || document.querySelector('.vs-divider');
+        try {
+            if (battleContainerEl) battleContainerEl.style.display = visible ? '' : 'none';
+        } catch (e) {}
+        try { if (vsEl) vsEl.style.display = visible ? 'flex' : 'none'; } catch (e) {}
     }
 
     function chooseWinner(index) {
         if (!currentUser) return;
         if (isProcessingChoice) return; // Prevent double-clicking
-        
-        isProcessingChoice = true; // Lock to prevent multiple submissions
-        
+        isProcessingChoice = true;
+
+        // Mark we're resolving so intros won't re-run and cancel any pending/active intro immediately
+        resolvingBattle = true;
+        try { cancelCloseIntro(); } catch (e) { /* ignore */ }
+
         const winner = currentBattle[index];
         const loser = currentBattle[1 - index];
-        
-        // Get ranking BEFORE the battle
+
+        // ranking helper
         const getRanking = (coasterName) => {
             const statsArray = Object.values(coasterStats);
             const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
             const rank = sorted.findIndex(c => c.name === coasterName) + 1;
             return rank;
         };
-        
-        const oldRank = getRanking(winner.naam);
-        
-        // Get current ELO ratings
-        const winnerStats = coasterStats[winner.naam];
-        const loserStats = coasterStats[loser.naam];
-        
-        // Calculate new ELO ratings
-        const { newWinnerElo, newLoserElo } = calculateElo(winnerStats.elo, loserStats.elo);
-        
-        // Update stats
-        winnerStats.elo = newWinnerElo;
-        winnerStats.battles++;
-        winnerStats.wins++;
-        
-        loserStats.elo = newLoserElo;
-        loserStats.battles++;
-        loserStats.losses++;
-        
-        totalBattlesCount++;
-        
-        // Get ranking AFTER the battle
-        const newRank = getRanking(winner.naam);
-        const rankChange = oldRank - newRank; // positive = climbed
-        
-        // record to history before saving (pass in battle order: left=index 0, right=index 1)
-        recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam);
 
-        // Save to localStorage (now also saves history)
-        saveData();
-        
-        // Visual feedback
-        const cards = document.querySelectorAll('.coaster-card');
-        cards[index].classList.add('winner');
-        cards[1 - index].classList.add('loser');
-        
-        // Show rank climb animation if winner climbed in ranking
-        if (rankChange > 0) {
-            const badge = document.createElement('div');
-            badge.className = 'rank-change-badge';
-            badge.innerHTML = `
-                <span class="arrow">↑</span>
-                <span>+${rankChange}</span>
-            `;
-            cards[index].style.position = 'relative';
-            cards[index].appendChild(badge);
-            
-            // Remove badge after animation completes
-            setTimeout(() => {
-                if (badge.parentElement) {
-                    badge.remove();
+        const oldWinnerRank = getRanking(winner.naam);
+        const oldLoserRank = getRanking(loser.naam);
+
+        // ensure stats exist
+        const winnerStats = ensureCoasterStats(winner) || { elo:1500, battles:0, wins:0, losses:0 };
+        const loserStats = ensureCoasterStats(loser) || { elo:1500, battles:0, wins:0, losses:0 };
+
+        // compute ELO outcome
+        const eloOutcome = calculateEloAdaptiveFromStats(winnerStats, loserStats);
+        const { newWinnerElo, newLoserElo } = eloOutcome;
+
+        const winnerId = getCoasterId(winner);
+
+        // trigger close-battle flow (may show overlay). Wait for it before applying model updates so animation aligns with visible change
+        triggerCloseBattleIfNeeded(winner, loser, oldWinnerRank, oldLoserRank, winnerId).then(({triggered, forcedSwap}) => {
+            // apply ranking changes
+            if (forcedSwap) {
+                // force winner to be above loser regardless of ELO calculation
+                const baseLoserElo = (loserStats && typeof loserStats.elo === 'number') ? loserStats.elo : ELO_BASE;
+                winnerStats.elo = baseLoserElo + 2;
+                loserStats.elo = baseLoserElo - 1;
+            } else {
+                winnerStats.elo = newWinnerElo;
+                loserStats.elo = newLoserElo;
+            }
+
+            winnerStats.battles++; winnerStats.wins++;
+            loserStats.battles++; loserStats.losses++;
+            totalBattlesCount++;
+
+            // record and persist
+            recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam);
+            // mark the most recently recorded history entry as a close fight when applicable
+            try {
+                const wasCloseMatchFlag = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+                if (coasterHistory && coasterHistory.length > 0) {
+                    coasterHistory[coasterHistory.length - 1].closeFight = !!wasCloseMatchFlag;
                 }
-            }, 4000);
-        }
-        
-        // Load next battle after longer delay to show animations
-        setTimeout(() => {
-            displayBattle();
-            isProcessingChoice = false; // Unlock for next battle
-        }, 1500);
+            } catch (e) { /* ignore */ }
+            saveData();
+
+            // Visual feedback on cards
+            const cards = document.querySelectorAll('.coaster-card');
+            if (cards[index]) cards[index].classList.add('winner');
+            if (cards[1 - index]) cards[1 - index].classList.add('loser');
+
+            // compute ranks after update
+            const newWinnerRank = getRanking(winner.naam);
+            const rankChange = oldWinnerRank - newWinnerRank; // positive = climbed
+
+            if (rankChange > 0) {
+                const badge = document.createElement('div');
+                badge.className = 'rank-change-badge';
+                badge.innerHTML = `<span class="arrow">↑</span><span>+${rankChange}</span>`;
+                if (cards[index]) { cards[index].style.position = 'relative'; cards[index].appendChild(badge); }
+                setTimeout(() => { if (badge.parentElement) badge.remove(); }, 4000);
+            }
+
+            // refresh ranking table and animate swap if the relative ordering changed between these two
+            updateRanking();
+            // if winner and loser switched relative order compared to before, animate swap
+            const newLoserRank = getRanking(loser.naam);
+            const wasWinnerBelow = oldWinnerRank > oldLoserRank;
+            const nowWinnerAbove = newWinnerRank < newLoserRank;
+            if (wasWinnerBelow && nowWinnerAbove) {
+                animateSwapInRanking(winner.naam, loser.naam);
+            }
+
+            // after updating ranking, if this was a close matchup, show an extended celebration
+            const wasCloseMatch = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            if (wasCloseMatch) {
+                // ensure any intro overlay/banner/burst is hidden before celebration (force-hide immediately)
+                try {
+                    const overlayEl = document.getElementById('closeBattleOverlay');
+                    const bannerEl = document.getElementById('closeBanner');
+                    const winnerBurstEl = document.getElementById('winnerBurst');
+                    if (bannerEl) bannerEl.classList.remove('show');
+                    if (winnerBurstEl) winnerBurstEl.classList.remove('show','big');
+                    if (overlayEl) {
+                        overlayEl.classList.remove('show');
+                        // forcefully hide overlay (use !important so CSS transitions or async re-add don't briefly show it)
+                        overlayEl.style.setProperty('display', 'none', 'important');
+                        overlayEl.style.setProperty('opacity', '0', 'important');
+                        overlayEl.style.zIndex = '';
+                        overlayEl.setAttribute('aria-hidden', 'true');
+                    }
+                } catch (e) { /* ignore */ }
+
+                const cardEl = (document.querySelectorAll('.coaster-card') || [])[index];
+                celebrateWinner(cardEl, winner.naam).then(()=>{
+                    // small pause then continue
+                    setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 220);
+                });
+            } else {
+                // delay before next battle: celebrate longer if we triggered epic
+                const DELAY = triggered ? 1800 : 1500;
+                setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, DELAY);
+            }
+        }).catch((e)=>{
+            console.error('close-battle flow error', e);
+            // fallback apply normally
+            winnerStats.elo = newWinnerElo; loserStats.elo = newLoserElo;
+            winnerStats.battles++; winnerStats.wins++; loserStats.battles++; loserStats.losses++; totalBattlesCount++;
+            recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam);
+            saveData(); updateRanking(); displayBattle(); isProcessingChoice = false;
+            resolvingBattle = false;
+        });
     }
 
     // Keyboard controls
@@ -728,13 +1733,30 @@
         }
     }
 
-    // Check if hint was previously dismissed
+    // Check if hint was previously dismissed and sync simulate input width on load
     window.addEventListener('DOMContentLoaded', () => {
         const dismissed = localStorage.getItem('keyboardHintDismissed');
         if (dismissed === 'true') {
             const hint = document.getElementById('keyboardHint');
             if (hint) hint.classList.add('hidden');
         }
+        // sync simulate input to button width immediately after DOM ready
+        try { syncSimInputWidth(); } catch (e) {}
+        // populate lightweight DOM cache
+        try {
+            DOM.battleContainer = $id('battleContainer');
+            DOM.simulateBtn = $id('simulateBtn');
+            DOM.simulateCount = $id('simulateCount');
+        } catch (e) { /* ignore */ }
+        // attempt to load coaster CSV data (fetch). If this fails, a fallback file-input UI will be shown.
+        try {
+            loadCoasterData();
+        } catch (e) {
+            // ensure the battle view is consistent even if loadCoasterData throws
+            try { displayBattle(); } catch (ee) {}
+        }
+
+        // Dev toggle uses inline onclick; no extra listener needed here.
     });
 
     // Global undo for history deletes: Cmd+Z / Ctrl+Z (but not when typing in an input)
@@ -786,7 +1808,18 @@
             content.classList.remove('active');
         });
         document.getElementById(tabName + '-tab').classList.add('active');
-        
+        // Hide VS divider on non-battle tabs and refresh relevant tab content
+        const vsEl = $id('vsDivider') || document.querySelector('.vs-divider');
+        if (tabName === 'battle') {
+            // Ensure battle view is up-to-date (displayBattle will show VS if appropriate)
+            try { displayBattle(); } catch (e) {}
+            // show battle UI
+            try { setBattleVisibility(true); } catch (e) {}
+        } else {
+            // Hide the VS badge and battle cards when not on the battle tab
+            try { setBattleVisibility(false); } catch (e) { try { if (vsEl) vsEl.style.display = 'none'; } catch (ee) {} }
+        }
+
         if (tabName === 'ranking') {
             updateRanking();
         } else if (tabName === 'history') {
@@ -799,11 +1832,15 @@
         const container = document.getElementById('historyContainer');
         if (!container) return;
         if (!coasterHistory || coasterHistory.length === 0) {
-            container.innerHTML = '<div class="no-battles">Nog geen battles — start met kiezen om history op te bouwen.</div>';
+            container.innerHTML = '<div class="no-battles">No battles yet — start choosing to build your history.</div>';
             return;
         }
+        const query = document.getElementById('historySearch') ? document.getElementById('historySearch').value.trim() : '';
+        const qLower = (query || '').toLowerCase();
+        const hasSelected = !!qLower;
 
-        const query = document.getElementById('historySearch') ? document.getElementById('historySearch').value.trim().toLowerCase() : '';
+        // Ensure filter UI reflects whether a coaster is selected
+        updateHistoryFilterUI();
 
         // Render only pair, highlight winner with a green pill and add a subtle delete button
         const rows = coasterHistory.slice().reverse().map((entry, idx) => {
@@ -814,30 +1851,53 @@
             const winner = entry.winner;
 
             const pairText = `${a} ↔ ${b}`;
-            if (query && !pairText.toLowerCase().includes(query) && !a.toLowerCase().includes(query) && !b.toLowerCase().includes(query)) {
+            // If there's a search query, only show rows that include the query
+            if (qLower && !pairText.toLowerCase().includes(qLower) && !a.toLowerCase().includes(qLower) && !b.toLowerCase().includes(qLower)) {
                 return '';
             }
 
             // If there's a search query, put the matching coaster on the left
-            if (query) {
-                const aMatches = a.toLowerCase().includes(query);
-                const bMatches = b.toLowerCase().includes(query);
-                
-                // If only b matches, swap them
+            if (qLower) {
+                const aMatches = a.toLowerCase().includes(qLower);
+                const bMatches = b.toLowerCase().includes(qLower);
+                // If only b matches, swap them so the selected coaster appears left
                 if (!aMatches && bMatches) {
                     [a, b] = [b, a];
                 }
             }
 
-            const aHtml = (winner === a) ? `<span class="clickable-history-name" onclick="viewCoasterHistory('${a.replace(/'/g, "\\'")}')" style="cursor:pointer;"><span class="winner-pill">${escapeHtml(a)}</span></span>` : `<span class="clickable-history-name" onclick="viewCoasterHistory('${a.replace(/'/g, "\\'")}')" style="cursor:pointer;">${escapeHtml(a)}</span>`;
-            const bHtml = (winner === b) ? `<span class="clickable-history-name" onclick="viewCoasterHistory('${b.replace(/'/g, "\\'")}')" style="cursor:pointer;"><span class="winner-pill">${escapeHtml(b)}</span></span>` : `<span class="clickable-history-name" onclick="viewCoasterHistory('${b.replace(/'/g, "\\'")}')" style="cursor:pointer;">${escapeHtml(b)}</span>`;
+            // Apply active filter when a coaster is selected
+            if (hasSelected && typeof historyFilter !== 'undefined' && historyFilter && historyFilter !== 'all') {
+                const selectedName = query;
+                if (historyFilter === 'wins') {
+                    // only show battles where selectedName is the winner
+                    if (winner !== selectedName) return '';
+                } else if (historyFilter === 'losses') {
+                    // only show battles where selectedName lost
+                    if (winner === selectedName) return '';
+                    if (a !== selectedName && b !== selectedName) return '';
+                } else if (historyFilter === 'close') {
+                    if (!entry.closeFight) return '';
+                    if (a !== selectedName && b !== selectedName) return '';
+                }
+            }
+
+            const winnerClass = (entry && entry.closeFight) ? 'winner-pill close-win' : 'winner-pill';
+            const aHtml = (winner === a) ? `<span class="clickable-history-name" onclick="viewCoasterHistory('${a.replace(/'/g, "\\'")}')" style="cursor:pointer;"><span class="${winnerClass}">${escapeHtml(a)}</span></span>` : `<span class="clickable-history-name" onclick="viewCoasterHistory('${a.replace(/'/g, "\\'")}')" style="cursor:pointer;">${escapeHtml(a)}</span>`;
+            const bHtml = (winner === b) ? `<span class="clickable-history-name" onclick="viewCoasterHistory('${b.replace(/'/g, "\\'")}')" style="cursor:pointer;"><span class="${winnerClass}">${escapeHtml(b)}</span></span>` : `<span class="clickable-history-name" onclick="viewCoasterHistory('${b.replace(/'/g, "\\'")}')" style="cursor:pointer;">${escapeHtml(b)}</span>`;
+
+            const arrowHtml = entry && entry.closeFight ? `<span class="close-fight-icon" title="Close fight">⚔️</span>` : '↔';
 
             return `
                 <div class="history-row">
-                    <div class="history-pair"><strong>${aHtml}</strong><span>↔</span><strong>${bHtml}</strong></div>
-                    <div style="flex:0 0 auto;">
-                        <button class="history-switch" title="Wissel winnaar" onclick="switchHistoryWinner(${originalIndex})">⇄</button>
-                        <button class="history-delete" title="Verwijder deze matchup" onclick="deleteHistoryEntry(${originalIndex})">✖</button>
+                    <div class="history-pair">
+                        <div class="history-name left"><strong>${aHtml}</strong></div>
+                        <div class="history-arrow">${arrowHtml}</div>
+                        <div class="history-name right"><strong>${bHtml}</strong></div>
+                    </div>
+                    <div class="history-actions">
+                        <button class="history-switch" title="Switch winner" onclick="switchHistoryWinner(${originalIndex})">⇄</button>
+                        <button class="history-delete" title="Delete this matchup" onclick="deleteHistoryEntry(${originalIndex})">✖</button>
                     </div>
                 </div>
             `;
@@ -845,13 +1905,48 @@
 
         // If filtering removed all rows, show empty state
         if (!rows || rows.trim() === '') {
-            container.innerHTML = '<div class="no-battles">Geen matchups gevonden voor deze zoekopdracht.</div>';
+            container.innerHTML = '<div class="no-battles">No matchups found for this search.</div>';
         } else {
             container.innerHTML = rows;
         }
     }
 
     let selectedAutocompleteIndex = -1;
+    // History filter state: 'all' | 'wins' | 'losses' | 'close'
+    let historyFilter = 'all';
+
+    function setHistoryFilter(filter) {
+        if (!filter) return;
+        historyFilter = filter;
+        // update active class on buttons
+        const btns = document.querySelectorAll('#historyFilters .filter-btn');
+        btns.forEach(b => {
+            const f = b.getAttribute('data-filter');
+            if (f === filter) b.classList.add('active'); else b.classList.remove('active');
+        });
+        // refresh displayed history
+        displayHistory();
+    }
+
+    function updateHistoryFilterUI() {
+        const input = document.getElementById('historySearch');
+        const has = input && input.value && input.value.trim() !== '';
+        const historyFilters = document.getElementById('historyFilters');
+        if (!historyFilters) return;
+        if (has) {
+            document.body.classList.add('coaster-selected');
+            historyFilters.setAttribute('aria-hidden', 'false');
+        } else {
+            document.body.classList.remove('coaster-selected');
+            historyFilters.setAttribute('aria-hidden', 'true');
+            // reset to 'all' visually when nothing selected
+            historyFilter = 'all';
+            const btns = historyFilters.querySelectorAll('.filter-btn');
+            btns.forEach(b => { b.classList.remove('active'); });
+            const first = historyFilters.querySelector('.filter-btn[data-filter="all"]');
+            if (first) first.classList.add('active');
+        }
+    }
 
     function getHistoryAutocompleteSuggestions() {
         const coasterNames = new Set();
@@ -864,6 +1959,7 @@
         const clearBtn = document.getElementById('clearHistorySearchBtn');
         clearBtn.style.display = input.value.trim() ? 'block' : 'none';
         showHistoryAutocomplete();
+        updateHistoryFilterUI();
     }
 
     function clearHistorySearch() {
@@ -874,6 +1970,7 @@
         const dropdown = document.getElementById('historyAutocomplete');
         dropdown.classList.remove('show');
         displayHistory();
+        updateHistoryFilterUI();
     }
 
     function showHistoryAutocomplete() {
@@ -906,6 +2003,7 @@
         clearBtn.style.display = 'block';
         document.getElementById('historyAutocomplete').classList.remove('show');
         displayHistory();
+        updateHistoryFilterUI();
     }
 
     function handleHistorySearchKeydown(event) {
@@ -976,7 +2074,7 @@
         displayBattle(); // Refresh battle view in case new pairs are available
         // show toast confirming deletion
         try {
-            showToast(`Verwijderd: ${removed.a} ↔ ${removed.b}`);
+            showToast(`Removed: ${removed.a} ↔ ${removed.b}`);
         } catch (e) {}
     }
 
@@ -997,7 +2095,7 @@
         const winnerStats = coasterStats[oldWinner];
         const loserStats = coasterStats[oldLoser];
         
-        if (winnerStats && loserStats) {
+            if (winnerStats && loserStats) {
             // Reverse old outcome
             winnerStats.wins--;
             loserStats.losses--;
@@ -1007,16 +2105,16 @@
             winnerStats.losses++;
             
             // Recalculate ELO (swap who won)
-            const { newWinnerElo, newLoserElo } = calculateElo(loserStats.elo, winnerStats.elo);
-            loserStats.elo = newWinnerElo;
-            winnerStats.elo = newLoserElo;
+                const { newWinnerElo, newLoserElo } = calculateEloAdaptiveFromStats(loserStats, winnerStats);
+                loserStats.elo = newWinnerElo;
+                winnerStats.elo = newLoserElo;
         }
         
         saveData();
         displayHistory();
         updateRanking();
         
-        showToast(`Winnaar gewisseld: ${newWinner} wint nu van ${oldLoser}`);
+        showToast(`Winner switched: ${newWinner} now wins against ${oldLoser}`);
     }
 
     // small helper to escape HTML in names
@@ -1086,7 +2184,7 @@
 
     function updateRanking() {
         if (!currentUser) {
-            document.getElementById('rankingBody').innerHTML = '<tr><td colspan="9" class="no-battles">Selecteer eerst een gebruiker! 🎢</td></tr>';
+            document.getElementById('rankingBody').innerHTML = '<tr><td colspan="9" class="no-battles">Select a user first! 🎢</td></tr>';
             return;
         }
         
@@ -1129,8 +2227,8 @@
                     bVal = b.manufacturer;
                     break;
                 case 'elo':
-                    aVal = a.elo;
-                    bVal = b.elo;
+                    aVal = displayedElo(a);
+                    bVal = displayedElo(b);
                     break;
                 case 'battles':
                     aVal = a.battles;
@@ -1204,19 +2302,20 @@
             const winrate = coaster.battles > 0 ? ((coaster.wins / coaster.battles) * 100).toFixed(1) : '0.0';
             const escapedName = coaster.name.replace(/'/g, "\\'");
 
-            rowsHtml.push(`
-                <tr>
-                    <td><span class="rank-medal">${medal}</span>${rank}</td>
-                    <td><strong>${coaster.name}</strong></td>
-                    <td>${coaster.park}</td>
-                    <td>${coaster.manufacturer}</td>
-                    <td><span class="elo-score">${Math.round(coaster.elo)}</span></td>
-                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
-                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
-                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
-                    <td>${winrate}%</td>
-                </tr>
-            `);
+                const dataId = (coaster.name || '').replace(/"/g, '&quot;');
+                rowsHtml.push(`
+                    <tr data-id="${dataId}">
+                        <td><span class="rank-medal">${medal}</span>${rank}</td>
+                        <td><strong>${coaster.name}</strong></td>
+                        <td>${coaster.park}</td>
+                        <td>${coaster.manufacturer}</td>
+                        <td><span class="elo-score">${Math.round(displayedElo(coaster))}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
+                        <td>${winrate}%</td>
+                    </tr>
+                `);
 
             // Card for mobile
             const rankBadgeClass = rank <= 3 ? 'rank-badge top-3' : 'rank-badge';
@@ -1228,8 +2327,8 @@
                         <div class="meta">${coaster.park} • ${coaster.manufacturer} • <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}-${coaster.losses}</span></div>
                     </div>
                     <div class="ranking-right">
-                        <div class="elo">${Math.round(coaster.elo)}</div>
-                    </div>
+                            <div class="elo">${Math.round(displayedElo(coaster))}</div>
+                        </div>
                 </div>
             `);
         });
@@ -1260,13 +2359,14 @@
         
         // Trigger the search/filter
         displayHistory();
+        updateHistoryFilterUI();
     }
 
     function resetRankings() {
         if (!currentUser) return;
         
-        if (confirm(`Weet je zeker dat je alle data voor ${currentUser === 'luca' ? 'Luca' : 'Wouter'} wilt resetten? Dit kan niet ongedaan worden gemaakt!`)) {
-            if (confirm('Laatste waarschuwing! Alle battles en rankings worden gewist. Doorgaan?')) {
+        if (confirm(`Are you sure you want to reset all data for ${currentUser === 'luca' ? 'Luca' : 'Wouter'}? This cannot be undone!`)) {
+            if (confirm('Last warning! All battles and rankings will be deleted. Continue?')) {
                 coasterStats = initializeStats();
                 totalBattlesCount = 0;
                 coasterHistory = [];
@@ -1289,7 +2389,7 @@
     // Creating a downloadable CSV of the current ranking
 function downloadRankingCSV() {
     if (!currentUser) {
-        alert('Selecteer eerst een gebruiker!');
+        alert('Select a user first!');
         return;
     }
     
@@ -1334,5 +2434,5 @@ function downloadRankingCSV() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    showToast('✅ CSV gedownload!');
+    showToast('✅ CSV downloaded!');
 }
