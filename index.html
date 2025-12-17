@@ -70,8 +70,8 @@
             </div>
         </div>
         <div id="history-tab" class="tab-content">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px; gap:10px;">
-                <div class="autocomplete-container" style="flex:1; min-width:240px;">
+            <div class="history-header-row">
+                <div class="autocomplete-container">
                     <div class="search-input-wrapper">
                         <input id="historySearch" type="text" class="search-box" placeholder="🔍 Search matchup..." oninput="handleHistorySearchInput()" onkeydown="handleHistorySearchKeydown(event)" onfocus="showHistoryAutocomplete()" style="width:100%;" />
                         <button id="clearHistorySearchBtn" class="clear-search-btn" onclick="clearHistorySearch()" style="display:none;" title="Clear search">✕</button>
@@ -79,14 +79,14 @@
                     <div id="historyAutocomplete" class="autocomplete-dropdown"></div>
                 </div>
                 <!-- History Filters: visible when a coaster is selected -->
-                <div class="history-filters" id="historyFilters" aria-hidden="false" style="margin-left:12px;">
+                <div class="history-filters" id="historyFilters" aria-hidden="false">
                     <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all')">All battles</button>
                     <button class="filter-btn" data-filter="wins" onclick="setHistoryFilter('wins')">Wins</button>
                     <button class="filter-btn" data-filter="losses" onclick="setHistoryFilter('losses')">Losses</button>
                     <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close')">Close fights</button>
                 </div>
             </div>
-            <div id="historyContainer" style="overflow:auto; max-height:420px;">
+            <div id="historyContainer" style="overflow:auto;">
                 <div class="no-battles">No battles yet — start choosing to build your history.</div>
             </div>
         </div>

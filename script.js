@@ -2085,7 +2085,6 @@ const DOM = {};
         const entry = coasterHistory[index];
         const oldWinner = entry.winner;
         const newWinner = (entry.winner === entry.a) ? entry.b : entry.a;
-        const oldLoser = (entry.winner === entry.a) ? entry.b : entry.a;
         
         // Update the winner in the history entry
         entry.winner = newWinner;
@@ -2093,7 +2092,7 @@ const DOM = {};
         // Update ELO ratings by reversing the previous outcome
         // First, reverse the old result
         const winnerStats = coasterStats[oldWinner];
-        const loserStats = coasterStats[oldLoser];
+        const loserStats = coasterStats[newWinner];
         
             if (winnerStats && loserStats) {
             // Reverse old outcome
@@ -2114,7 +2113,7 @@ const DOM = {};
         displayHistory();
         updateRanking();
         
-        showToast(`Winner switched: ${newWinner} now wins against ${oldLoser}`);
+        showToast(`Winner switched: ${newWinner} now wins against ${oldWinner}`);
     }
 
     // small helper to escape HTML in names
