@@ -55,7 +55,7 @@ body {
 
 
 /* ensure gear SVGs are centered inside compact buttons */
-.dev-toggle .icon-gear { display:block; margin:auto; vertical-align:middle; }
+.dev-toggle .icon-gear { display:block; margin:auto; }
 
 /* keep active dev toggle readable on hover (use tinted background) */
 .dev-toggle-data.active:hover { background: #eef9f8; }
@@ -109,7 +109,7 @@ body {
     transform: rotate(45deg);
     box-shadow: -2px 2px 6px rgba(0,0,0,0.06);
 }
-..dev-menu-header { font-weight: 700; margin-bottom: 8px; color: #111827; }
+.dev-menu-header { font-weight: 700; margin-bottom: 8px; color: #111827; }
 .dev-option { max-width: 320px; margin-bottom:6px; }
 /* Make dev menu buttons consistent width and alignment */
 .dev-menu .dev-btn {
