@@ -430,15 +430,11 @@ body {
         overflow: auto;
     }
 
-    #history-tab {
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        min-height: calc(100vh - 250px);
-    }
-    
     #history-tab.active {
         display: flex !important;
+        overflow: hidden;
+        flex-direction: column;
+        min-height: calc(100vh - 250px);
     }
 }
 
@@ -895,9 +891,9 @@ body {
     }
     
     .history-header-row .autocomplete-container {
-        min-width: 80px !important;
-        max-width: 100px !important;
-        flex: 0 1 100px !important;
+        min-width: 100px !important;
+        max-width: 150px !important;
+        flex: 1 1 150px !important;
     }
     
     .history-filters { 
@@ -1461,14 +1457,16 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
 @media (max-width: 768px) {
     #battle-tab {
         position: relative;
+        padding: 10px 5px !important;
     }
 
     .battle-area {
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 10px;
+        padding: 5px;
         position: relative;
+        width: 100%;
     }
 
     .battle-container {
@@ -1479,6 +1477,7 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
         align-items: center;
         width: 100%;
         max-width: 100%;
+        padding: 0;
     }
 
     .vs-divider {
