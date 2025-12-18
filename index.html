@@ -29,9 +29,22 @@
         </div>
 
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('battle')">Battle</button>
-            <button class="tab" onclick="switchTab('ranking')">Ranking</button>
-            <button class="tab" onclick="switchTab('history')">History</button>
+            <button class="tab active" onclick="switchTab('battle')">
+                <span class="tab-icon">⚔️</span>
+                <span class="tab-text">Battle</span>
+            </button>
+            <button class="tab" onclick="switchTab('ranking')">
+                <span class="tab-icon">📊</span>
+                <span class="tab-text">Ranking</span>
+            </button>
+            <button class="tab" onclick="switchTab('history')">
+                <span class="tab-icon">📜</span>
+                <span class="tab-text">History</span>
+            </button>
+            <button class="tab" onclick="switchTab('achievements')">
+                <span class="tab-icon">🏆</span>
+                <span class="tab-text">Achievements</span>
+            </button>
         </div>
 
         <div id="battle-tab" class="tab-content active">
@@ -150,9 +163,34 @@
                 </button>
             </div>
         </div>
-    </div>
 
-</div>
+        <!-- Achievements Tab -->
+        <div id="achievements-tab" class="tab-content">
+            <div class="achievement-filters">
+                <button class="filter-tag active" data-rarity="all" onclick="filterAchievements('all')">
+                    All
+                </button>
+                <button class="filter-tag" data-rarity="common" onclick="filterAchievements('common')">
+                    <span class="filter-dot common"></span> Common
+                </button>
+                <button class="filter-tag" data-rarity="uncommon" onclick="filterAchievements('uncommon')">
+                    <span class="filter-dot uncommon"></span> Uncommon
+                </button>
+                <button class="filter-tag" data-rarity="rare" onclick="filterAchievements('rare')">
+                    <span class="filter-dot rare"></span> Rare
+                </button>
+                <button class="filter-tag" data-rarity="epic" onclick="filterAchievements('epic')">
+                    <span class="filter-dot epic"></span> Epic
+                </button>
+                <button class="filter-tag" data-rarity="legendary" onclick="filterAchievements('legendary')">
+                    <span class="filter-dot legendary"></span> Legendary
+                </button>
+            </div>
+            <div class="achievements-grid" id="achievementsGrid">
+                <!-- Achievement cards will be inserted here dynamically -->
+            </div>
+        </div>
+    </div>
 
     <!-- Developer button (bottom-left) -->
     <button id="devToggleBtn" class="dev-toggle dev-btn" aria-haspopup="true" aria-expanded="false" title="Developer options" onclick="toggleDevMenu()">
@@ -183,6 +221,16 @@
             <div class="dev-option" style="margin-top:12px;">
                 <button class="reset-btn dev-reset-btn dev-btn" onclick="resetAllUserData()">Reset user data</button>
             </div>
+
+            <div class="dev-option" style="margin-top:12px; display: flex; gap: 8px;">
+                <button class="dev-btn" onclick="exportUserData()" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
+                    Export User Data
+                </button>
+                <button class="dev-btn" onclick="document.getElementById('importFileInput').click()" style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                    Import User Data
+                </button>
+            </div>
+            <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importUserData(event)" />
         </div>
     </div>
 
@@ -205,5 +253,6 @@
         <div class="close-banner" id="closeBanner" aria-hidden="true">CLOSE FIGHT</div>
     </div>
 
+    <script src="achievements.js"></script>
     <script src="script.js"></script>
 </body></html>
