@@ -217,11 +217,10 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // Roller coaster type values (ALWAYS required)
-    const rcTypeValues = `VALUES ?rcType { 
-        wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
-        wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
-    }`;
+    // Use subclass matching to include ALL roller coaster types (Q15243209)
+    // This automatically includes wooden, steel, inverted, dive, wing, suspended, etc.
+    // without needing to maintain a manual list - future-proof!
+    const rcTypeCheck = '?item wdt:P31/wdt:P279* wd:Q15243209';
     
     // STRATEGY 1: Most specific - name + park + manufacturer (all must match)
     if (parkName && manufacturer) {
@@ -239,8 +238,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 ?item wikibase:apiOutputItem mwapi:item .
                 ?num wikibase:apiOrdinal true .
               }
-              ${rcTypeValues}
-              ?item wdt:P31 ?rcType .
+              ${rcTypeCheck} .
               ?item wdt:P18 ?image .
             }
             ORDER BY ASC(?num)
@@ -273,8 +271,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 ?item wikibase:apiOutputItem mwapi:item .
                 ?num wikibase:apiOrdinal true .
               }
-              ${rcTypeValues}
-              ?item wdt:P31 ?rcType .
+              ${rcTypeCheck} .
               ?item wdt:P18 ?image .
             }
             ORDER BY ASC(?num)
@@ -346,6 +343,40 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         if (!nameVariants.includes(variant)) nameVariants.push(variant);
     }
     
+    // NEW: 8b. Handle slash alternatives (e.g., "Superman / la Atracción" → "Superman")
+    if (/\s*\/\s*/.test(cleanName)) {
+        const parts = cleanName.split(/\s*\/\s*/);
+        // Add first part
+        if (parts[0] && !nameVariants.includes(parts[0].trim())) {
+            nameVariants.push(parts[0].trim());
+        }
+        // Add without slashes
+        const noSlash = cleanName.replace(/\s*\/\s*/g, ' ').trim();
+        if (!nameVariants.includes(noSlash)) {
+            nameVariants.push(noSlash);
+        }
+    }
+    
+    // NEW: 8c. Handle "&" and "and" variations
+    if (/\s+&\s+/.test(cleanName)) {
+        const withAnd = cleanName.replace(/\s+&\s+/g, ' and ');
+        if (!nameVariants.includes(withAnd)) nameVariants.push(withAnd);
+    }
+    if (/\s+and\s+/i.test(cleanName)) {
+        const withAmpersand = cleanName.replace(/\s+and\s+/gi, ' & ');
+        if (!nameVariants.includes(withAmpersand)) nameVariants.push(withAmpersand);
+    }
+    
+    // NEW: 8d. Handle umlauts and special characters
+    const deaccented = cleanName
+        .replace(/ä/g, 'a').replace(/Ä/g, 'A')
+        .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+        .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+        .replace(/ß/g, 'ss');
+    if (deaccented !== cleanName && !nameVariants.includes(deaccented)) {
+        nameVariants.push(deaccented);
+    }
+    
     // 9. Remove generic "Roller Coaster" suffix in various languages
     const genericSuffixes = [
         / Roller Coaster$/i,
@@ -381,39 +412,45 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     
     // STRATEGY 3: Try name variants (most specific to least specific)
     // Still ALWAYS validates roller coaster type
-    for (const variant of nameVariants) {
+    for (let i = 0; i < nameVariants.length; i++) {
+        const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
         
-        const query = `
-            SELECT ?image WHERE {
-              SERVICE wikibase:mwapi {
-                bd:serviceParam wikibase:api "EntitySearch" .
-                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName}" .
-                bd:serviceParam mwapi:language "en" .
-                ?item wikibase:apiOutputItem mwapi:item .
-                ?num wikibase:apiOrdinal true .
-              }
-              ${rcTypeValues}
-              ?item wdt:P31 ?rcType .
-              ?item wdt:P18 ?image .
-            }
-            ORDER BY ASC(?num)
-            LIMIT 1
-        `;
+        // Try multiple languages for first 3 variants (most likely matches), then English-only
+        // This balances thoroughness with performance
+        const languages = i < 3 ? ['en', 'de', 'es', 'nl', 'fr'] : ['en'];
         
-        try {
-            const result = await querySPARQL(query);
-            if (result) {
-                if (variant !== cleanName) {
-                    console.log(`✓ Found "${coasterName}" using variant "${variant}"`);
-                } else {
-                    console.log(`✓ Found "${coasterName}" (name only)`);
+        for (const lang of languages) {
+            const query = `
+                SELECT ?image WHERE {
+                  SERVICE wikibase:mwapi {
+                    bd:serviceParam wikibase:api "EntitySearch" .
+                    bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+                    bd:serviceParam mwapi:search "${escapedName}" .
+                    bd:serviceParam mwapi:language "${lang}" .
+                    ?item wikibase:apiOutputItem mwapi:item .
+                    ?num wikibase:apiOrdinal true .
+                  }
+                  ${rcTypeCheck} .
+                  ?item wdt:P18 ?image .
                 }
-                return result;
+                ORDER BY ASC(?num)
+                LIMIT 1
+            `;
+            
+            try {
+                const result = await querySPARQL(query);
+                if (result) {
+                    if (variant !== cleanName || lang !== 'en') {
+                        console.log(`✓ Found "${coasterName}" using variant "${variant}" (lang: ${lang})`);
+                    } else {
+                        console.log(`✓ Found "${coasterName}" (name only)`);
+                    }
+                    return result;
+                }
+            } catch (e) {
+                // Try next language/variant
             }
-        } catch (e) {
-            // Try next variant
         }
     }
     
@@ -464,6 +501,14 @@ async function getCoasterImage(coaster) {
     try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
+            // Increment appropriate counter based on whether it's placeholder or real image
+            if (cached.startsWith('data:image/svg+xml')) {
+                // It's a cached placeholder (failed image)
+                imageLoadStats.failed++;
+            } else {
+                // It's a real cached image
+                imageLoadStats.loaded++;
+            }
             imageLoadStats.cached++;
             return cached;
         }
@@ -613,25 +658,24 @@ async function preloadCoasterImages() {
         return;
     }
     
-    // Reset stats
-    imageLoadStats = {
-        loaded: 0,
-        total: coasters.length,
-        failed: 0,
-        cached: 0
-    };
+    // IMPORTANT: Reset ALL stats including cached to avoid showing stale numbers
+    imageLoadStats.loaded = 0;
+    imageLoadStats.failed = 0;
+    imageLoadStats.cached = 0;
+    imageLoadStats.total = coasters.length;
     
     updateImageLoadStats();
     updateLoadingScreen(0, coasters.length, 0);
     
     console.log(`Starting image preload for ${coasters.length} coasters...`);
     
-    // Process in smaller batches with longer delays to avoid rate limiting
-    const batchSize = 5;
-    const delay = 200; // 200ms delay between batches
+    // Process in smaller batches to avoid rate limiting
+    const batchSize = 3; // Smaller batches since we try multiple languages now
+    const delay = 150; // Delay between batches with API calls
     
     for (let i = 0; i < coasters.length; i += batchSize) {
         const batch = coasters.slice(i, i + batchSize);
+        const startCached = imageLoadStats.cached;
         
         // Process batch in parallel
         await Promise.all(
@@ -642,8 +686,9 @@ async function preloadCoasterImages() {
             })
         );
         
-        // Small delay between batches
-        if (i + batchSize < coasters.length) {
+        // Only delay if this batch made API calls (not all cached)
+        const newlyCached = imageLoadStats.cached - startCached;
+        if (i + batchSize < coasters.length && newlyCached < batch.length) {
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
