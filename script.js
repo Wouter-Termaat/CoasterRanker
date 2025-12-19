@@ -2853,7 +2853,7 @@ const DOM = {};
         // Render cards with images already loaded
         battleContainer.innerHTML = `
             <div class="coaster-item">
-                <div class="coaster-card left-card" onclick="chooseWinner(0)">
+                <div class="coaster-card left-card" data-choice="0">
                     <div class="coaster-image">
                         <img class="coaster-img" src="${leftImageUrl}" alt="${escapeHtml(left.naam)}" />
                     </div>
@@ -2870,7 +2870,7 @@ const DOM = {};
             </div>
             
             <div class="coaster-item">
-                <div class="coaster-card right-card" onclick="chooseWinner(1)">
+                <div class="coaster-card right-card" data-choice="1">
                     <div class="coaster-image">
                         <img class="coaster-img" src="${rightImageUrl}" alt="${escapeHtml(right.naam)}" />
                     </div>
@@ -2886,6 +2886,18 @@ const DOM = {};
                 </div>
             </div>
         `;
+        
+        // Add click handlers AFTER rendering (gives better control over event propagation)
+        const cards = battleContainer.querySelectorAll('.coaster-card');
+        cards.forEach(card => {
+            card.addEventListener('click', (e) => {
+                // Only trigger winner selection if NOT clicking on dev-data overlay
+                if (!e.target.closest('.dev-data-overlay')) {
+                    const choice = parseInt(card.getAttribute('data-choice'));
+                    chooseWinner(choice);
+                }
+            });
+        });
 
         // If this matchup qualifies as a close fight, play the intro animation
         const getRankingNum = (coasterName) => {
