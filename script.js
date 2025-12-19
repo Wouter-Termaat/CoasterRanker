@@ -127,10 +127,10 @@
         // Post-initialization UI adjustments
         postInitUISetup();
         
-        // NEW: Progressive loading - load first 10 coasters immediately, then rest in background
-        await preloadCoasterImagesProgressive();
+        // Load ALL images during loading screen before showing first battle
+        await preloadAllCoasterImages();
         
-        // Now display the first battle (with first 10 already loaded)
+        // Now display the first battle (all images loaded)
         displayBattle();
     }
 
@@ -1173,6 +1173,54 @@ function hideLoadingScreen() {
 }
 
 // Progressive loading: load priority coasters first, then background load rest
+// Preload all coaster images during loading screen
+async function preloadAllCoasterImages() {
+    if (!currentUser || !coasters || coasters.length === 0) {
+        hideLoadingScreen();
+        return;
+    }
+    
+    cleanOldCacheVersions();
+    
+    imageLoadStats.loaded = 0;
+    imageLoadStats.failed = 0;
+    imageLoadStats.cached = 0;
+    imageLoadStats.total = coasters.length;
+    
+    updateImageLoadStats();
+    updateLoadingScreen(0, coasters.length, 0);
+    
+    console.log(`🚀 Loading all ${coasters.length} coaster images...`);
+    
+    // Load in small batches to avoid rate limiting
+    const batchSize = 5;
+    const batchDelay = 300; // 300ms between batches
+    
+    for (let i = 0; i < coasters.length; i += batchSize) {
+        const batch = coasters.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        await Promise.all(
+            batch.map(async (coaster) => {
+                await getCoasterImage(coaster);
+                updateImageLoadStats();
+                updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
+            })
+        );
+        
+        // Wait between batches
+        if (i + batchSize < coasters.length) {
+            await new Promise(resolve => setTimeout(resolve, batchDelay));
+        }
+    }
+    
+    console.log(`✓ All ${coasters.length} coasters loaded!`);
+    console.log(`  Loaded: ${imageLoadStats.loaded}, Failed: ${imageLoadStats.failed}, From cache: ${imageLoadStats.cached}`);
+    
+    hideLoadingScreen();
+}
+
+// OLD: Progressive loading function (removed - kept for reference)
 async function preloadCoasterImagesProgressive() {
     if (!currentUser || !coasters || coasters.length === 0) {
         hideLoadingScreen();
@@ -2189,10 +2237,7 @@ const DOM = {};
                         const battles = stats && typeof stats.battles === 'number' ? stats.battles : 0;
                         // base exploration weight: inverse of (1 + battles) ^ EXPLORATION_POWER
                         let w = 1 / Math.pow(1 + Math.max(0, battles), EXPLORATION_POWER);
-                        // BOOST: Strongly prefer coasters with loaded images (10x weight) - only during initial loading
-                        if (!allCoastersLoadingComplete && coastersWithImages.has(name)) {
-                            w *= 10;
-                        }
+                        // No image bias - all coasters loaded before first battle
                         weights[i] = w;
                     } catch (e) {
                         weights[i] = 1;
