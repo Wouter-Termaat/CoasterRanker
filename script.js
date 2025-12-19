@@ -339,7 +339,7 @@ async function queryWikidataImage(coasterName, parkName) {
     for (const variant of nameVariants) {
         const escapedName = escapeSPARQL(variant);
         
-        // Strategy 1: EntitySearch with roller coaster validation
+        // Strategy 1: EntitySearch with direct roller coaster check (no property paths)
         const query1 = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
@@ -349,7 +349,7 @@ async function queryWikidataImage(coasterName, parkName) {
                 bd:serviceParam mwapi:language "en" .
                 ?item wikibase:apiOutputItem mwapi:item .
               }
-              ?item wdt:P31/wdt:P279* wd:Q15243209 .
+              ?item wdt:P31 wd:Q15243209 .
               ?item wdt:P18 ?image .
             }
             LIMIT 1
@@ -359,44 +359,47 @@ async function queryWikidataImage(coasterName, parkName) {
             const result = await querySPARQL(query1);
             if (result) {
                 if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (roller coaster match)`);
+                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (roller coaster)`);
                 } else {
-                    console.log(`✓ Found image for "${coasterName}" (roller coaster match)`);
+                    console.log(`✓ Found image for "${coasterName}" (roller coaster)`);
                 }
                 return result;
             }
         } catch (e) {
             if (variant === cleanName) {
-                console.warn(`Roller coaster query error for "${coasterName}":`, e.message);
+                console.warn(`Direct RC query error for "${coasterName}":`, e.message);
             }
         }
         
-        // Strategy 2: Broader search - EntitySearch with ANY item that has an image
-        // (Only for exact name to avoid too many wrong matches)
-        if (variant === cleanName && parkName) {
-            const query2 = `
-                SELECT ?image WHERE {
-                  SERVICE wikibase:mwapi {
-                    bd:serviceParam wikibase:api "EntitySearch" .
-                    bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                    bd:serviceParam mwapi:search "${escapedName}" .
-                    bd:serviceParam mwapi:language "en" .
-                    ?item wikibase:apiOutputItem mwapi:item .
-                  }
-                  ?item wdt:P18 ?image .
-                }
-                LIMIT 1
-            `;
-            
-            try {
-                const result = await querySPARQL(query2);
-                if (result) {
-                    console.log(`✓ Found image for "${coasterName}" (broad match - verify manually)`);
-                    return result;
-                }
-            } catch (e) {
-                console.warn(`Broad query error for "${coasterName}":`, e.message);
+        // Strategy 2: Check for steel/wooden roller coaster subclasses
+        const query2 = `
+            SELECT ?image WHERE {
+              SERVICE wikibase:mwapi {
+                bd:serviceParam wikibase:api "EntitySearch" .
+                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+                bd:serviceParam mwapi:search "${escapedName}" .
+                bd:serviceParam mwapi:language "en" .
+                ?item wikibase:apiOutputItem mwapi:item .
+              }
+              VALUES ?rcType { wd:Q15243209 wd:Q476493 wd:Q652787 }
+              ?item wdt:P31 ?rcType .
+              ?item wdt:P18 ?image .
             }
+            LIMIT 1
+        `;
+        
+        try {
+            const result = await querySPARQL(query2);
+            if (result) {
+                if (variant !== cleanName) {
+                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (RC subclass)`);
+                } else {
+                    console.log(`✓ Found image for "${coasterName}" (RC subclass)`);
+                }
+                return result;
+            }
+        } catch (e) {
+            // Silent fail
         }
     }
     
