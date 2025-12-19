@@ -357,20 +357,120 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Direct label/alias matching - much more reliable than EntitySearch
     console.log(`  📝 Generated ${nameVariants.length} name variants:`, nameVariants.slice(0, 5).join(', ') + (nameVariants.length > 5 ? '...' : ''));
     
+    // Build park filter if we have park name
+    let parkFilter = '';
+    if (parkName && parkName.trim()) {
+        const escapedPark = escapeSPARQL(parkName.trim());
+        parkFilter = `
+          OPTIONAL { ?item wdt:P276 ?location . }
+          OPTIONAL { ?location rdfs:label ?parkLabel . }
+        `;
+        console.log(`  🎢 Using park filter: "${parkName}"`);
+    }
+    
     for (let i = 0; i < nameVariants.length; i++) {
         const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
         
-        // Try English first, then German/Spanish/Dutch for specific cases
-        const languages = i === 0 ? ['en', 'de'] : ['en'];
+        // Strategy 1: Try exact match in English (most common)
+        console.log(`  🔍 Exact match "${variant}" (en)`);
+        const exactEnQuery = `
+            SELECT ?item ?image WHERE {
+              ?item rdfs:label "${escapedName}"@en .
+              ${typeCheck}
+              ?item wdt:P18 ?image .
+              ${parkFilter}
+            }
+            LIMIT 1
+        `;
         
-        for (const lang of languages) {
-            console.log(`  🔍 Searching "${variant}" (${lang})`);
+        try {
+            const result = await querySPARQL(exactEnQuery);
+            if (result) {
+                console.log(`✓ Found "${coasterName}" exact match "${variant}"`);
+                return result;
+            }
+        } catch (e) {
+            console.log(`    ❌ Error: ${e.message}`);
+        }
+        
+        // Strategy 2: CONTAINS search with park location (finds "Voltron" in "Voltron Nevera" at Europa-Park)
+        // This is THE KEY improvement - using park to disambiguate
+        if (i < 3 && variant.length > 3) {
+            console.log(`  🔍 CONTAINS search "${variant}" ${parkName ? 'with park context' : ''}`);
             
-            // Use direct label matching - searches rdfs:label and skos:altLabel
-            const query = `
+            // If we have a park name, use it to filter results
+            let containsQuery;
+            if (parkName && parkName.trim()) {
+                const escapedPark = escapeSPARQL(parkName.trim());
+                containsQuery = `
+                    SELECT ?item ?image ?label ?parkLabel WHERE {
+                      ?item rdfs:label ?label .
+                      FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+                      ${typeCheck}
+                      ?item wdt:P18 ?image .
+                      ?item wdt:P276 ?location .
+                      ?location rdfs:label ?parkLabel .
+                      FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedPark}")) || LCASE(?parkLabel) = LCASE("${escapedPark}"))
+                    }
+                    LIMIT 1
+                `;
+            } else {
+                // No park, just use name CONTAINS
+                containsQuery = `
+                    SELECT ?item ?image ?label WHERE {
+                      ?item rdfs:label ?label .
+                      FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+                      ${typeCheck}
+                      ?item wdt:P18 ?image .
+                    }
+                    LIMIT 1
+                `;
+            }
+            
+            try {
+                const containsResult = await querySPARQL(containsQuery);
+                if (containsResult) {
+                    console.log(`✓ Found "${coasterName}" using CONTAINS "${variant}" ${parkName ? 'at ' + parkName : ''}`);
+                    return containsResult;
+                }
+            } catch (e) {
+                console.log(`    ❌ CONTAINS error: ${e.message}`);
+            }
+        }
+        
+        // Strategy 3: Try other languages exact match (only for first 2 variants)
+        if (i < 2) {
+            const otherLangs = ['de', 'nl', 'es', 'fr'];
+            for (const lang of otherLangs) {
+                console.log(`  🔍 Exact "${variant}" (${lang})`);
+                const langQuery = `
+                    SELECT ?item ?image WHERE {
+                      ?item rdfs:label "${escapedName}"@${lang} .
+                      ${typeCheck}
+                      ?item wdt:P18 ?image .
+                    }
+                    LIMIT 1
+                `;
+                
+                try {
+                    const langResult = await querySPARQL(langQuery);
+                    if (langResult) {
+                        console.log(`✓ Found "${coasterName}" using "${variant}" (${lang})`);
+                        return langResult;
+                    }
+                } catch (e) {
+                    // Silent fail for language variants
+                }
+            }
+        }
+        
+        // Strategy 4: Try altLabel for first variant only
+        if (i === 0) {
+            console.log(`  🔍 AltLabel "${variant}"`);
+            const altQuery = `
                 SELECT ?item ?image WHERE {
-                  ?item rdfs:label "${escapedName}"@${lang} .
+                  ?item skos:altLabel "${escapedName}"@en .
                   ${typeCheck}
                   ?item wdt:P18 ?image .
                 }
@@ -378,32 +478,38 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
             `;
             
             try {
-                const result = await querySPARQL(query);
-                if (result) {
-                    console.log(`✓ Found "${coasterName}" using "${variant}" (${lang})`);
-                    return result;
-                }
-                
-                // Try with altLabel if label didn't work
-                const altQuery = `
-                    SELECT ?item ?image WHERE {
-                      ?item skos:altLabel "${escapedName}"@${lang} .
-                      ${typeCheck}
-                      ?item wdt:P18 ?image .
-                    }
-                    LIMIT 1
-                `;
-                
                 const altResult = await querySPARQL(altQuery);
                 if (altResult) {
-                    console.log(`✓ Found "${coasterName}" via alias "${variant}" (${lang})`);
+                    console.log(`✓ Found "${coasterName}" via alias "${variant}"`);
                     return altResult;
                 }
-                
-                console.log(`    ⚠️ No match for "${variant}" (${lang})`);
             } catch (e) {
-                console.log(`    ❌ Error for "${variant}" (${lang}): ${e.message}`);
+                // Silent fail
             }
+        }
+    }
+    
+    // Strategy 4: Last resort - try without type checking (just search for anything with that name and an image)
+    console.log(`  🔍 Last resort: searching without type restriction`);
+    for (const variant of nameVariants.slice(0, 2)) { // Only try first 2 variants
+        const escapedName = escapeSPARQL(variant);
+        const anyTypeQuery = `
+            SELECT ?item ?image WHERE {
+              ?item rdfs:label ?label .
+              FILTER(LCASE(?label) = LCASE("${escapedName}"))
+              ?item wdt:P18 ?image .
+            }
+            LIMIT 1
+        `;
+        
+        try {
+            const result = await querySPARQL(anyTypeQuery);
+            if (result) {
+                console.log(`✓ Found "${coasterName}" (relaxed type) using "${variant}"`);
+                return result;
+            }
+        } catch (e) {
+            console.log(`    ❌ Relaxed search error: ${e.message}`);
         }
     }
     
