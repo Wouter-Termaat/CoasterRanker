@@ -104,8 +104,13 @@ body {
     justify-content: center;
     color: var(--app-dark);
     font-size: 0.95em;
+    font-family: inherit;
 }
-.dev-btn:hover { transform: translateY(-2px); opacity: 0.98; background: #f0fafb; }
+.dev-btn:hover { 
+    transform: translateY(-2px); 
+    opacity: 0.98; 
+    background: #f0fafb; 
+}
 .dev-btn:active { transform: translateY(0); }
 
 .dev-btn .icon { margin-right: 8px; width: 16px; height: 16px; fill: var(--app-accent); display:inline-block; vertical-align:middle; }
@@ -182,11 +187,8 @@ body {
     box-sizing: border-box;
     height: 44px;
 }
-/* Ensure dev menu buttons use the same font and weight as other dev buttons */
-.dev-menu .dev-btn { font-weight: 700; font-family: inherit; }
-
 /* Make the dev menu header match button weight and size */
-.dev-menu-header { font-weight: 700; font-size: 0.95em; font-family: inherit; color: #111827; margin-bottom: 8px; }
+.dev-menu-header { font-weight: 700; font-size: 0.95em; color: #111827; margin-bottom: 8px; }
 /* primary simulate button styling consolidated below */
 .dev-progress { font-weight: 700; }
 

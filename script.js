@@ -4,7 +4,7 @@
     
     // Cache version - increment this when improving search logic to invalidate old caches
     // This allows better searches without manual cache clearing
-    const CACHE_VERSION = 'v8-progressive'; // Progressive loading: first 10 instant, rest in background
+    const CACHE_VERSION = 'v10-validated'; // Type validation + multi-strategy: quality AND coverage
 
     // Function to parse CSV data
     function parseCSV(csvText) {
@@ -221,16 +221,15 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // Optional type check - prefer roller coaster types but don't require
-    // This makes search more lenient - we trust the CSV data
-    const preferredTypes = `
+    // Roller coaster type IDs for validation
+    const coasterTypeFilter = `
         VALUES ?rcType { 
             wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
             wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
             wd:Q1318369 wd:Q2252148 wd:Q1377858 wd:Q1497656
             wd:Q1990148 wd:Q30014587 wd:Q1462039
         }
-        OPTIONAL { ?item wdt:P31 ?rcType . }`;
+        ?item wdt:P31 ?rcType .`;
     
     // Generate name variants to try (most specific to least specific)
     const nameVariants = [];
@@ -361,26 +360,78 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Helper to add delay between requests to avoid rate limiting
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
-    // Helper to normalize park name for matching (remove common words, spaces, hyphens)
-    const normalizeParkName = (park) => {
-        if (!park) return '';
-        return park
-            .replace(/\s*(Park|Land|Parc|land|park)\s*/gi, '')
-            .replace(/[-\s]/g, '')
-            .toLowerCase()
-            .trim();
-    };
-    
-    for (let i = 0; i < Math.min(nameVariants.length, 2); i++) { // Only try first 2 variants for speed
+    // Try first 3 variants (balance between coverage and speed)
+    for (let i = 0; i < Math.min(nameVariants.length, 3); i++) {
         const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
         
-        // SKIP Strategy 1 (park queries are slow and don't give many hits)
+        if (variant.length < 3) continue; // Skip very short names
         
-        // Strategy 1 (was 2): Fast CONTAINS search without park filter
-        if (variant.length > 3) {
-            console.log(`  🔍 CONTAINS "${variant}" (no park filter)`);
-            const containsQuery = `
+        // STRATEGY 1: Exact match with type validation (HIGH QUALITY)
+        // Try multiple languages for international coverage
+        console.log(`  🔍 Strategy 1: Exact match "${variant}" WITH type validation`);
+        const exactWithTypeQuery = `
+            SELECT ?item ?image WHERE {
+              { ?item rdfs:label "${escapedName}"@en . }
+              UNION { ?item rdfs:label "${escapedName}"@de . }
+              UNION { ?item rdfs:label "${escapedName}"@nl . }
+              UNION { ?item rdfs:label "${escapedName}"@fr . }
+              UNION { ?item rdfs:label "${escapedName}"@es . }
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+            }
+            LIMIT 1
+        `;
+        
+        try {
+            const result = await querySPARQL(exactWithTypeQuery);
+            if (result) {
+                console.log(`✓ Found "${coasterName}" - exact match with validation`);
+                return result;
+            }
+            await delay(150);
+        } catch (e) {
+            console.warn(`    ⚠️ Strategy 1 failed: ${e.message}`);
+            if (e.message.includes('429')) {
+                await delay(3000); // Longer wait for rate limit
+            } else {
+                await delay(150);
+            }
+        }
+        
+        // STRATEGY 2: CONTAINS search with type validation (GOOD QUALITY, BROADER)
+        console.log(`  🔍 Strategy 2: CONTAINS "${variant}" WITH type validation`);
+        const containsWithTypeQuery = `
+            SELECT ?item ?image WHERE {
+              ?item rdfs:label ?label .
+              FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+            }
+            LIMIT 1
+        `;
+        
+        try {
+            const result = await querySPARQL(containsWithTypeQuery);
+            if (result) {
+                console.log(`✓ Found "${coasterName}" - contains match with validation`);
+                return result;
+            }
+            await delay(150);
+        } catch (e) {
+            console.warn(`    ⚠️ Strategy 2 failed: ${e.message}`);
+            if (e.message.includes('429')) {
+                await delay(3000);
+            } else {
+                await delay(150);
+            }
+        }
+        
+        // STRATEGY 3: CONTAINS without type (FALLBACK - less reliable but catches edge cases)
+        // Only try for first 2 variants to avoid too many unvalidated queries
+        if (i < 2) {
+            console.log(`  🔍 Strategy 3: CONTAINS "${variant}" WITHOUT type validation (fallback)`);
+            const containsNoTypeQuery = `
                 SELECT ?item ?image WHERE {
                   ?item rdfs:label ?label .
                   FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
@@ -390,57 +441,107 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
             `;
             
             try {
-                const result = await querySPARQL(containsQuery);
+                const result = await querySPARQL(containsNoTypeQuery);
                 if (result) {
-                    console.log(`✓ Found "${coasterName}" using "${variant}"`);
-                    return result;
-                }
-                await delay(200);
-            } catch (e) {
-                console.warn(`    ⚠️ CONTAINS query failed for "${variant}": ${e.message}`);
-                if (e.message.includes('429')) {
-                    await delay(2000);
-                } else if (e.message.includes('timeout')) {
-                    console.log(`    ⏱️ Query timeout, continuing...`);
-                    await delay(150);
-                }
-                // Continue to next strategy on any error
-            }
-        }
-        
-        // Strategy 2 (was 3): Exact match - only for first variant
-        if (i === 0) {
-            console.log(`  🔍 Exact match "${variant}"`);
-            const exactQuery = `
-                SELECT ?item ?image WHERE {
-                  ?item rdfs:label "${escapedName}"@en .
-                  ?item wdt:P18 ?image .
-                }
-                LIMIT 1
-            `;
-            
-            try {
-                const result = await querySPARQL(exactQuery);
-                if (result) {
-                    console.log(`✓ Found "${coasterName}" exact`);
+                    console.log(`✓ Found "${coasterName}" - unvalidated match (may not be coaster)`);
                     return result;
                 }
                 await delay(150);
             } catch (e) {
-                console.warn(`    ⚠️ Exact match query failed for "${variant}": ${e.message}`);
+                console.warn(`    ⚠️ Strategy 3 failed: ${e.message}`);
                 if (e.message.includes('429')) {
-                    await delay(2000);
-                } else if (e.message.includes('timeout')) {
-                    console.log(`    ⏱️ Query timeout, continuing...`);
-                    await delay(50);
+                    await delay(3000);
+                } else {
+                    await delay(150);
                 }
-                // Continue on any error
             }
         }
     }
     
-    console.log(`✗ No image found for "${coasterName}" at "${parkName || 'unknown park'}" after trying ${nameVariants.length} variants`);
+    // STRATEGY 4: EntitySearch API with validation (LAST RESORT)
+    console.log(`  🔎 Strategy 4: EntitySearch API with type validation`);
+    for (let i = 0; i < Math.min(2, nameVariants.length); i++) {
+        try {
+            const searchResult = await searchWikidataEntity(nameVariants[i], true); // true = validate type
+            if (searchResult) {
+                console.log(`✓ Found "${coasterName}" via EntitySearch (validated)`);
+                return searchResult;
+            }
+            await delay(150);
+        } catch (e) {
+            console.warn(`EntitySearch failed: ${e.message}`);
+        }
+    }
+    
+    console.log(`✗ No image found for "${coasterName}" after trying all strategies with validation`);
     return null;
+}
+
+// Wikidata EntitySearch API - finds entities by name (more forgiving than SPARQL)
+async function searchWikidataEntity(coasterName, validateType = true) {
+    if (!coasterName || coasterName.length < 3) return null;
+    
+    const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(coasterName)}&language=en&limit=5&format=json&origin=*`;
+    
+    // Roller coaster type IDs for validation
+    const coasterTypeIds = [
+        'Q15243209', 'Q476493', 'Q652787', 'Q17287243',
+        'Q1144661', 'Q2537706', 'Q19814130', 'Q29643',
+        'Q1318369', 'Q2252148', 'Q1377858', 'Q1497656',
+        'Q1990148', 'Q30014587', 'Q1462039'
+    ];
+    
+    try {
+        const response = await fetchWithTimeout(searchUrl, {}, 10000);
+        if (!response.ok) return null;
+        
+        const data = await response.json();
+        if (!data.search || data.search.length === 0) return null;
+        
+        // Check each result for an image
+        for (const entity of data.search) {
+            const entityId = entity.id;
+            
+            // Fetch entity data to check for image and type
+            const entityUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${entityId}&props=claims&format=json&origin=*`;
+            const entityResponse = await fetchWithTimeout(entityUrl, {}, 10000);
+            if (!entityResponse.ok) continue;
+            
+            const entityData = await entityResponse.json();
+            const claims = entityData?.entities?.[entityId]?.claims;
+            
+            if (!claims) continue;
+            
+            // If validation required, check if it's a roller coaster
+            if (validateType && claims.P31) {
+                const instanceOfClaims = claims.P31;
+                const hasCoasterType = instanceOfClaims.some(claim => {
+                    const typeId = claim.mainsnak?.datavalue?.value?.id;
+                    return typeId && coasterTypeIds.includes(typeId);
+                });
+                
+                if (!hasCoasterType) {
+                    console.log(`    ⚠️ EntitySearch: ${entity.label} is not a roller coaster, skipping`);
+                    continue; // Not a roller coaster, try next result
+                }
+            }
+            
+            // Check for image (P18 property)
+            if (claims.P18 && claims.P18.length > 0) {
+                const imageFile = claims.P18[0].mainsnak?.datavalue?.value;
+                if (imageFile) {
+                    // Convert Commons filename to URL
+                    const imageUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(imageFile)}`;
+                    return imageUrl;
+                }
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        console.warn('EntitySearch error:', error.message);
+        return null;
+    }
 }
 
 // Helper function to add timeout to fetch requests
@@ -893,6 +994,7 @@ window.addEventListener('resize', onResize, { passive: true });
     // Stack for undoing deletions (LIFO)
     let deletedHistoryStack = [];
     const MAX_UNDO_STACK = 50;
+    const MAX_HISTORY_KEEP = 10000; // Maximum history entries to keep
     // Exploration boost: favor coasters with few battles
     let EXPLORATION_POWER = 2; // higher => stronger preference for low-battles
     // Automatic ELO tuning parameters (internal, no UI required)
@@ -1644,8 +1746,7 @@ const DOM = {};
         // Mark this pair as completed
         completedPairs.add(key);
 
-        // keep history bounded if you want (optional)
-        const MAX_HISTORY_KEEP = 10000;
+        // keep history bounded (using predefined constant)
         if (coasterHistory.length > MAX_HISTORY_KEEP) coasterHistory.splice(0, coasterHistory.length - MAX_HISTORY_KEEP);
 
         if (!skipSave) saveData();
@@ -2214,9 +2315,8 @@ const DOM = {};
     initCloseBattleSystem();
 
     function displayBattle() {
-        const vsEl = $id('vsDivider') || document.querySelector('.vs-divider');
-        // ensure battle container visibility helper exists
-        const battleContainerEl = DOM.battleContainer || $id('battleContainer');
+        const vsEl = document.querySelector('.vs-divider');
+        const battleContainerEl = DOM.battleContainer;
         // If no user selected, show hint and hide VS
         if (!currentUser) {
             (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">Select a user above first! 👆</div>';
@@ -2251,12 +2351,11 @@ const DOM = {};
         if (vsEl) vsEl.style.display = 'flex';
         try { if (battleContainerEl) battleContainerEl.style.display = ''; } catch (e) {}
         
-        // Get current rankings for both coasters
+        // Get current rankings for both coasters (cache sorted array)
+        const statsArray = Object.values(coasterStats);
+        const sortedByElo = [...statsArray].sort((a, b) => b.elo - a.elo);
         const getRanking = (coasterName) => {
-            const statsArray = Object.values(coasterStats);
-            const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
-            const rank = sorted.findIndex(c => c.name === coasterName) + 1;
-            return rank;
+            return sortedByElo.findIndex(c => c.name === coasterName) + 1;
         };
         
         const rank1 = getRanking(currentBattle[0].naam);
@@ -2388,8 +2487,8 @@ const DOM = {};
 
     // Explicitly hide/show the battle UI (cards + VS badge). Use this from tab switching
     function setBattleVisibility(visible) {
-        const battleContainerEl = DOM.battleContainer || $id('battleContainer');
-        const vsEl = $id('vsDivider') || document.querySelector('.vs-divider');
+        const battleContainerEl = DOM.battleContainer;
+        const vsEl = document.querySelector('.vs-divider');
         try {
             if (battleContainerEl) battleContainerEl.style.display = visible ? '' : 'none';
         } catch (e) {}
@@ -2408,12 +2507,11 @@ const DOM = {};
         const winner = currentBattle[index];
         const loser = currentBattle[1 - index];
 
-        // ranking helper
+        // ranking helper (cache sorted array for efficiency)
+        const statsArray = Object.values(coasterStats);
+        const sortedStats = [...statsArray].sort((a, b) => b.elo - a.elo);
         const getRanking = (coasterName) => {
-            const statsArray = Object.values(coasterStats);
-            const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
-            const rank = sorted.findIndex(c => c.name === coasterName) + 1;
-            return rank;
+            return sortedStats.findIndex(c => c.name === coasterName) + 1;
         };
 
         const oldWinnerRank = getRanking(winner.naam);
