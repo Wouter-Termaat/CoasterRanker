@@ -236,10 +236,15 @@ body {
     font-size: 0.75em;
     line-height: 1.4;
     pointer-events: auto; /* CHANGED: Allow clicks on overlay (especially for retry button) */
-    z-index: 10;
+    z-index: 100; /* High z-index to be above image */
     border-radius: 6px;
     max-width: 140px;
     backdrop-filter: blur(4px);
+}
+
+.dev-data-overlay button {
+    pointer-events: auto !important; /* Ensure buttons are always clickable */
+    cursor: pointer !important;
 }
 
 .dev-data-overlay strong {

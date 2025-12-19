@@ -631,20 +631,29 @@ async function querySPARQLMultiple(query) {
 
 // Retry button handler (called from dev-data overlay)
 window.retryCoasterImage = async function(coasterName, parkName, manufacturer, elementId, event) {
-    // Prevent click from bubbling to card selection
-    event.stopPropagation();
-    event.preventDefault();
+    console.log('🔄 Retry button clicked for:', coasterName);
     
-    const button = event.target;
+    // Prevent click from bubbling to card selection
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+        console.log('  ✓ Event propagation stopped');
+    }
+    
+    const button = event ? event.target : null;
     const infoDiv = document.getElementById(`imageInfo_${elementId}`);
     
-    button.disabled = true;
-    button.textContent = '⏳ Searching...';
+    if (button) {
+        button.disabled = true;
+        button.textContent = '⏳ Searching...';
+    }
     
     if (infoDiv) {
         infoDiv.textContent = 'Running intensive search...';
         infoDiv.style.color = '#4CA1AF';
     }
+    
+    console.log('  🔬 Starting intensive search...');
     
     try {
         const result = await intensiveImageSearch(coasterName, parkName, manufacturer);
@@ -663,6 +672,7 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
                     const img = card.querySelector('img');
                     if (img) {
                         img.src = result.url;
+                        console.log('  ✓ Image updated in battle view');
                     }
                 }
             });
@@ -690,21 +700,28 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
                 }
             }
             
-            button.textContent = '✓ Updated';
-            setTimeout(() => {
-                button.textContent = '🔄 Retry Image';
-                button.disabled = false;
-            }, 2000);
+            if (button) {
+                button.textContent = '✓ Updated';
+                setTimeout(() => {
+                    button.textContent = '🔄 Retry Image';
+                    button.disabled = false;
+                }, 2000);
+            }
+            
+            console.log('  ✓ Retry complete!');
         } else {
+            console.log('  ✗ No image found');
             if (infoDiv) {
                 infoDiv.textContent = '✗ No image found';
                 infoDiv.style.color = '#ef4444';
             }
-            button.textContent = '✗ Not Found';
-            setTimeout(() => {
-                button.textContent = '🔄 Retry Image';
-                button.disabled = false;
-            }, 2000);
+            if (button) {
+                button.textContent = '✗ Not Found';
+                setTimeout(() => {
+                    button.textContent = '🔄 Retry Image';
+                    button.disabled = false;
+                }, 2000);
+            }
         }
     } catch (error) {
         console.error('Retry image error:', error);
@@ -712,11 +729,13 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             infoDiv.textContent = '✗ Search failed';
             infoDiv.style.color = '#ef4444';
         }
-        button.textContent = '✗ Error';
-        setTimeout(() => {
-            button.textContent = '🔄 Retry Image';
-            button.disabled = false;
-        }, 2000);
+        if (button) {
+            button.textContent = '✗ Error';
+            setTimeout(() => {
+                button.textContent = '🔄 Retry Image';
+                button.disabled = false;
+            }, 2000);
+        }
     }
 };
 
@@ -1187,10 +1206,35 @@ async function preloadAllCoasterImages() {
     imageLoadStats.cached = 0;
     imageLoadStats.total = coasters.length;
     
+    // Quick check: count how many are already cached
+    let cachedCount = 0;
+    for (const coaster of coasters) {
+        const normalizedName = normalizeCoasterName(coaster.naam);
+        const normalizedPark = normalizeCoasterName(coaster.park);
+        const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
+        if (localStorage.getItem(cacheKey)) {
+            cachedCount++;
+        }
+    }
+    
+    console.log(`📦 Found ${cachedCount}/${coasters.length} images in cache`);
+    
+    // If all are cached, load instantly without showing loading screen progress
+    if (cachedCount === coasters.length) {
+        console.log(`✓ All images cached - instant load!`);
+        // Just increment stats for cached images
+        for (const coaster of coasters) {
+            await getCoasterImage(coaster); // Will return from cache instantly
+        }
+        hideLoadingScreen();
+        return;
+    }
+    
+    // Some images need fetching - show loading screen
     updateImageLoadStats();
     updateLoadingScreen(0, coasters.length, 0);
     
-    console.log(`🚀 Loading all ${coasters.length} coaster images...`);
+    console.log(`🚀 Loading ${coasters.length - cachedCount} new images (${cachedCount} from cache)...`);
     
     // Load in small batches to avoid rate limiting
     const batchSize = 5;
@@ -1208,7 +1252,7 @@ async function preloadAllCoasterImages() {
             })
         );
         
-        // Wait between batches
+        // Wait between batches only if fetching new images
         if (i + batchSize < coasters.length) {
             await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
@@ -2099,24 +2143,12 @@ const DOM = {};
             const leftOverlay = document.createElement('div');
             leftOverlay.className = 'dev-data-overlay';
             leftOverlay.innerHTML = devLeftHtml;
-            // CRITICAL: Prevent ANY clicks on overlay from reaching the card
-            leftOverlay.style.pointerEvents = 'auto'; // Ensure overlay catches clicks
-            leftOverlay.addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-            }, true); // Use capture phase
             cards[0].appendChild(leftOverlay);
         }
         if (cards[1]) {
             const rightOverlay = document.createElement('div');
             rightOverlay.className = 'dev-data-overlay';
             rightOverlay.innerHTML = devRightHtml;
-            // CRITICAL: Prevent ANY clicks on overlay from reaching the card
-            rightOverlay.style.pointerEvents = 'auto'; // Ensure overlay catches clicks
-            rightOverlay.addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-            }, true); // Use capture phase
             cards[1].appendChild(rightOverlay);
         }
     }
