@@ -2051,12 +2051,20 @@ const DOM = {};
             const leftOverlay = document.createElement('div');
             leftOverlay.className = 'dev-data-overlay';
             leftOverlay.innerHTML = devLeftHtml;
+            // Prevent clicks on the overlay from bubbling to card
+            leftOverlay.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
             cards[0].appendChild(leftOverlay);
         }
         if (cards[1]) {
             const rightOverlay = document.createElement('div');
             rightOverlay.className = 'dev-data-overlay';
             rightOverlay.innerHTML = devRightHtml;
+            // Prevent clicks on the overlay from bubbling to card
+            rightOverlay.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
             cards[1].appendChild(rightOverlay);
         }
     }
