@@ -213,39 +213,33 @@ async function queryWikidataImage(coasterName, parkName) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     const escapedName = escapeSPARQL(coasterName);
-    const escapedPark = parkName ? escapeSPARQL(parkName) : '';
     
-    // Strategy A: Exact match - roller coaster with specific name AND park
-    if (parkName) {
-        const query1 = `
-            SELECT ?image WHERE {
-              ?coaster rdfs:label "${escapedName}"@en .
-              ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
-              ?coaster wdt:P276 ?park .
-              ?park rdfs:label ?parkLabel .
-              FILTER(CONTAINS(LCASE(?parkLabel), "${escapedPark.toLowerCase()}"))
-              ?coaster wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result1 = await querySPARQL(query1);
-            if (result1) {
-                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (exact match with park)`);
-                return result1;
-            }
-        } catch (e) {
-            // Silent fail, try next strategy
-        }
-    }
-    
-    // Strategy B: Exact match - roller coaster with specific name (any park)
-    const query2 = `
+    // Strategy A: Direct instance of roller coaster
+    const query1 = `
         SELECT ?image WHERE {
           ?coaster rdfs:label "${escapedName}"@en .
-          ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
+          ?coaster wdt:P31 wd:Q15243209 .
           ?coaster wdt:P18 ?image .
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const result1 = await querySPARQL(query1);
+        if (result1) {
+            console.log(`✓ Found image for "${coasterName}" (direct match)`);
+            return result1;
+        }
+    } catch (e) {
+        // Silent fail, try next strategy
+    }
+    
+    // Strategy B: Broader label search with image
+    const query2 = `
+        SELECT ?image WHERE {
+          ?item rdfs:label "${escapedName}"@en .
+          ?item wdt:P18 ?image .
+          FILTER EXISTS { ?item wdt:P31 ?type }
         }
         LIMIT 1
     `;
@@ -253,42 +247,40 @@ async function queryWikidataImage(coasterName, parkName) {
     try {
         const result2 = await querySPARQL(query2);
         if (result2) {
-            console.log(`✓ Found image for "${coasterName}" (roller coaster match)`);
+            console.log(`✓ Found image for "${coasterName}" (label match)`);
             return result2;
         }
     } catch (e) {
         // Silent fail, try next strategy
     }
     
-    // Strategy C: Text search for roller coaster with park context
-    if (parkName) {
-        const query3 = `
-            SELECT ?image WHERE {
-              SERVICE wikibase:mwapi {
-                bd:serviceParam wikibase:api "EntitySearch" .
-                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName} ${escapedPark}" .
-                bd:serviceParam mwapi:language "en" .
-                ?coaster wikibase:apiOutputItem mwapi:item .
-              }
-              ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
-              ?coaster wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result3 = await querySPARQL(query3);
-            if (result3) {
-                console.log(`✓ Found image for "${coasterName}" (text search with park)`);
-                return result3;
-            }
-        } catch (e) {
-            // Silent fail, try next strategy
+    // Strategy C: Text search with EntitySearch API
+    const query3 = `
+        SELECT ?image WHERE {
+          SERVICE wikibase:mwapi {
+            bd:serviceParam wikibase:api "EntitySearch" .
+            bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+            bd:serviceParam mwapi:search "${escapedName}" .
+            bd:serviceParam mwapi:language "en" .
+            ?item wikibase:apiOutputItem mwapi:item .
+          }
+          ?item wdt:P31 wd:Q15243209 .
+          ?item wdt:P18 ?image .
         }
+        LIMIT 1
+    `;
+    
+    try {
+        const result3 = await querySPARQL(query3);
+        if (result3) {
+            console.log(`✓ Found image for "${coasterName}" (text search)`);
+            return result3;
+        }
+    } catch (e) {
+        // Silent fail, try next strategy
     }
     
-    // Strategy D: Broader text search for any roller coaster
+    // Strategy D: Fallback - just search by name for anything with an image
     const query4 = `
         SELECT ?image WHERE {
           SERVICE wikibase:mwapi {
@@ -296,10 +288,9 @@ async function queryWikidataImage(coasterName, parkName) {
             bd:serviceParam wikibase:endpoint "www.wikidata.org" .
             bd:serviceParam mwapi:search "${escapedName}" .
             bd:serviceParam mwapi:language "en" .
-            ?coaster wikibase:apiOutputItem mwapi:item .
+            ?item wikibase:apiOutputItem mwapi:item .
           }
-          ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
-          ?coaster wdt:P18 ?image .
+          ?item wdt:P18 ?image .
         }
         LIMIT 1
     `;
@@ -307,7 +298,7 @@ async function queryWikidataImage(coasterName, parkName) {
     try {
         const result4 = await querySPARQL(query4);
         if (result4) {
-            console.log(`✓ Found image for "${coasterName}" (text search)`);
+            console.log(`✓ Found image for "${coasterName}" (broad search)`);
             return result4;
         }
     } catch (e) {
@@ -338,7 +329,12 @@ async function querySPARQL(query) {
     const bindings = data?.results?.bindings;
     
     if (bindings && bindings.length > 0 && bindings[0].image) {
-        return bindings[0].image.value;
+        let imageUrl = bindings[0].image.value;
+        // Ensure HTTPS to avoid mixed content warnings
+        if (imageUrl.startsWith('http://')) {
+            imageUrl = imageUrl.replace('http://', 'https://');
+        }
+        return imageUrl;
     }
     
     return null;
