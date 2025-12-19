@@ -658,22 +658,33 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
     try {
         const result = await intensiveImageSearch(coasterName, parkName, manufacturer);
         
+        console.log('  📦 Intensive search result:', result);
+        
         if (result && result.url) {
+            console.log('  🖼️ Image URL found:', result.url);
             // Update cache with new image
             const cacheVersion = 'v1';
             const cacheKey = `coasterImage_${cacheVersion}_${normalizeCoasterName(coasterName)}`;
             localStorage.setItem(cacheKey, result.url);
+            console.log('  💾 Cached with key:', cacheKey);
             
             // Update image in current battle if visible
             const cards = document.querySelectorAll('.coaster-card');
+            console.log(`  🔍 Found ${cards.length} coaster cards to check`);
             cards.forEach(card => {
                 const nameEl = card.querySelector('h3');
+                const cardName = nameEl?.textContent;
+                console.log(`    📋 Card name: "${cardName}" vs target: "${coasterName}"`);
                 if (nameEl && nameEl.textContent === coasterName) {
                     const img = card.querySelector('img');
+                    console.log(`    🎯 Match found! Image element exists: ${!!img}`);
                     if (img) {
+                        console.log(`    🔄 Updating from "${img.src}" to "${result.url}"`);
                         img.src = result.url;
-                        console.log('  ✓ Image updated in battle view');
+                        console.log('    ✓ Image src updated');
                     }
+                } else {
+                    console.log(`    ⏭️ Skipping non-matching card`);
                 }
             });
             
@@ -892,6 +903,13 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
         
         try {
             const results = await querySPARQLMultiple(containsQuery);
+            console.log(`    📊 Raw results count: ${results?.length || 0}`);
+            if (results && results.length > 0) {
+                console.log(`    📸 First result has image: ${!!results[0]?.image?.value}`);
+                if (results[0]?.image?.value) {
+                    console.log(`    🔗 Image URL: ${results[0].image.value}`);
+                }
+            }
             const match = processResults(results, 'CONTAINS');
             if (match) return match;
             await delay(150);
