@@ -193,6 +193,19 @@
                 
             </div>
 
+            <div class="dev-option" style="margin-top:12px;">
+                <div style="font-size:0.9em;color:#6B7280;margin-bottom:6px;font-weight:600;">Image Loading</div>
+                <div id="imageLoadProgress" class="dev-progress" style="font-size:0.85em;color:#4CA1AF;font-weight:700;">
+                    Loaded: 0 / 0 (0%)
+                </div>
+                <div id="imageLoadDetails" style="font-size:0.8em;color:#9CA3AF;margin-top:4px;">
+                    Cache hits: 0 | Errors: 0
+                </div>
+                <button class="dev-btn" onclick="clearImageCache()" style="margin-top:8px;width:100%;background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%);color:white;">
+                    Clear Image Cache
+                </button>
+            </div>
+
             <div class="dev-option" style="margin-top:8px;">
                 <button id="forceCloseBtn" class="dev-btn" onclick="forceNextCloseFight()" title="Force a close fight">Force close fight</button>
             </div>

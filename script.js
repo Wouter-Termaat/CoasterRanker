@@ -122,6 +122,8 @@
         setHeaderHeight();
         // Post-initialization UI adjustments
         postInitUISetup();
+        // Preload coaster images in background
+        preloadCoasterImages();
     }
 
     // Set header height CSS variable for sticky tabs positioning
@@ -163,6 +165,269 @@ function debounce(fn, wait = 120) {
 
 // Small DOM helper (convenience wrapper)
 const $id = (id) => document.getElementById(id);
+
+// ========================================
+// IMAGE FETCHING SERVICE (Wikidata/Wikimedia Commons)
+// ========================================
+
+// Global stats for image loading progress (visible in dev menu)
+let imageLoadStats = {
+    loaded: 0,
+    total: 0,
+    failed: 0,
+    cached: 0
+};
+
+// Normalize coaster/park name for cache key matching
+function normalizeCoasterName(name) {
+    if (!name) return '';
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '') // Remove special chars except hyphens
+        .replace(/\s+/g, ' ');     // Normalize whitespace
+}
+
+// Generate a placeholder data URL for coasters without images
+function getPlaceholderImage() {
+    // Simple SVG placeholder with coaster icon
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250">
+        <defs>
+            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#e5e7eb;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#d1d5db;stop-opacity:1" />
+            </linearGradient>
+        </defs>
+        <rect width="400" height="250" fill="url(#grad)"/>
+        <text x="200" y="125" font-family="Arial, sans-serif" font-size="48" fill="#9ca3af" text-anchor="middle" dominant-baseline="middle" font-weight="600">🎢</text>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
+// Query Wikidata SPARQL endpoint for coaster image
+async function queryWikidataImage(coasterName, parkName) {
+    if (!coasterName) return null;
+    
+    // Strategy A: Exact match with coaster name
+    const exactQuery = `
+        SELECT ?image WHERE {
+          ?coaster rdfs:label "${coasterName}"@en .
+          ?coaster wdt:P31/wdt:P279* wd:Q21573182 .
+          ?coaster wdt:P18 ?image .
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const exactResult = await querySPARQL(exactQuery);
+        if (exactResult) return exactResult;
+    } catch (e) {
+        console.warn('Exact Wikidata query failed:', e);
+    }
+    
+    // Strategy B: Fuzzy search with coaster name and optional park
+    const fuzzyQuery = parkName ? `
+        SELECT ?image WHERE {
+          ?coaster ?label "${coasterName}"@en .
+          ?coaster wdt:P18 ?image .
+          ?coaster wdt:P276|wdt:P131 ?location .
+          ?location rdfs:label ?locLabel .
+          FILTER(CONTAINS(LCASE(?locLabel), "${parkName.toLowerCase()}"))
+        }
+        LIMIT 1
+    ` : `
+        SELECT ?image WHERE {
+          ?coaster ?label "${coasterName}"@en .
+          ?coaster wdt:P18 ?image .
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const fuzzyResult = await querySPARQL(fuzzyQuery);
+        if (fuzzyResult) return fuzzyResult;
+    } catch (e) {
+        console.warn('Fuzzy Wikidata query failed:', e);
+    }
+    
+    return null;
+}
+
+// Execute SPARQL query against Wikidata
+async function querySPARQL(query) {
+    const endpoint = 'https://query.wikidata.org/sparql';
+    const url = `${endpoint}?query=${encodeURIComponent(query)}&format=json`;
+    
+    const response = await fetch(url, {
+        headers: {
+            'Accept': 'application/sparql-results+json',
+            'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
+        }
+    });
+    
+    if (!response.ok) {
+        throw new Error(`SPARQL query failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const bindings = data?.results?.bindings;
+    
+    if (bindings && bindings.length > 0 && bindings[0].image) {
+        return bindings[0].image.value;
+    }
+    
+    return null;
+}
+
+// Get coaster image (from cache or fetch from Wikidata)
+async function getCoasterImage(coaster) {
+    if (!coaster || !coaster.naam) return getPlaceholderImage();
+    
+    const normalizedName = normalizeCoasterName(coaster.naam);
+    const normalizedPark = normalizeCoasterName(coaster.park);
+    const cacheKey = `coasterImage_${normalizedName}_${normalizedPark}`;
+    
+    // Check cache first
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            imageLoadStats.cached++;
+            return cached;
+        }
+    } catch (e) {
+        console.warn('Cache read error:', e);
+    }
+    
+    // Fetch from Wikidata
+    try {
+        const imageUrl = await queryWikidataImage(coaster.naam, coaster.park);
+        
+        if (imageUrl) {
+            // Cache the result
+            try {
+                localStorage.setItem(cacheKey, imageUrl);
+            } catch (e) {
+                console.warn('Cache write error (quota?):', e);
+            }
+            imageLoadStats.loaded++;
+            return imageUrl;
+        } else {
+            // No image found - cache placeholder to avoid repeated queries
+            const placeholder = getPlaceholderImage();
+            try {
+                localStorage.setItem(cacheKey, placeholder);
+            } catch (e) {
+                console.warn('Cache write error:', e);
+            }
+            imageLoadStats.failed++;
+            return placeholder;
+        }
+    } catch (error) {
+        console.error('Error fetching image for', coaster.naam, ':', error);
+        imageLoadStats.failed++;
+        return getPlaceholderImage();
+    }
+}
+
+// Clear all cached images from localStorage
+function clearImageCache() {
+    if (!confirm('Clear all cached coaster images? They will be re-fetched on next load.')) {
+        return;
+    }
+    
+    try {
+        const keys = Object.keys(localStorage);
+        let cleared = 0;
+        
+        keys.forEach(key => {
+            if (key.startsWith('coasterImage_')) {
+                localStorage.removeItem(key);
+                cleared++;
+            }
+        });
+        
+        // Reset stats
+        imageLoadStats = {
+            loaded: 0,
+            total: 0,
+            failed: 0,
+            cached: 0
+        };
+        
+        updateImageLoadStats();
+        showToast(`✅ Cleared ${cleared} cached images`);
+        
+        // Reload images
+        if (currentUser) {
+            preloadCoasterImages();
+        }
+    } catch (e) {
+        console.error('Error clearing cache:', e);
+        showToast('❌ Failed to clear cache');
+    }
+}
+
+// Update dev menu with current image loading stats
+function updateImageLoadStats() {
+    const progressEl = document.getElementById('imageLoadProgress');
+    const detailsEl = document.getElementById('imageLoadDetails');
+    
+    if (progressEl && imageLoadStats.total > 0) {
+        const percentage = Math.round((imageLoadStats.loaded + imageLoadStats.failed + imageLoadStats.cached) / imageLoadStats.total * 100);
+        const completed = imageLoadStats.loaded + imageLoadStats.failed + imageLoadStats.cached;
+        progressEl.textContent = `Loaded: ${completed} / ${imageLoadStats.total} (${percentage}%)`;
+    } else if (progressEl) {
+        progressEl.textContent = 'No images loaded yet';
+    }
+    
+    if (detailsEl) {
+        detailsEl.textContent = `Cache hits: ${imageLoadStats.cached} | Errors: ${imageLoadStats.failed}`;
+    }
+}
+
+// Preload all coaster images in background
+async function preloadCoasterImages() {
+    if (!currentUser || !coasters || coasters.length === 0) {
+        return;
+    }
+    
+    // Reset stats
+    imageLoadStats = {
+        loaded: 0,
+        total: coasters.length,
+        failed: 0,
+        cached: 0
+    };
+    
+    updateImageLoadStats();
+    
+    // Process in batches to avoid overwhelming the API
+    const batchSize = 10;
+    const delay = 50; // 50ms delay between requests
+    
+    for (let i = 0; i < coasters.length; i += batchSize) {
+        const batch = coasters.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        await Promise.all(
+            batch.map(async (coaster) => {
+                await getCoasterImage(coaster);
+                updateImageLoadStats();
+            })
+        );
+        
+        // Small delay between batches
+        if (i + batchSize < coasters.length) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    
+    console.info('Image preloading complete:', imageLoadStats);
+}
+
+// ========================================
+// END IMAGE FETCHING SERVICE
+// ========================================
     
     function syncSimInputWidth() {
         try {
@@ -1643,7 +1908,9 @@ const DOM = {};
         battleContainer.innerHTML = `
             <div class="coaster-item">
                 <div class="coaster-card left-card" onclick="chooseWinner(0)">
-                    <div class="coaster-image">IMG</div>
+                    <div class="coaster-image">
+                        <img class="coaster-img" src="${getPlaceholderImage()}" alt="${escapeHtml(left.naam)}" data-coaster-index="0" />
+                    </div>
                     <div class="coaster-rank-badge">${rank1}</div>
                     <div class="coaster-content">
                         <div class="coaster-name">${left.naam}</div>
@@ -1658,7 +1925,9 @@ const DOM = {};
             
             <div class="coaster-item">
                 <div class="coaster-card right-card" onclick="chooseWinner(1)">
-                    <div class="coaster-image">IMG</div>
+                    <div class="coaster-image">
+                        <img class="coaster-img" src="${getPlaceholderImage()}" alt="${escapeHtml(right.naam)}" data-coaster-index="1" />
+                    </div>
                     <div class="coaster-rank-badge">${rank2}</div>
                     <div class="coaster-content">
                         <div class="coaster-name">${right.naam}</div>
@@ -1671,6 +1940,17 @@ const DOM = {};
                 </div>
             </div>
         `;
+
+        // Load images asynchronously after rendering
+        getCoasterImage(left).then(url => {
+            const img = document.querySelector('img[data-coaster-index="0"]');
+            if (img) img.src = url;
+        }).catch(e => console.warn('Failed to load left image:', e));
+        
+        getCoasterImage(right).then(url => {
+            const img = document.querySelector('img[data-coaster-index="1"]');
+            if (img) img.src = url;
+        }).catch(e => console.warn('Failed to load right image:', e));
 
         // If this matchup qualifies as a close fight, play the intro animation
         const getRankingNum = (coasterName) => {
