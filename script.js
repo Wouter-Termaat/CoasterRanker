@@ -221,15 +221,16 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // Type check - roller coaster types
-    const typeCheck = `
+    // Optional type check - prefer roller coaster types but don't require
+    // This makes search more lenient - we trust the CSV data
+    const preferredTypes = `
         VALUES ?rcType { 
             wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
             wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
             wd:Q1318369 wd:Q2252148 wd:Q1377858 wd:Q1497656
-            wd:Q1990148 wd:Q30014587
+            wd:Q1990148 wd:Q30014587 wd:Q1462039
         }
-        ?item wdt:P31 ?rcType .`;
+        OPTIONAL { ?item wdt:P31 ?rcType . }`;
     
     // Generate name variants to try (most specific to least specific)
     const nameVariants = [];
@@ -390,12 +391,13 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     SELECT ?item ?image WHERE {
                       ?item rdfs:label ?label .
                       FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
-                      ${typeCheck}
                       ?item wdt:P18 ?image .
                       ?item wdt:P276 ?location .
                       ?location rdfs:label ?parkLabel .
                       FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedPark}")))
+                      ${preferredTypes}
                     }
+                    ORDER BY DESC(BOUND(?rcType))
                     LIMIT 1
                 `;
                 
@@ -422,7 +424,6 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 SELECT ?item ?image WHERE {
                   ?item rdfs:label ?label .
                   FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
-                  ${typeCheck}
                   ?item wdt:P18 ?image .
                 }
                 LIMIT 1
@@ -448,7 +449,6 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
             const exactQuery = `
                 SELECT ?item ?image WHERE {
                   ?item rdfs:label "${escapedName}"@en .
-                  ${typeCheck}
                   ?item wdt:P18 ?image .
                 }
                 LIMIT 1
