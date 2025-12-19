@@ -30,19 +30,19 @@
 
         <div class="tabs">
             <button class="tab active" onclick="switchTab('battle')">
-                <span class="tab-icon">⚔️</span>
+                <span class="tab-icon"><img src="/images/sword.svg" alt="Battle" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">Battle</span>
             </button>
             <button class="tab" onclick="switchTab('ranking')">
-                <span class="tab-icon">📊</span>
+                <span class="tab-icon"><img src="/images/chart-line-up.svg" alt="Ranking" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">Ranking</span>
             </button>
             <button class="tab" onclick="switchTab('history')">
-                <span class="tab-icon">📜</span>
+                <span class="tab-icon"><img src="/images/scroll.svg" alt="History" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">History</span>
             </button>
             <button class="tab" onclick="switchTab('achievements')">
-                <span class="tab-icon">🏆</span>
+                <span class="tab-icon"><img src="/images/trophy.svg" alt="Achievements" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">Achievements</span>
             </button>
         </div>
@@ -50,36 +50,10 @@
         <div id="battle-tab" class="tab-content active">
             <div class="vs-divider">VS</div>
             <div class="battle-area">
-                <div class="battle-container" id="battleContainer">
-                    <div class="no-battles">Select a user above first! 👆</div>
-                </div>
-    
+            <div class="battle-container" id="battleContainer">
+                <div class="no-battles">Select a user above first! 👆</div>
             </div>
-            <div class="pairing-controls-wrapper" style="margin:12px 0; display: none;">
-                <div style="display:flex;justify-content:center;align-items:center;">
-                    <div style="font-size:0.95em;color:#444;display:flex;align-items:center;gap:8px;"></div>
-                    <button id="pairingControlsToggle" class="pairing-toggle-btn" onclick="togglePairingControls()" aria-expanded="true" title="Hide settings" style="margin-left:8px;padding:6px 8px;border-radius:8px;border:none;background:#fff;cursor:pointer;font-weight:700;">▾</button>
-                </div>
-
-                <div id="pairingControls" class="pairing-controls" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:8px;transition:max-height 260ms ease,opacity 180ms ease;overflow:hidden;">
-                    <div class="pair-toggle" style="display:flex;border:1px solid #ddd;border-radius:10px;overflow:hidden;">
-                        <button class="pair-option" data-value="hybrid" data-help="first selects an undersampled coaster, then an opponent with similar ELO (balances exploration and refinement)" onclick="setPairingStrategy('hybrid')">
-                            Hybrid
-                        </button>
-                        <button class="pair-option" data-value="exploration" data-help="both choices prioritize undersampled coasters (faster coverage)" onclick="setPairingStrategy('exploration')">
-                            Exploration
-                        </button>
-                        <button class="pair-option" data-value="uniform" data-help="completely random (no bias)" onclick="setPairingStrategy('uniform')">
-                            Uniform
-                        </button>
-                    </div>
-
-                    <div style="display:flex;align-items:center;gap:8px;font-size:0.95em;color:#444;">
-                        ELO-proximity:
-                        <input id="eloProximityRange" type="range" min="0" max="4" step="0.1" value="1" oninput="setEloProximityPower(this.value)" style="width:180px;">
-                        <span id="eloProximityValue" style="min-width:36px;text-align:center;font-weight:700;color:#2c3e50;">1.0</span>
-                    </div>
-                </div>
+        
             </div>
         </div>
         <div id="history-tab" class="tab-content">
@@ -145,11 +119,10 @@
                         <th onclick="sortRanking('battles')">Battles</th>
                         <th onclick="sortRanking('wins')">Wins</th>
                         <th onclick="sortRanking('losses')">Losses</th>
-                        <th onclick="sortRanking('winrate')">Win %</th>
                     </tr>
                 </thead>
                 <tbody id="rankingBody">
-                    <tr><td colspan="9" class="no-battles">Select a user first! 🎢</td></tr>
+                    <tr><td colspan="8" class="no-battles">Select a user first! 🎢</td></tr>
                 </tbody>
             </table>
 
@@ -167,23 +140,29 @@
         <!-- Achievements Tab -->
         <div id="achievements-tab" class="tab-content">
             <div class="achievement-filters">
-                <button class="filter-tag active" data-rarity="all" onclick="filterAchievements('all')">
+                <button class="filter-tag active" data-category="all" onclick="filterAchievements('all')">
                     All
                 </button>
-                <button class="filter-tag" data-rarity="common" onclick="filterAchievements('common')">
-                    <span class="filter-dot common"></span> Common
+                <button class="filter-tag" data-category="battles" onclick="filterAchievements('battles')">
+                    ⚔️ Battles
                 </button>
-                <button class="filter-tag" data-rarity="uncommon" onclick="filterAchievements('uncommon')">
-                    <span class="filter-dot uncommon"></span> Uncommon
+                <button class="filter-tag" data-category="close-fights" onclick="filterAchievements('close-fights')">
+                    💥 Close Fights
                 </button>
-                <button class="filter-tag" data-rarity="rare" onclick="filterAchievements('rare')">
-                    <span class="filter-dot rare"></span> Rare
+                <button class="filter-tag" data-category="patterns" onclick="filterAchievements('patterns')">
+                    🔄 Patterns
                 </button>
-                <button class="filter-tag" data-rarity="epic" onclick="filterAchievements('epic')">
-                    <span class="filter-dot epic"></span> Epic
+                <button class="filter-tag" data-category="collection" onclick="filterAchievements('collection')">
+                    🌍 Collection
                 </button>
-                <button class="filter-tag" data-rarity="legendary" onclick="filterAchievements('legendary')">
-                    <span class="filter-dot legendary"></span> Legendary
+                <button class="filter-tag" data-category="siblings" onclick="filterAchievements('siblings')">
+                    👯 Siblings
+                </button>
+                <button class="filter-tag" data-category="ranking" onclick="filterAchievements('ranking')">
+                    📊 Ranking
+                </button>
+                <button class="filter-tag" data-category="special" onclick="filterAchievements('special')">
+                    ✨ Special
                 </button>
             </div>
             <div class="achievements-grid" id="achievementsGrid">
@@ -216,6 +195,33 @@
 
             <div class="dev-option" style="margin-top:8px;">
                 <button id="forceCloseBtn" class="dev-btn" onclick="forceNextCloseFight()" title="Force a close fight">Force close fight</button>
+            </div>
+
+            <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
+                <div style="font-size:0.9em;font-weight:700;margin-bottom:12px;color:#111827;">Pairing Parameters</div>
+                
+                <div style="margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <label style="font-size:0.85em;color:#666;">Exploration Power</label>
+                        <span id="explorationPowerValue" style="min-width:36px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.9em;">2.0</span>
+                    </div>
+                    <input id="explorationPowerRange" type="range" min="0" max="5" step="0.1" value="2.0" oninput="setExplorationPower(this.value)" style="width:100%;">
+                    <div style="font-size:0.75em;color:#888;margin-top:2px;">Higher = favor under-sampled coasters more</div>
+                </div>
+
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <label style="font-size:0.85em;color:#666;">ELO Proximity Power</label>
+                        <span id="eloProximityValue" style="min-width:36px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.9em;">0.1</span>
+                    </div>
+                    <input id="eloProximityRange" type="range" min="0" max="4" step="0.1" value="0.1" oninput="setEloProximityPower(this.value)" style="width:100%;">
+                    <div style="font-size:0.75em;color:#888;margin-top:2px;">Higher = prefer opponents with similar ELO</div>
+                </div>
+            </div>
+
+            <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
+                <button id="rankingWizardBtn" class="dev-btn" onclick="runRankingWizard()" title="Recalculate all battles with current K-factors">Ranking Wizard</button>
+                <div id="rankingWizardProgress" class="dev-progress" style="display:none;margin-top:8px;font-size:0.9em;color:#4CA1AF;"></div>
             </div>
 
             <div class="dev-option" style="margin-top:12px;">

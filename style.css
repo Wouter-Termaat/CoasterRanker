@@ -30,9 +30,9 @@ body {
 .dev-btn {
     font-weight: 700;
     border: 1px solid #e6e6e6;
-    background: #fff;
+    background: #7f3cb3;
     padding: 8px 16px;
-    height: 44px;
+    height: 44px; 
     min-width: 110px;
     border-radius: 10px;
     cursor: pointer;
@@ -128,6 +128,18 @@ body {
 .dev-menu-header { font-weight: 700; font-size: 0.95em; font-family: inherit; color: #111827; margin-bottom: 8px; }
 /* primary simulate button styling consolidated below */
 .dev-progress { font-weight: 700; }
+
+/* Ranking Wizard button - purple with white text */
+#rankingWizardBtn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    border: none !important;
+}
+
+#rankingWizardBtn:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #63398c 100%) !important;
+    color: white !important;
+}
 .dev-reset-btn { background: linear-gradient(135deg, #ff6b6b 0%, #f03e3e 100%); color: white; }
 .dev-reset-btn:hover { box-shadow: 0 10px 28px rgba(240,62,62,0.18); }
 
@@ -149,16 +161,37 @@ body {
 .dev-toggle-data.active { background: #fff; color: var(--app-accent); border-color: var(--app-accent); box-shadow: 0 8px 24px rgba(76,161,175,0.12); }
 .dev-toggle-data:focus { outline: 3px solid rgba(76,161,175,0.16); outline-offset: 2px; }
 /* Dev data card displayed next to each coaster */
-.coaster-item { display:flex; gap:12px; align-items:flex-start; flex:1; min-width:280px; max-width:400px; }
-.dev-data { background: #fcfcfd; border:1px solid #eee; padding:8px 10px; border-radius:8px; min-width:160px; color:#111827; font-size:0.9em; line-height:1.4; }
-/* Side boxes when showing dev data without shrinking cards */
-.dev-data-side { position: absolute; width: 180px; z-index: 2500; box-shadow: 0 8px 24px rgba(0,0,0,0.08); pointer-events: none; }
-.dev-data-side.left { text-align: right; }
-.dev-data-side.right { text-align: left; }
+.coaster-item { display:flex; gap:12px; align-items:flex-start; flex:1; min-width:80px; max-width:400px; }
+/* Dev-data overlay inside cards, positioned over coaster images */
+.dev-data-overlay {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    padding: 8px 10px;
+    font-size: 0.75em;
+    line-height: 1.4;
+    pointer-events: none;
+    z-index: 10;
+    border-radius: 6px;
+    max-width: 140px;
+    backdrop-filter: blur(4px);
+}
+
+.dev-data-overlay strong {
+    color: #fff;
+}
+
 @media (max-width: 600px) {
-    .coaster-item { flex-direction: column; }
-    .dev-data { margin-left:0; margin-top:8px; }
-    .dev-data-side { position: static; width: auto; box-shadow: none; }
+    .dev-data-overlay {
+        font-size: 0.7em;
+        padding: 6px 8px;
+        line-height: 1.3;
+        max-width: 120px;
+        top: 6px;
+        left: 6px;
+    }
 }
 
  .simulate-btn {
@@ -389,12 +422,23 @@ body {
 
     .tab-content {
         display: none;
-        padding: 20px;
+        padding: 12px;
         min-height: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
     }
 
     .tab-content.active {
         display: block;
+    }
+
+    .tab-content#battle-tab.active {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: calc(100vh - var(--header-height, 80px) - 60px);
+        padding: 16px 12px;
     }
 
     .header-inner {
@@ -428,6 +472,7 @@ body {
         height: 100%;
         flex: 1;
         overflow: auto;
+        font-size: 0.8em;
     }
 
     #history-tab.active {
@@ -1452,57 +1497,6 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
     line-height: 1.4;
 }
 
-/* Segmented pairing toggle */
-.pair-toggle { background: #fff; }
-.pair-toggle .pair-option {
-    padding: 8px 14px;
-    border: none;
-    background: white;
-    cursor: pointer;
-    font-weight: 600;
-    color: #333;
-    position: relative;
-    min-width: 110px;
-}
-.pair-toggle .pair-option + .pair-option { border-left: 1px solid #eee; }
-.pair-toggle .pair-option.active {
-    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
-    color: #fff;
-}
-.pair-option .help-pop {
-    display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    background: rgba(0,0,0,0.85);
-    color: #fff;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 0.85em;
-    z-index: 999;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
-}
-.pair-option:hover .help-pop { display: block; }
-
-/* Floating tooltip that follows cursor (used for pair-option help) */
-.floating-help {
-    position: fixed;
-    pointer-events: none;
-    background: rgba(0,0,0,0.80);
-    color: #fff;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 0.9em;
-    opacity: 0;
-    transform: translate(-50%, 8px);
-    transition: opacity 180ms ease, transform 180ms ease;
-    z-index: 10000;
-    white-space: nowrap;
-}
-.floating-help.show { opacity: 1; transform: translate(-50%, 0); }
-
 .pairing-controls-wrapper { display:flex;flex-direction:column;align-items:center; }
 #pairingControls { max-height: 240px; opacity: 1; }
 #pairingControls.collapsed { max-height: 0; opacity: 0; padding: 0; margin: 0; pointer-events: none; }
@@ -1531,26 +1525,34 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
     .battle-container {
         flex-direction: row;
         flex-wrap: nowrap;
-        gap: 16px;
+        gap: 12px;
         justify-content: center;
-        align-items: center;
+        align-items: stretch;
         width: 100%;
         max-width: 100%;
         padding: 0;
+        box-sizing: border-box;
+        overflow: visible;
     }
 
     .vs-divider {
         display: flex;
-        width: 60px;
-        height: 60px;
-        font-size: 1.5em;
+        width: 50px;
+        height: 50px;
+        font-size: 1.3em;
+        flex-shrink: 0;
         box-shadow: 0 3px 15px rgba(0, 0, 0, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.9);
     }
 
     .coaster-card {
         max-width: none;
         min-width: 0;
-        flex: 1;
+        flex: 1 1 0;
+        width: 0;
+        box-sizing: border-box;
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
     }
 
     .coaster-image {
