@@ -122,6 +122,8 @@
         setHeaderHeight();
         // Post-initialization UI adjustments
         postInitUISetup();
+        // Preload coaster images in background
+        preloadCoasterImages();
     }
 
     // Set header height CSS variable for sticky tabs positioning
@@ -163,6 +165,271 @@ function debounce(fn, wait = 120) {
 
 // Small DOM helper (convenience wrapper)
 const $id = (id) => document.getElementById(id);
+
+// ========================================
+// IMAGE FETCHING SERVICE (Wikidata/Wikimedia Commons)
+// ========================================
+
+// Global stats for image loading progress (visible in dev menu)
+let imageLoadStats = {
+    loaded: 0,
+    total: 0,
+    failed: 0,
+    cached: 0
+};
+
+// Normalize coaster/park name for cache key matching
+function normalizeCoasterName(name) {
+    if (!name) return '';
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '') // Remove special chars except hyphens
+        .replace(/\s+/g, ' ');     // Normalize whitespace
+}
+
+// Generate a placeholder data URL for coasters without images
+function getPlaceholderImage() {
+    // Simple SVG placeholder (no emoji to avoid btoa encoding issues)
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250">
+        <defs>
+            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#e5e7eb;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#d1d5db;stop-opacity:1" />
+            </linearGradient>
+        </defs>
+        <rect width="400" height="250" fill="url(#grad)"/>
+        <circle cx="200" cy="125" r="40" fill="#9ca3af" opacity="0.3"/>
+        <rect x="180" y="100" width="40" height="50" rx="5" fill="#9ca3af" opacity="0.5"/>
+    </svg>`;
+    // Use encodeURIComponent instead of btoa to handle all characters safely
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+// Query Wikidata SPARQL endpoint for coaster image
+async function queryWikidataImage(coasterName, parkName) {
+    if (!coasterName) return null;
+    
+    // Strategy A: Exact match with coaster name
+    const exactQuery = `
+        SELECT ?image WHERE {
+          ?coaster rdfs:label "${coasterName}"@en .
+          ?coaster wdt:P31/wdt:P279* wd:Q21573182 .
+          ?coaster wdt:P18 ?image .
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const exactResult = await querySPARQL(exactQuery);
+        if (exactResult) return exactResult;
+    } catch (e) {
+        console.warn('Exact Wikidata query failed:', e);
+    }
+    
+    // Strategy B: Fuzzy search with coaster name and optional park
+    const fuzzyQuery = parkName ? `
+        SELECT ?image WHERE {
+          ?coaster ?label "${coasterName}"@en .
+          ?coaster wdt:P18 ?image .
+          ?coaster wdt:P276|wdt:P131 ?location .
+          ?location rdfs:label ?locLabel .
+          FILTER(CONTAINS(LCASE(?locLabel), "${parkName.toLowerCase()}"))
+        }
+        LIMIT 1
+    ` : `
+        SELECT ?image WHERE {
+          ?coaster ?label "${coasterName}"@en .
+          ?coaster wdt:P18 ?image .
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const fuzzyResult = await querySPARQL(fuzzyQuery);
+        if (fuzzyResult) return fuzzyResult;
+    } catch (e) {
+        console.warn('Fuzzy Wikidata query failed:', e);
+    }
+    
+    return null;
+}
+
+// Execute SPARQL query against Wikidata
+async function querySPARQL(query) {
+    const endpoint = 'https://query.wikidata.org/sparql';
+    const url = `${endpoint}?query=${encodeURIComponent(query)}&format=json`;
+    
+    const response = await fetch(url, {
+        headers: {
+            'Accept': 'application/sparql-results+json',
+            'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
+        }
+    });
+    
+    if (!response.ok) {
+        throw new Error(`SPARQL query failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const bindings = data?.results?.bindings;
+    
+    if (bindings && bindings.length > 0 && bindings[0].image) {
+        return bindings[0].image.value;
+    }
+    
+    return null;
+}
+
+// Get coaster image (from cache or fetch from Wikidata)
+async function getCoasterImage(coaster) {
+    if (!coaster || !coaster.naam) return getPlaceholderImage();
+    
+    const normalizedName = normalizeCoasterName(coaster.naam);
+    const normalizedPark = normalizeCoasterName(coaster.park);
+    const cacheKey = `coasterImage_${normalizedName}_${normalizedPark}`;
+    
+    // Check cache first
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            imageLoadStats.cached++;
+            return cached;
+        }
+    } catch (e) {
+        console.warn('Cache read error:', e);
+    }
+    
+    // Fetch from Wikidata
+    try {
+        const imageUrl = await queryWikidataImage(coaster.naam, coaster.park);
+        
+        if (imageUrl) {
+            // Cache the result
+            try {
+                localStorage.setItem(cacheKey, imageUrl);
+            } catch (e) {
+                console.warn('Cache write error (quota?):', e);
+            }
+            imageLoadStats.loaded++;
+            return imageUrl;
+        } else {
+            // No image found - cache placeholder to avoid repeated queries
+            const placeholder = getPlaceholderImage();
+            try {
+                localStorage.setItem(cacheKey, placeholder);
+            } catch (e) {
+                console.warn('Cache write error:', e);
+            }
+            imageLoadStats.failed++;
+            return placeholder;
+        }
+    } catch (error) {
+        console.error('Error fetching image for', coaster.naam, ':', error);
+        imageLoadStats.failed++;
+        return getPlaceholderImage();
+    }
+}
+
+// Clear all cached images from localStorage
+function clearImageCache() {
+    if (!confirm('Clear all cached coaster images? They will be re-fetched on next load.')) {
+        return;
+    }
+    
+    try {
+        const keys = Object.keys(localStorage);
+        let cleared = 0;
+        
+        keys.forEach(key => {
+            if (key.startsWith('coasterImage_')) {
+                localStorage.removeItem(key);
+                cleared++;
+            }
+        });
+        
+        // Reset stats
+        imageLoadStats = {
+            loaded: 0,
+            total: 0,
+            failed: 0,
+            cached: 0
+        };
+        
+        updateImageLoadStats();
+        showToast(`✅ Cleared ${cleared} cached images`);
+        
+        // Reload images
+        if (currentUser) {
+            preloadCoasterImages();
+        }
+    } catch (e) {
+        console.error('Error clearing cache:', e);
+        showToast('❌ Failed to clear cache');
+    }
+}
+
+// Update dev menu with current image loading stats
+function updateImageLoadStats() {
+    const progressEl = document.getElementById('imageLoadProgress');
+    const detailsEl = document.getElementById('imageLoadDetails');
+    
+    if (progressEl && imageLoadStats.total > 0) {
+        const percentage = Math.round((imageLoadStats.loaded + imageLoadStats.failed + imageLoadStats.cached) / imageLoadStats.total * 100);
+        const completed = imageLoadStats.loaded + imageLoadStats.failed + imageLoadStats.cached;
+        progressEl.textContent = `Loaded: ${completed} / ${imageLoadStats.total} (${percentage}%)`;
+    } else if (progressEl) {
+        progressEl.textContent = 'No images loaded yet';
+    }
+    
+    if (detailsEl) {
+        detailsEl.textContent = `Cache hits: ${imageLoadStats.cached} | Errors: ${imageLoadStats.failed}`;
+    }
+}
+
+// Preload all coaster images in background
+async function preloadCoasterImages() {
+    if (!currentUser || !coasters || coasters.length === 0) {
+        return;
+    }
+    
+    // Reset stats
+    imageLoadStats = {
+        loaded: 0,
+        total: coasters.length,
+        failed: 0,
+        cached: 0
+    };
+    
+    updateImageLoadStats();
+    
+    // Process in batches to avoid overwhelming the API
+    const batchSize = 10;
+    const delay = 50; // 50ms delay between requests
+    
+    for (let i = 0; i < coasters.length; i += batchSize) {
+        const batch = coasters.slice(i, i + batchSize);
+        
+        // Process batch in parallel
+        await Promise.all(
+            batch.map(async (coaster) => {
+                await getCoasterImage(coaster);
+                updateImageLoadStats();
+            })
+        );
+        
+        // Small delay between batches
+        if (i + batchSize < coasters.length) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    
+    console.info('Image preloading complete:', imageLoadStats);
+}
+
+// ========================================
+// END IMAGE FETCHING SERVICE
+// ========================================
     
     function syncSimInputWidth() {
         try {
@@ -243,7 +510,7 @@ window.addEventListener('resize', onResize, { passive: true });
     let deletedHistoryStack = [];
     const MAX_UNDO_STACK = 50;
     // Exploration boost: favor coasters with few battles
-    const EXPLORATION_POWER = 1; // higher => stronger preference for low-battles
+    let EXPLORATION_POWER = 2; // higher => stronger preference for low-battles
     // Automatic ELO tuning parameters (internal, no UI required)
     const ELO_BASE = 1500;
     const K0 = 64;           // initial K scale
@@ -251,13 +518,11 @@ window.addEventListener('resize', onResize, { passive: true });
     const K_MIN = 8;         // minimum K to keep movement
     const PRIOR_WEIGHT = 6;  // pseudo-battles pulling displayed ELO toward mean
     // ELO-proximity: prefer opponents whose ELO is similar (more informative matches)
-    let ELO_PROXIMITY_POWER = 1; // higher => stronger preference for similar ELO
+    let ELO_PROXIMITY_POWER = 0.1; // higher => stronger preference for similar ELO
     const ELO_DIFF_SCALE = 400; // scale (in ELO points) used to normalize differences
-    // Pairing strategy: 'hybrid' recommended — picks one under-sampled coaster
+    // Pairing strategy: hybrid — picks one under-sampled coaster
     // then picks a second that is ELO-similar while still favoring under-sampled ones.
-    // Other options: 'exploration' (both chosen by exploration weight), 'uniform'.
-    let PAIRING_STRATEGY = 'hybrid';
-    let pairingControlsHidden = false;
+    let pairingControlsHidden = true;
     // Track all completed pairs to prevent duplicates
     let completedPairs = new Set();
 
@@ -283,6 +548,12 @@ const DOM = {};
         
         // Load or initialize stats
         loadUserData();
+        
+        // Load achievements
+        if (typeof achievementManager !== 'undefined') {
+            achievementManager.load(user);
+            updateAchievementsTab();
+        }
         
         // Refresh displays
         displayBattle();
@@ -342,7 +613,7 @@ const DOM = {};
         // persist pairing settings per-user
         try {
             const settingsKey = `pairingSettings_${currentUser}`;
-            const settings = { pairingStrategy: PAIRING_STRATEGY, eloProximityPower: ELO_PROXIMITY_POWER, pairingControlsHidden: pairingControlsHidden };
+            const settings = { explorationPower: EXPLORATION_POWER, eloProximityPower: ELO_PROXIMITY_POWER, pairingControlsHidden: pairingControlsHidden };
             localStorage.setItem(settingsKey, JSON.stringify(settings));
         } catch (e) {
             // ignore
@@ -357,19 +628,12 @@ const DOM = {};
             const raw = localStorage.getItem(settingsKey);
             if (!raw) return applySettingsToUI();
             const s = JSON.parse(raw);
-            if (s && typeof s.pairingStrategy === 'string') PAIRING_STRATEGY = s.pairingStrategy;
+            if (s && typeof s.explorationPower === 'number') EXPLORATION_POWER = s.explorationPower;
             if (s && typeof s.eloProximityPower === 'number') ELO_PROXIMITY_POWER = s.eloProximityPower;
             if (s && typeof s.pairingControlsHidden === 'boolean') pairingControlsHidden = s.pairingControlsHidden;
         } catch (e) {
             // ignore
         }
-        applySettingsToUI();
-    }
-
-    function setPairingStrategy(val) {
-        if (!val) return;
-        PAIRING_STRATEGY = val;
-        saveData();
         applySettingsToUI();
     }
 
@@ -382,16 +646,23 @@ const DOM = {};
         saveData();
     }
 
+    function setExplorationPower(val) {
+        const num = Number(val);
+        if (isNaN(num)) return;
+        EXPLORATION_POWER = num;
+        const el = document.getElementById('explorationPowerValue');
+        if (el) el.textContent = num.toFixed(1);
+        saveData();
+    }
+
     function applySettingsToUI() {
-        // update segmented toggle buttons
-        const opts = document.querySelectorAll('.pair-option');
-        opts.forEach(btn => {
-            try {
-                const v = btn.getAttribute('data-value');
-                if (v === PAIRING_STRATEGY) btn.classList.add('active'); else btn.classList.remove('active');
-            } catch (e) {}
-        });
-        // update range and label
+        // update range and label for exploration power
+        const expRange = document.getElementById('explorationPowerRange');
+        const expVal = document.getElementById('explorationPowerValue');
+        if (expRange) expRange.value = EXPLORATION_POWER;
+        if (expVal) expVal.textContent = (Number(EXPLORATION_POWER) || 0).toFixed(1);
+        
+        // update range and label for elo proximity
         const range = document.getElementById('eloProximityRange');
         const val = document.getElementById('eloProximityValue');
         if (range) range.value = ELO_PROXIMITY_POWER;
@@ -463,6 +734,182 @@ const DOM = {};
         displayHistory();
         displayBattle();
         showToast('✅ Data reset for ' + currentUser);
+    }
+
+    // Export all user data as a downloadable JSON file
+    function exportUserData() {
+        if (!currentUser) {
+            showToast('⚠️ Please select a user first');
+            return;
+        }
+
+        try {
+            // Collect all relevant data for the current user
+            const exportData = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                user: currentUser,
+                data: {
+                    coasterStats: coasterStats,
+                    totalBattlesCount: totalBattlesCount,
+                    coasterHistory: coasterHistory,
+                    completedPairs: [...completedPairs],
+                    pairingSettings: {
+                        explorationPower: EXPLORATION_POWER,
+                        eloProximityPower: ELO_PROXIMITY_POWER,
+                        pairingControlsHidden: pairingControlsHidden
+                    },
+                    closeBattleCounters: {
+                        counter: localStorage.getItem(CR_STORAGE_COUNTER) || '0',
+                        threshold: localStorage.getItem(CR_STORAGE_THRESHOLD) || '25'
+                    },
+                    achievements: {
+                        unlocked: typeof achievementManager !== 'undefined' 
+                            ? Object.fromEntries(achievementManager.unlockedAchievements)
+                            : {},
+                        stats: {
+                            leftStreak: typeof achievementManager !== 'undefined' ? achievementManager.leftStreak : 0,
+                            rightStreak: typeof achievementManager !== 'undefined' ? achievementManager.rightStreak : 0,
+                            perfectMatches: typeof achievementManager !== 'undefined' ? achievementManager.perfectMatches : 0,
+                            closeFights: typeof achievementManager !== 'undefined' ? achievementManager.closeFights : 0,
+                            sessionBattles: typeof achievementManager !== 'undefined' ? achievementManager.sessionBattles : 0,
+                            lastBattleDate: typeof achievementManager !== 'undefined' ? achievementManager.lastBattleDate : null,
+                            consecutiveDays: typeof achievementManager !== 'undefined' ? achievementManager.consecutiveDays : 0,
+                            dailyBattleDates: typeof achievementManager !== 'undefined' ? [...achievementManager.dailyBattleDates] : []
+                        }
+                    }
+                }
+            };
+
+            // Convert to JSON string
+            const jsonString = JSON.stringify(exportData, null, 2);
+            
+            // Create a blob and download link
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `coaster-ranker-${currentUser}-${new Date().toISOString().split('T')[0]}.json`;
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            // Track export for achievements
+            if (typeof achievementManager !== 'undefined') {
+                achievementManager.recordExport();
+                checkAndShowAchievements();
+            }
+            
+            showToast(`✅ Data exported for ${currentUser}`);
+        } catch (error) {
+            console.error('Export failed:', error);
+            showToast('❌ Export failed. Check console for details.');
+        }
+    }
+
+    // Import user data from a JSON file
+    function importUserData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Reset the file input so the same file can be selected again
+        event.target.value = '';
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importData = JSON.parse(e.target.result);
+                
+                // Validate the import data structure
+                if (!importData.version || !importData.data) {
+                    throw new Error('Invalid file format');
+                }
+
+                // Confirm import (especially if different user)
+                const importUser = importData.user || 'unknown';
+                const confirmMessage = currentUser 
+                    ? `Import data for user "${importUser}"?\n\nThis will overwrite all current data for ${currentUser}.`
+                    : `Import data for user "${importUser}"?`;
+                
+                if (!confirm(confirmMessage)) {
+                    showToast('❌ Import cancelled');
+                    return;
+                }
+
+                // If no user selected, switch to the imported user
+                if (!currentUser && importUser) {
+                    switchUser(importUser);
+                }
+
+                // Restore the data
+                const data = importData.data;
+                
+                if (data.coasterStats) coasterStats = data.coasterStats;
+                if (typeof data.totalBattlesCount === 'number') totalBattlesCount = data.totalBattlesCount;
+                if (Array.isArray(data.coasterHistory)) coasterHistory = data.coasterHistory;
+                if (Array.isArray(data.completedPairs)) completedPairs = new Set(data.completedPairs);
+                
+                // Restore settings
+                if (data.pairingSettings) {
+                    if (typeof data.pairingSettings.explorationPower === 'number') EXPLORATION_POWER = data.pairingSettings.explorationPower;
+                    if (typeof data.pairingSettings.eloProximityPower === 'number') ELO_PROXIMITY_POWER = data.pairingSettings.eloProximityPower;
+                    if (typeof data.pairingSettings.pairingControlsHidden === 'boolean') pairingControlsHidden = data.pairingSettings.pairingControlsHidden;
+                }
+
+                // Restore close battle counters
+                if (data.closeBattleCounters) {
+                    localStorage.setItem(CR_STORAGE_COUNTER, data.closeBattleCounters.counter || '0');
+                    localStorage.setItem(CR_STORAGE_THRESHOLD, data.closeBattleCounters.threshold || '25');
+                }
+
+                // Restore achievements
+                if (data.achievements && typeof achievementManager !== 'undefined') {
+                    // Restore unlocked achievements
+                    if (data.achievements.unlocked) {
+                        achievementManager.unlockedAchievements = new Map(Object.entries(data.achievements.unlocked));
+                    }
+                    
+                    // Restore achievement stats
+                    if (data.achievements.stats) {
+                        const stats = data.achievements.stats;
+                        achievementManager.leftStreak = stats.leftStreak || 0;
+                        achievementManager.rightStreak = stats.rightStreak || 0;
+                        achievementManager.perfectMatches = stats.perfectMatches || 0;
+                        achievementManager.closeFights = stats.closeFights || 0;
+                        achievementManager.sessionBattles = stats.sessionBattles || 0;
+                        achievementManager.lastBattleDate = stats.lastBattleDate || null;
+                        achievementManager.consecutiveDays = stats.consecutiveDays || 0;
+                        achievementManager.dailyBattleDates = new Set(stats.dailyBattleDates || []);
+                    }
+                    
+                    achievementManager.save(currentUser);
+                }
+
+                // Save to localStorage
+                saveData();
+                
+                // Refresh UI
+                updateRanking();
+                displayHistory();
+                displayBattle();
+                applySettingsToUI();
+                updateAchievementsTab();
+                
+                showToast(`✅ Data imported successfully for ${importUser}`);
+            } catch (error) {
+                console.error('Import failed:', error);
+                showToast('❌ Import failed. Invalid file or corrupted data.');
+            }
+        };
+        
+        reader.onerror = function() {
+            showToast('❌ Failed to read file');
+        };
+        
+        reader.readAsText(file);
     }
 
     // User menu (hamburger) toggle and outside-click handling
@@ -600,13 +1047,65 @@ const DOM = {};
                     // update stats
                     const winnerStats = ensureCoasterStats(winner);
                     const loserStats = ensureCoasterStats(loser);
-                    const { newWinnerElo, newLoserElo } = calculateEloAdaptiveFromStats(winnerStats, loserStats);
+                    
+                    // Capture data before battle
+                    const winnerEloBefore = winnerStats.elo;
+                    const loserEloBefore = loserStats.elo;
+                    const winnerRankBefore = getCoasterRank(winner.naam);
+                    const loserRankBefore = getCoasterRank(loser.naam);
+                    const winnerBattlesBefore = winnerStats.battles;
+                    const loserBattlesBefore = loserStats.battles;
+                    
+                    const eloOutcome = calculateEloAdaptiveFromStats(winnerStats, loserStats);
+                    const { newWinnerElo, newLoserElo, K } = eloOutcome;
+                    
+                    // Calculate expected probabilities and potential changes
+                    const expectedWinnerProb = 1 / (1 + Math.pow(10, (loserEloBefore - winnerEloBefore) / 400));
+                    const expectedLoserProb = 1 - expectedWinnerProb;
+                    const winnerPotentialGain = newWinnerElo - winnerEloBefore;
+                    const loserPotentialLoss = newLoserElo - loserEloBefore;
+                    const loserIfWinOutcome = calculateEloAdaptiveFromStats(loserStats, winnerStats);
+                    const loserPotentialGain = loserIfWinOutcome.newWinnerElo - loserEloBefore;
+                    const winnerPotentialLoss = loserIfWinOutcome.newLoserElo - winnerEloBefore;
+                    
                     winnerStats.elo = newWinnerElo; winnerStats.battles++; winnerStats.wins++;
                     loserStats.elo = newLoserElo; loserStats.battles++; loserStats.losses++;
                     totalBattlesCount++;
+                    
+                    // Get ranks after battle
+                    const winnerRankAfter = getCoasterRank(winner.naam);
+                    const loserRankAfter = getCoasterRank(loser.naam);
+                    const wasCloseMatch = Math.abs(winnerRankBefore - loserRankBefore) < 3;
+                    
+                    // Build comprehensive battle stats
+                    const battleStats = {
+                        statsA: {
+                            eloBefore: (pair[0].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
+                            eloAfter: (pair[0].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
+                            kFactor: K,
+                            potentialGain: (pair[0].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
+                            potentialLoss: (pair[0].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
+                            rankBefore: (pair[0].naam === winner.naam) ? winnerRankBefore : loserRankBefore,
+                            rankAfter: (pair[0].naam === winner.naam) ? winnerRankAfter : loserRankAfter,
+                            expectedWinProbability: (pair[0].naam === winner.naam) ? expectedWinnerProb : expectedLoserProb,
+                            totalBattlesBefore: (pair[0].naam === winner.naam) ? winnerBattlesBefore : loserBattlesBefore
+                        },
+                        statsB: {
+                            eloBefore: (pair[1].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
+                            eloAfter: (pair[1].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
+                            kFactor: K,
+                            potentialGain: (pair[1].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
+                            potentialLoss: (pair[1].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
+                            rankBefore: (pair[1].naam === winner.naam) ? winnerRankBefore : loserRankBefore,
+                            rankAfter: (pair[1].naam === winner.naam) ? winnerRankAfter : loserRankAfter,
+                            expectedWinProbability: (pair[1].naam === winner.naam) ? expectedWinnerProb : expectedLoserProb,
+                            totalBattlesBefore: (pair[1].naam === winner.naam) ? winnerBattlesBefore : loserBattlesBefore
+                        },
+                        closeFight: wasCloseMatch
+                    };
 
                     // record battle (keeps completedPairs) — skip immediate save to batch at the end
-                    recordBattle(pair[0], pair[1], winner.naam, loser.naam, { skipSave: true });
+                    recordBattle(pair[0], pair[1], winner.naam, loser.naam, { skipSave: true, battleStats });
 
                     simulated++;
                     if (progressCallback && (simulated % 10 === 0)) progressCallback(simulated, count);
@@ -626,7 +1125,7 @@ const DOM = {};
         const battleContainer = DOM.battleContainer || $id('battleContainer');
         if (!battleContainer) return;
         // remove existing overlays
-        battleContainer.querySelectorAll('.dev-data-side, .dev-data-inline').forEach(n => n.remove());
+        battleContainer.querySelectorAll('.dev-data-overlay').forEach(n => n.remove());
 
         if (!devShowData) return;
         if (!currentBattle || currentBattle.length < 2) return;
@@ -668,32 +1167,19 @@ const DOM = {};
             <div><strong>Losses:</strong> ${rightStats.losses}</div>
         `;
 
-        if (window.innerWidth > 600) {
-            // desktop: absolute side boxes
-            const leftBox = document.createElement('div');
-            leftBox.className = 'dev-data dev-data-side left';
-            leftBox.innerHTML = devLeftHtml;
-            const rightBox = document.createElement('div');
-            rightBox.className = 'dev-data dev-data-side right';
-            rightBox.innerHTML = devRightHtml;
-            battleContainer.appendChild(leftBox);
-            battleContainer.appendChild(rightBox);
-            setTimeout(positionDevData, 0);
-        } else {
-            // mobile: inline under each card
-            const items = battleContainer.querySelectorAll('.coaster-item');
-            if (items[0]) {
-                const leftInline = document.createElement('div');
-                leftInline.className = 'dev-data dev-data-inline';
-                leftInline.innerHTML = devLeftHtml;
-                items[0].appendChild(leftInline);
-            }
-            if (items[1]) {
-                const rightInline = document.createElement('div');
-                rightInline.className = 'dev-data dev-data-inline';
-                rightInline.innerHTML = devRightHtml;
-                items[1].appendChild(rightInline);
-            }
+        // Place overlay inside coaster cards, over the images
+        const cards = battleContainer.querySelectorAll('.coaster-card');
+        if (cards[0]) {
+            const leftOverlay = document.createElement('div');
+            leftOverlay.className = 'dev-data-overlay';
+            leftOverlay.innerHTML = devLeftHtml;
+            cards[0].appendChild(leftOverlay);
+        }
+        if (cards[1]) {
+            const rightOverlay = document.createElement('div');
+            rightOverlay.className = 'dev-data-overlay';
+            rightOverlay.innerHTML = devRightHtml;
+            cards[1].appendChild(rightOverlay);
         }
     }
 
@@ -732,78 +1218,23 @@ const DOM = {};
         if (ev.key === 'Escape') { closeUserMenu(); closeDevMenu(); }
     });
 
-    // Floating help tooltip logic (delayed show, follows cursor)
-    (function setupFloatingHelp(){
-        const tooltip = document.createElement('div');
-        tooltip.className = 'floating-help';
-        document.body.appendChild(tooltip);
-
-        let showTimer = null;
-        let visible = false;
-
-        function show(text, x, y) {
-            tooltip.textContent = text;
-            tooltip.style.left = x + 'px';
-            tooltip.style.top = (y + 18) + 'px';
-            tooltip.classList.add('show');
-            visible = true;
-        }
-
-        function move(x, y) {
-            tooltip.style.left = x + 'px';
-            tooltip.style.top = (y + 18) + 'px';
-        }
-
-        function hide() {
-            tooltip.classList.remove('show');
-            visible = false;
-            clearTimeout(showTimer);
-            showTimer = null;
-        }
-
-        // attach handlers to pair-option buttons
-        const buttons = document.querySelectorAll('.pair-option');
-        buttons.forEach(btn => {
-            let localTimer = null;
-            const help = btn.getAttribute('data-help') || '';
-
-            const onEnter = (ev) => {
-                // start delayed show (1s)
-                localTimer = setTimeout(() => {
-                    show(help, ev.clientX, ev.clientY);
-                }, 1000);
-                btn._localTimer = localTimer;
-            };
-
-            const onMove = (ev) => {
-                if (visible) move(ev.clientX, ev.clientY);
-            };
-
-            const onLeave = () => {
-                if (btn._localTimer) { clearTimeout(btn._localTimer); btn._localTimer = null; }
-                hide();
-            };
-
-            btn.addEventListener('mouseenter', onEnter);
-            btn.addEventListener('mousemove', onMove);
-            btn.addEventListener('mouseleave', onLeave);
-
-            // also hide on click
-            btn.addEventListener('click', () => { if (btn._localTimer) { clearTimeout(btn._localTimer); btn._localTimer = null; } hide(); });
-        });
-
-        // hide tooltip on scroll or resize
-        window.addEventListener('scroll', hide, { passive: true });
-        window.addEventListener('resize', hide);
-    })();
-
     // utility to make an unordered pair key (same for [A,B] and [B,A])
     function pairKey(nameA, nameB) {
         return [nameA, nameB].sort().join('|||');
     }
 
+    // Helper function to get the rank/position of a coaster by name
+    function getCoasterRank(coasterName) {
+        if (!coasterName || !coasterStats[coasterName]) return null;
+        
+        const statsArray = Object.values(coasterStats);
+        const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+        
+        return sorted.findIndex(c => c.name === coasterName) + 1;
+    }
+
     // helper: record a battle into history
-    function recordBattle(a, b, winnerName, loserName, { skipSave = false } = {}) {
+    function recordBattle(a, b, winnerName, loserName, { skipSave = false, battleStats = null } = {}) {
         const key = pairKey(a.naam, b.naam);
         const entry = {
             pairKey: key,
@@ -816,6 +1247,14 @@ const DOM = {};
             timestamp: new Date().toISOString(),
             seed: (typeof seedNumber !== 'undefined') ? seedNumber : null
         };
+        
+        // Add comprehensive battle stats if provided
+        if (battleStats) {
+            entry.statsA = battleStats.statsA;
+            entry.statsB = battleStats.statsB;
+            entry.closeFight = battleStats.closeFight;
+        }
+        
         coasterHistory.push(entry);
         
         // Mark this pair as completed
@@ -884,39 +1323,7 @@ const DOM = {};
                     return arr.length - 1;
                 };
 
-                // strategy implementations
-                if (PAIRING_STRATEGY === 'uniform') {
-                    // simple uniform sampling attempts avoiding recent
-                    for (let t = 0; t < attempts; t++) {
-                        const i = Math.floor(randomFn() * length);
-                        let j = Math.floor(randomFn() * length);
-                        if (length > 1) {
-                            let guard = 0;
-                            while (j === i && guard++ < 8) j = Math.floor(randomFn() * length);
-                            if (j === i) j = (i + 1) % length;
-                        }
-                        const a = coasters[i], b = coasters[j];
-                        const key = pairKey(a.naam, b.naam);
-                        if (!recent.has(key)) return [a, b];
-                    }
-                } else if (PAIRING_STRATEGY === 'exploration') {
-                    // both selected from exploration-weighted distribution
-                    const indexFromExploration = () => sampleIndexFromWeights(weights, randomFn);
-                    for (let t = 0; t < attempts; t++) {
-                        const i = indexFromExploration();
-                        let j = indexFromExploration();
-                        if (length > 1) {
-                            let guard = 0;
-                            while (j === i && guard++ < 8) j = indexFromExploration();
-                            if (j === i) j = (i + 1) % length;
-                        }
-                        const a = coasters[i], b = coasters[j];
-                        const key = pairKey(a.naam, b.naam);
-                        if (!completedPairs.has(key)) return [a, b];
-                    }
-                }
-
-                // default/hybrid: pick one under-sampled coaster first, then a second biased by ELO-proximity
+                // Hybrid strategy: pick one under-sampled coaster first, then a second biased by ELO-proximity
                 // (still favors under-sampled ones via base weights)
                 const indexFromExploration = () => sampleIndexFromWeights(weights, randomFn);
                 for (let t = 0; t < attempts; t++) {
@@ -1493,18 +1900,26 @@ const DOM = {};
             <div><strong>Losses:</strong> ${rightStats.losses}</div>
         `;
         
+        // Check for matching park or manufacturer
+        const matchingPark = left.park && right.park && left.park.toLowerCase() === right.park.toLowerCase();
+        const matchingFabrikant = left.fabrikant && right.fabrikant && left.fabrikant.toLowerCase() === right.fabrikant.toLowerCase();
+        const parkClass = matchingPark ? 'match-highlight' : '';
+        const fabrikantClass = matchingFabrikant ? 'match-highlight' : '';
+        
         // Render only the cards; dev-data will be positioned separately (desktop) or in-flow (mobile)
         battleContainer.innerHTML = `
             <div class="coaster-item">
                 <div class="coaster-card left-card" onclick="chooseWinner(0)">
-                    <div class="coaster-image">IMG</div>
+                    <div class="coaster-image">
+                        <img class="coaster-img" src="${getPlaceholderImage()}" alt="${escapeHtml(left.naam)}" data-coaster-index="0" />
+                    </div>
                     <div class="coaster-rank-badge">${rank1}</div>
                     <div class="coaster-content">
                         <div class="coaster-name">${left.naam}</div>
                         <div class="coaster-subtitle">
-                            <span>${left.park}</span>
+                            <span class="${parkClass}">${left.park}</span>
                             <span class="separator">•</span>
-                            <span>${left.fabrikant}</span>
+                            <span class="${fabrikantClass}">${left.fabrikant}</span>
                         </div>
                     </div>
                 </div>
@@ -1512,19 +1927,32 @@ const DOM = {};
             
             <div class="coaster-item">
                 <div class="coaster-card right-card" onclick="chooseWinner(1)">
-                    <div class="coaster-image">IMG</div>
+                    <div class="coaster-image">
+                        <img class="coaster-img" src="${getPlaceholderImage()}" alt="${escapeHtml(right.naam)}" data-coaster-index="1" />
+                    </div>
                     <div class="coaster-rank-badge">${rank2}</div>
                     <div class="coaster-content">
                         <div class="coaster-name">${right.naam}</div>
                         <div class="coaster-subtitle">
-                            <span>${right.park}</span>
+                            <span class="${parkClass}">${right.park}</span>
                             <span class="separator">•</span>
-                            <span>${right.fabrikant}</span>
+                            <span class="${fabrikantClass}">${right.fabrikant}</span>
                         </div>
                     </div>
                 </div>
             </div>
         `;
+
+        // Load images asynchronously after rendering
+        getCoasterImage(left).then(url => {
+            const img = document.querySelector('img[data-coaster-index="0"]');
+            if (img) img.src = url;
+        }).catch(e => console.warn('Failed to load left image:', e));
+        
+        getCoasterImage(right).then(url => {
+            const img = document.querySelector('img[data-coaster-index="1"]');
+            if (img) img.src = url;
+        }).catch(e => console.warn('Failed to load right image:', e));
 
         // If this matchup qualifies as a close fight, play the intro animation
         const getRankingNum = (coasterName) => {
@@ -1606,9 +2034,26 @@ const DOM = {};
         const winnerStats = ensureCoasterStats(winner) || { elo:1500, battles:0, wins:0, losses:0 };
         const loserStats = ensureCoasterStats(loser) || { elo:1500, battles:0, wins:0, losses:0 };
 
-        // compute ELO outcome
+        // Capture ELO values BEFORE battle
+        const winnerEloBefore = winnerStats.elo;
+        const loserEloBefore = loserStats.elo;
+
+        // compute ELO outcome and potential changes
         const eloOutcome = calculateEloAdaptiveFromStats(winnerStats, loserStats);
-        const { newWinnerElo, newLoserElo } = eloOutcome;
+        const { newWinnerElo, newLoserElo, K } = eloOutcome;
+        
+        // Calculate expected win probabilities
+        const expectedWinnerProb = 1 / (1 + Math.pow(10, (loserEloBefore - winnerEloBefore) / 400));
+        const expectedLoserProb = 1 - expectedWinnerProb;
+        
+        // Calculate potential gains/losses for both outcomes
+        const winnerPotentialGain = newWinnerElo - winnerEloBefore;
+        const loserPotentialLoss = newLoserElo - loserEloBefore;
+        
+        // Calculate what would happen if loser won instead
+        const loserIfWinOutcome = calculateEloAdaptiveFromStats(loserStats, winnerStats);
+        const loserPotentialGain = loserIfWinOutcome.newWinnerElo - loserEloBefore;
+        const winnerPotentialLoss = loserIfWinOutcome.newLoserElo - winnerEloBefore;
 
         const winnerId = getCoasterId(winner);
 
@@ -1629,24 +2074,61 @@ const DOM = {};
             loserStats.battles++; loserStats.losses++;
             totalBattlesCount++;
 
-            // record and persist
-            recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam);
-            // mark the most recently recorded history entry as a close fight when applicable
-            try {
-                const wasCloseMatchFlag = Math.abs(oldWinnerRank - oldLoserRank) < 3;
-                if (coasterHistory && coasterHistory.length > 0) {
-                    coasterHistory[coasterHistory.length - 1].closeFight = !!wasCloseMatchFlag;
-                }
-            } catch (e) { /* ignore */ }
+            // Get ranks after ELO changes
+            const newWinnerRank = getRanking(winner.naam);
+            const newLoserRank = getRanking(loser.naam);
+            
+            // Determine if this was a close fight
+            const wasCloseMatchFlag = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            
+            // Build comprehensive battle stats for storage
+            const battleStats = {
+                statsA: {
+                    eloBefore: (currentBattle[0].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
+                    eloAfter: (currentBattle[0].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
+                    kFactor: K,
+                    potentialGain: (currentBattle[0].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
+                    potentialLoss: (currentBattle[0].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
+                    rankBefore: (currentBattle[0].naam === winner.naam) ? oldWinnerRank : oldLoserRank,
+                    rankAfter: (currentBattle[0].naam === winner.naam) ? newWinnerRank : newLoserRank,
+                    expectedWinProbability: (currentBattle[0].naam === winner.naam) ? expectedWinnerProb : expectedLoserProb,
+                    totalBattlesBefore: (currentBattle[0].naam === winner.naam) ? winnerStats.battles - 1 : loserStats.battles - 1
+                },
+                statsB: {
+                    eloBefore: (currentBattle[1].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
+                    eloAfter: (currentBattle[1].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
+                    kFactor: K,
+                    potentialGain: (currentBattle[1].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
+                    potentialLoss: (currentBattle[1].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
+                    rankBefore: (currentBattle[1].naam === winner.naam) ? oldWinnerRank : oldLoserRank,
+                    rankAfter: (currentBattle[1].naam === winner.naam) ? newWinnerRank : newLoserRank,
+                    expectedWinProbability: (currentBattle[1].naam === winner.naam) ? expectedWinnerProb : expectedLoserProb,
+                    totalBattlesBefore: (currentBattle[1].naam === winner.naam) ? winnerStats.battles - 1 : loserStats.battles - 1
+                },
+                closeFight: wasCloseMatchFlag
+            };
+
+            // record and persist with comprehensive stats
+            recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam, { battleStats });
             saveData();
+
+            // Track for achievements
+            const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            const perfectMatch = (winner.park === loser.park) && 
+                               (winner.fabrikant === loser.fabrikant) &&
+                               winner.park && loser.park && 
+                               winner.fabrikant && loser.fabrikant;
+            
+            if (typeof achievementManager !== 'undefined') {
+                achievementManager.recordBattle(index, perfectMatch, wasCloseFight, currentBattle[0].naam, currentBattle[1].naam);
+            }
 
             // Visual feedback on cards
             const cards = document.querySelectorAll('.coaster-card');
             if (cards[index]) cards[index].classList.add('winner');
             if (cards[1 - index]) cards[1 - index].classList.add('loser');
 
-            // compute ranks after update
-            const newWinnerRank = getRanking(winner.naam);
+            // compute rank change (newWinnerRank already calculated above)
             const rankChange = oldWinnerRank - newWinnerRank; // positive = climbed
 
             if (rankChange > 0) {
@@ -1660,7 +2142,7 @@ const DOM = {};
             // refresh ranking table and animate swap if the relative ordering changed between these two
             updateRanking();
             // if winner and loser switched relative order compared to before, animate swap
-            const newLoserRank = getRanking(loser.naam);
+            // (newWinnerRank and newLoserRank already calculated above)
             const wasWinnerBelow = oldWinnerRank > oldLoserRank;
             const nowWinnerAbove = newWinnerRank < newLoserRank;
             if (wasWinnerBelow && nowWinnerAbove) {
@@ -1689,20 +2171,29 @@ const DOM = {};
 
                 const cardEl = (document.querySelectorAll('.coaster-card') || [])[index];
                 celebrateWinner(cardEl, winner.naam).then(()=>{
+                    // Check achievements after celebration
+                    checkAndShowAchievements();
                     // small pause then continue
                     setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 220);
                 });
             } else {
                 // delay before next battle: celebrate longer if we triggered epic
                 const DELAY = triggered ? 1800 : 1500;
-                setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, DELAY);
+                setTimeout(()=>{ 
+                    try{ restoreVsDivider(); }catch(e){} 
+                    displayBattle(); 
+                    isProcessingChoice = false; 
+                    resolvingBattle = false;
+                    // Check achievements after battle completes
+                    checkAndShowAchievements();
+                }, DELAY);
             }
         }).catch((e)=>{
             console.error('close-battle flow error', e);
-            // fallback apply normally
+            // fallback apply normally (without comprehensive stats since this is error recovery)
             winnerStats.elo = newWinnerElo; loserStats.elo = newLoserElo;
             winnerStats.battles++; winnerStats.wins++; loserStats.battles++; loserStats.losses++; totalBattlesCount++;
-            recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam);
+            recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam); // Basic record without stats
             saveData(); updateRanking(); displayBattle(); isProcessingChoice = false;
             resolvingBattle = false;
         });
@@ -1712,14 +2203,32 @@ const DOM = {};
     document.addEventListener('keydown', (event) => {
         if (!currentUser) return;
         
+        // Number key navigation (1-4 for tabs)
+        if (['1', '2', '3', '4'].includes(event.key)) {
+            event.preventDefault();
+            const tabMap = {
+                '1': 'battle',
+                '2': 'ranking',
+                '3': 'history',
+                '4': 'achievements'
+            };
+            achievementManager.usedNumberKeys = 1;
+            switchTab(tabMap[event.key]);
+            achievementManager.save(currentUser);
+            checkAndShowAchievements();
+            return;
+        }
+        
         const battleTab = document.getElementById('battle-tab');
         if (!battleTab.classList.contains('active')) return;
         
         if (event.key === 'ArrowLeft') {
             event.preventDefault();
+            achievementManager.usedKeyboard = 1;
             chooseWinner(0);
         } else if (event.key === 'ArrowRight') {
             event.preventDefault();
+            achievementManager.usedKeyboard = 1;
             chooseWinner(1);
         }
     });
@@ -1754,6 +2263,16 @@ const DOM = {};
         } catch (e) {
             // ensure the battle view is consistent even if loadCoasterData throws
             try { displayBattle(); } catch (ee) {}
+        }
+
+        // Initialize achievements display if a user was previously selected
+        const lastUser = localStorage.getItem('lastUser');
+        if (lastUser && typeof achievementManager !== 'undefined') {
+            setTimeout(() => {
+                if (currentUser) {
+                    updateAchievementsTab();
+                }
+            }, 100);
         }
 
         // Dev toggle uses inline onclick; no extra listener needed here.
@@ -1802,7 +2321,14 @@ const DOM = {};
         document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
         });
-        try { event.target.classList.add('active'); } catch (e) {}
+        
+        // Find and activate the corresponding tab button
+        const tabButtons = document.querySelectorAll('.tab');
+        const tabMap = ['battle', 'ranking', 'history', 'achievements'];
+        const tabIndex = tabMap.indexOf(tabName);
+        if (tabIndex >= 0 && tabButtons[tabIndex]) {
+            tabButtons[tabIndex].classList.add('active');
+        }
         
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.remove('active');
@@ -1824,6 +2350,12 @@ const DOM = {};
             updateRanking();
         } else if (tabName === 'history') {
             displayHistory();
+        } else if (tabName === 'achievements') {
+            console.log('Switching to achievements tab');
+            const achievementsTab = document.getElementById('achievements-tab');
+            console.log('Achievements tab element:', achievementsTab);
+            console.log('Achievements tab has active class:', achievementsTab ? achievementsTab.classList.contains('active') : 'element not found');
+            updateAchievementsTab();
         }
     }
 
@@ -2085,34 +2617,164 @@ const DOM = {};
         const entry = coasterHistory[index];
         const oldWinner = entry.winner;
         const newWinner = (entry.winner === entry.a) ? entry.b : entry.a;
+        const oldLoser = newWinner; // The new winner was the old loser
+        
+        console.log('=== SWITCHING WINNER ===');
+        console.log('Old winner:', oldWinner);
+        console.log('New winner:', newWinner);
+        
+        // Get current ranks before switching
+        const oldWinnerRankBefore = getCoasterRank(oldWinner);
+        const newWinnerRankBefore = getCoasterRank(newWinner);
+        
+        console.log('Current ranks before switch:', {
+            [oldWinner]: oldWinnerRankBefore,
+            [newWinner]: newWinnerRankBefore
+        });
         
         // Update the winner in the history entry
         entry.winner = newWinner;
+        entry.loser = oldWinner;
         
         // Update ELO ratings by reversing the previous outcome
-        // First, reverse the old result
         const winnerStats = coasterStats[oldWinner];
         const loserStats = coasterStats[newWinner];
         
-            if (winnerStats && loserStats) {
+        if (winnerStats && loserStats && entry.statsA && entry.statsB) {
+            console.log('Current ELO before restoration:', {
+                [oldWinner]: winnerStats.elo,
+                [newWinner]: loserStats.elo
+            });
+            
+            // Restore ELO to BEFORE this battle happened (to avoid compounding errors)
+            const aStats = coasterStats[entry.a];
+            const bStats = coasterStats[entry.b];
+            
+            if (aStats && bStats) {
+                aStats.elo = entry.statsA.eloBefore;
+                bStats.elo = entry.statsB.eloBefore;
+                
+                console.log('Restored ELO to pre-battle state:', {
+                    [entry.a]: aStats.elo,
+                    [entry.b]: bStats.elo
+                });
+            }
+            
             // Reverse old outcome
             winnerStats.wins--;
             loserStats.losses--;
+            
+            console.log('Reversed win/loss counts:', {
+                [oldWinner]: { wins: winnerStats.wins, losses: winnerStats.losses },
+                [newWinner]: { wins: loserStats.wins, losses: loserStats.losses }
+            });
             
             // Apply new outcome
             loserStats.wins++;
             winnerStats.losses++;
             
-            // Recalculate ELO (swap who won)
-                const { newWinnerElo, newLoserElo } = calculateEloAdaptiveFromStats(loserStats, winnerStats);
-                loserStats.elo = newWinnerElo;
-                winnerStats.elo = newLoserElo;
+            console.log('Applied new outcome:', {
+                [oldWinner]: { wins: winnerStats.wins, losses: winnerStats.losses },
+                [newWinner]: { wins: loserStats.wins, losses: loserStats.losses }
+            });
+            
+            // Now recalculate ELO from the original before-battle state with new winner
+            const newWinnerStats = coasterStats[newWinner];
+            const oldWinnerStats = coasterStats[oldWinner];
+            
+            const eloOutcome = calculateEloAdaptiveFromStats(newWinnerStats, oldWinnerStats);
+            const { newWinnerElo, newLoserElo, K } = eloOutcome;
+            
+            console.log('Recalculated ELO:', {
+                kFactor: K,
+                [newWinner]: `${newWinnerStats.elo} → ${newWinnerElo}`,
+                [oldWinner]: `${oldWinnerStats.elo} → ${newLoserElo}`
+            });
+            
+            newWinnerStats.elo = newWinnerElo;
+            oldWinnerStats.elo = newLoserElo;
+            
+            // Update comprehensive battle stats if they exist
+            if (entry.statsA && entry.statsB) {
+                // Get new ranks after switching
+                const oldWinnerRankAfter = getCoasterRank(oldWinner);
+                const newWinnerRankAfter = getCoasterRank(newWinner);
+                
+                // Swap the winner/loser data in statsA and statsB
+                const isAtheNewWinner = (entry.a === newWinner);
+                
+                // Store original values before swapping
+                const origStatsA = {
+                    potentialGain: entry.statsA.potentialGain,
+                    potentialLoss: entry.statsA.potentialLoss
+                };
+                const origStatsB = {
+                    potentialGain: entry.statsB.potentialGain,
+                    potentialLoss: entry.statsB.potentialLoss
+                };
+                
+                if (isAtheNewWinner) {
+                    // A is now winner, B is now loser - update their after-battle values
+                    entry.statsA.eloAfter = newWinnerStats.elo;
+                    entry.statsA.rankAfter = newWinnerRankAfter;
+                    // Swap: A's new potentialGain/Loss comes from B's old values
+                    entry.statsA.potentialGain = origStatsB.potentialGain;
+                    entry.statsA.potentialLoss = origStatsB.potentialLoss;
+                    
+                    entry.statsB.eloAfter = oldWinnerStats.elo;
+                    entry.statsB.rankAfter = oldWinnerRankAfter;
+                    // Swap: B's new potentialGain/Loss comes from A's old values
+                    entry.statsB.potentialGain = origStatsA.potentialGain;
+                    entry.statsB.potentialLoss = origStatsA.potentialLoss;
+                } else {
+                    // B is now winner, A is now loser
+                    entry.statsB.eloAfter = newWinnerStats.elo;
+                    entry.statsB.rankAfter = newWinnerRankAfter;
+                    // Swap: B's new potentialGain/Loss comes from A's old values
+                    entry.statsB.potentialGain = origStatsA.potentialGain;
+                    entry.statsB.potentialLoss = origStatsA.potentialLoss;
+                    
+                    entry.statsA.eloAfter = oldWinnerStats.elo;
+                    entry.statsA.rankAfter = oldWinnerRankAfter;
+                    // Swap: A's new potentialGain/Loss comes from B's old values
+                    entry.statsA.potentialGain = origStatsB.potentialGain;
+                    entry.statsA.potentialLoss = origStatsB.potentialLoss;
+                }
+                
+                console.log('Updated battle stats:', {
+                    statsA: {
+                        name: entry.a,
+                        eloAfter: entry.statsA.eloAfter,
+                        rankAfter: entry.statsA.rankAfter,
+                        potentialGain: entry.statsA.potentialGain,
+                        potentialLoss: entry.statsA.potentialLoss
+                    },
+                    statsB: {
+                        name: entry.b,
+                        eloAfter: entry.statsB.eloAfter,
+                        rankAfter: entry.statsB.rankAfter,
+                        potentialGain: entry.statsB.potentialGain,
+                        potentialLoss: entry.statsB.potentialLoss
+                    }
+                });
+            }
         }
         
         saveData();
         displayHistory();
         updateRanking();
         
+        // Get new ranks after switching for toast message
+        const oldWinnerRankAfter = getCoasterRank(oldWinner);
+        const newWinnerRankAfter = getCoasterRank(newWinner);
+        
+        console.log('Final ranks after switch:', {
+            [oldWinner]: oldWinnerRankAfter,
+            [newWinner]: newWinnerRankAfter
+        });
+        console.log('=== SWITCH COMPLETE ===\n');
+        
+        // Simple toast message
         showToast(`Winner switched: ${newWinner} now wins against ${oldWinner}`);
     }
 
@@ -2171,6 +2833,217 @@ const DOM = {};
         URL.revokeObjectURL(url);
     }
 
+    // Ranking Wizard: Recalculate all battles using current K-factors to correct for "lucky start"
+    async function runRankingWizard() {
+        if (!currentUser) {
+            alert('Select a user first!');
+            return;
+        }
+        
+        if (!coasterHistory || coasterHistory.length === 0) {
+            alert('No battle history to recalculate!');
+            return;
+        }
+        
+        console.log('🧙 === RANKING WIZARD STARTED ===');
+        console.log(`Total battles to recalculate: ${coasterHistory.length}`);
+        
+        const progressEl = document.getElementById('rankingWizardProgress');
+        const wizardBtn = document.getElementById('rankingWizardBtn');
+        
+        if (wizardBtn) wizardBtn.disabled = true;
+        
+        let totalIterations = 0;
+        let totalChanges = 0;
+        const startTime = performance.now();
+        
+        try {
+            // Keep running iterations until no coasters change position
+            while (true) {
+                totalIterations++;
+                console.log(`\n🧙 === ITERATION ${totalIterations} ===`);
+                
+                // Capture ranking positions before recalculation
+                const ranksBefore = {};
+                Object.values(coasterStats).forEach(stats => {
+                    ranksBefore[stats.name] = getCoasterRank(stats.name);
+                });
+                
+                if (progressEl) {
+                    progressEl.style.display = 'block';
+                    progressEl.textContent = `Iteration ${totalIterations}...`;
+                }
+                
+                // Process each battle in chronological order
+                for (let i = 0; i < coasterHistory.length; i++) {
+                const entry = coasterHistory[i];
+                const winner = entry.winner;
+                const loser = entry.loser || (entry.winner === entry.a ? entry.b : entry.a);
+                
+                // Skip battles without comprehensive stats (from before the update)
+                if (!entry.statsA || !entry.statsB) {
+                    console.log(`Battle ${i+1}: Missing statsA/statsB (old battle), skipping...`);
+                    continue;
+                }
+                
+                // Get stats (they should exist, but check anyway)
+                const winnerStats = coasterStats[winner];
+                const loserStats = coasterStats[loser];
+                
+                if (!winnerStats || !loserStats) {
+                    console.warn(`Battle ${i+1}: Missing stats for ${winner} or ${loser}, skipping...`);
+                    continue;
+                }
+                
+                // Step A: Restore ELO to BEFORE this battle by reversing the old outcome
+                // Get the old potential gains/losses from stored stats
+                const winnerOldPotentialGain = entry.statsA && entry.a === winner ? entry.statsA.potentialGain : 
+                                              entry.statsB && entry.b === winner ? entry.statsB.potentialGain : 0;
+                const loserOldPotentialLoss = entry.statsA && entry.a === loser ? entry.statsA.potentialLoss : 
+                                              entry.statsB && entry.b === loser ? entry.statsB.potentialLoss : 0;
+                
+                // Reverse the old ELO changes to get eloBefore
+                const winnerEloBefore = winnerStats.elo - winnerOldPotentialGain;
+                const loserEloBefore = loserStats.elo - loserOldPotentialLoss;
+                
+                // Get current battle counts (this represents how many battles they had BEFORE this one)
+                const winnerBattlesBefore = entry.statsA && entry.a === winner ? entry.statsA.totalBattlesBefore : 
+                                           entry.statsB && entry.b === winner ? entry.statsB.totalBattlesBefore : 
+                                           winnerStats.battles - 1;
+                const loserBattlesBefore = entry.statsA && entry.a === loser ? entry.statsA.totalBattlesBefore : 
+                                          entry.statsB && entry.b === loser ? entry.statsB.totalBattlesBefore : 
+                                          loserStats.battles - 1;
+                
+                // Calculate K-factors based on battles at that time
+                const winnerK = computeAdaptiveK(winnerBattlesBefore);
+                const loserK = computeAdaptiveK(loserBattlesBefore);
+                const K = Math.max(winnerK, loserK);
+                
+                // Calculate expected probabilities with the restored eloBefore values
+                const expectedWinner = 1 / (1 + Math.pow(10, (loserEloBefore - winnerEloBefore) / 400));
+                const expectedLoser = 1 - expectedWinner;
+                
+                // Calculate new ELO with current K-factors
+                const newWinnerElo = winnerEloBefore + K * (1 - expectedWinner);
+                const newLoserElo = loserEloBefore + K * (0 - expectedLoser);
+                
+                // Apply new ELO
+                winnerStats.elo = newWinnerElo;
+                loserStats.elo = newLoserElo;
+                
+                // Update the global ELO state for subsequent battles
+                // This ensures the next battle uses the recalculated values
+                
+                // Get new ranks
+                const winnerRankAfter = getCoasterRank(winner);
+                const loserRankAfter = getCoasterRank(loser);
+                
+                // Calculate potential gains/losses (needed for logging and stats update)
+                const winnerPotentialGain = newWinnerElo - winnerEloBefore;
+                const loserPotentialLoss = newLoserElo - loserEloBefore;
+                
+                // Calculate what would have happened if outcome was reversed
+                const loserIfWinElo = loserEloBefore + K * (1 - expectedLoser);
+                const winnerIfLoseElo = winnerEloBefore + K * (0 - expectedWinner);
+                const loserPotentialGain = loserIfWinElo - loserEloBefore;
+                const winnerPotentialLoss = winnerIfLoseElo - winnerEloBefore;
+                
+                // Update battle stats in history if they exist
+                if (entry.statsA && entry.statsB) {
+                    const isAWinner = (entry.a === winner);
+                    
+                    // Update eloBefore with the restored values
+                    entry.statsA.eloBefore = (entry.a === winner) ? winnerEloBefore : loserEloBefore;
+                    entry.statsB.eloBefore = (entry.b === winner) ? winnerEloBefore : loserEloBefore;
+                    
+                    // Update eloAfter with recalculated values
+                    entry.statsA.eloAfter = (entry.a === winner) ? newWinnerElo : newLoserElo;
+                    entry.statsB.eloAfter = (entry.b === winner) ? newWinnerElo : newLoserElo;
+                    
+                    // Update K-factor
+                    entry.statsA.kFactor = K;
+                    entry.statsB.kFactor = K;
+                    
+                    // Update ranks
+                    entry.statsA.rankAfter = (entry.a === winner) ? winnerRankAfter : loserRankAfter;
+                    entry.statsB.rankAfter = (entry.b === winner) ? winnerRankAfter : loserRankAfter;
+                    
+                    // Store potential gains/losses
+                    entry.statsA.potentialGain = (entry.a === winner) ? winnerPotentialGain : loserPotentialGain;
+                    entry.statsA.potentialLoss = (entry.a === winner) ? winnerPotentialLoss : loserPotentialLoss;
+                    entry.statsB.potentialGain = (entry.b === winner) ? winnerPotentialGain : loserPotentialGain;
+                    entry.statsB.potentialLoss = (entry.b === winner) ? winnerPotentialLoss : loserPotentialLoss;
+                }
+                
+                // Update progress every 50 battles
+                if (progressEl && (i + 1) % 50 === 0) {
+                    progressEl.textContent = `Iteration ${totalIterations}: Processing battle ${i + 1}/${coasterHistory.length}...`;
+                    await new Promise(resolve => setTimeout(resolve, 0)); // Yield to UI
+                }
+            }
+            
+            // Save and update UI after each iteration
+            saveData();
+            updateRanking();
+            
+            // Count how many coasters changed ranking positions in this iteration
+            let changedPositions = 0;
+            Object.values(coasterStats).forEach(stats => {
+                const rankAfter = getCoasterRank(stats.name);
+                const rankBefore = ranksBefore[stats.name];
+                if (rankBefore !== rankAfter) {
+                    changedPositions++;
+                    console.log(`${stats.name}: #${rankBefore} → #${rankAfter}`);
+                }
+            });
+            
+            totalChanges += changedPositions;
+            console.log(`🧙 Iteration ${totalIterations} complete: ${changedPositions} coasters changed position.`);
+            
+            // If no changes, we're done
+            if (changedPositions === 0) {
+                console.log('🧙 No more changes detected. Wizard converged!');
+                break;
+            }
+            
+            // Small delay between iterations for UI updates
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // Calculate total time
+        const endTime = performance.now();
+        const totalTime = ((endTime - startTime) / 1000).toFixed(2); // Convert to seconds
+        
+        // Final summary
+        if (progressEl) {
+            progressEl.textContent = `✅ Complete! ${totalIterations} iteration${totalIterations !== 1 ? 's' : ''}, ${totalChanges} total changes.`;
+            setTimeout(() => {
+                progressEl.style.display = 'none';
+                progressEl.textContent = '';
+            }, 3000);
+        }
+        
+        console.log('🧙 === RANKING WIZARD COMPLETE ===');
+        console.log(`Completed ${totalIterations} iterations with ${totalChanges} total ranking changes.`);
+        console.log(`⏱️ Total calculation time: ${totalTime}s`);
+        
+        showToast(`🧙 Wizard complete! ${totalIterations} iteration${totalIterations !== 1 ? 's' : ''}, ${totalChanges} change${totalChanges !== 1 ? 's' : ''} in ${totalTime}s.`, 3500);
+            
+        } catch (error) {
+            console.error('Ranking Wizard error:', error);
+            if (progressEl) {
+                progressEl.textContent = '❌ Error during recalculation';
+                progressEl.style.color = '#e74c3c';
+                setTimeout(() => {
+                    progressEl.style.color = '';
+                }, 3000);
+            }
+            alert('An error occurred during recalculation. Check console for details.');
+        } finally {
+            if (wizardBtn) wizardBtn.disabled = false;
+        }
+    }
+
     function sortRanking(column) {
         if (currentSort.column === column) {
             currentSort.ascending = !currentSort.ascending;
@@ -2183,7 +3056,7 @@ const DOM = {};
 
     function updateRanking() {
         if (!currentUser) {
-            document.getElementById('rankingBody').innerHTML = '<tr><td colspan="9" class="no-battles">Select a user first! 🎢</td></tr>';
+            document.getElementById('rankingBody').innerHTML = '<tr><td colspan="8" class="no-battles">Select a user first! 🎢</td></tr>';
             return;
         }
         
@@ -2286,7 +3159,7 @@ const DOM = {};
 
         
         if (totalBattles === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="no-battles">Start met battlen om je ranking te zien! 🎢</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="no-battles">Start met battlen om je ranking te zien! 🎢</td></tr>';
             rankingCardsContainer.innerHTML = '';
             return;
         }
@@ -2312,7 +3185,6 @@ const DOM = {};
                         <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
                         <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
                         <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
-                        <td>${winrate}%</td>
                     </tr>
                 `);
 
@@ -2370,9 +3242,29 @@ const DOM = {};
                 totalBattlesCount = 0;
                 coasterHistory = [];
                 completedPairs = new Set();
+                
+                // Reset achievements
+                if (typeof achievementManager !== 'undefined') {
+                    achievementManager.unlockedAchievements.clear();
+                    achievementManager.leftStreak = 0;
+                    achievementManager.rightStreak = 0;
+                    achievementManager.perfectMatches = 0;
+                    achievementManager.closeFights = 0;
+                    achievementManager.sessionBattles = 0;
+                    achievementManager.lastBattleDate = null;
+                    achievementManager.consecutiveDays = 0;
+                    achievementManager.dailyBattleDates = new Set();
+                    achievementManager.save(currentUser);
+                    
+                    // Clear localStorage for achievements
+                    localStorage.removeItem(`achievements_${currentUser}`);
+                    localStorage.removeItem(`achievementStats_${currentUser}`);
+                }
+                
                 saveData();
                 displayBattle();
                 updateRanking();
+                updateAchievementsTab();
                 alert('Alle data is gereset! 🔄');
             }
         }
@@ -2434,4 +3326,157 @@ function downloadRankingCSV() {
     URL.revokeObjectURL(url);
     
     showToast('✅ CSV downloaded!');
+}
+
+// ============================================
+// ACHIEVEMENTS SYSTEM INTEGRATION
+// ============================================
+
+// Gather current game statistics for achievement checking
+function getGameStats() {
+    const statsArray = Object.values(coasterStats);
+    
+    // Check if any coaster is ranked #1
+    const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+    const hasTopRankedCoaster = sorted.length > 0;
+    
+    // Check if all coasters have minimum battles
+    const allCoastersMinBattles = statsArray.length > 0 ? 
+        Math.min(...statsArray.map(s => s.battles)) : 0;
+    
+    // Check if all pairs completed
+    const allPairsCompleted = areAllPairsCompleted();
+    
+    // Get unique parks and manufacturers from battled coasters
+    const battledCoasters = statsArray.filter(s => s.battles > 0);
+    const uniqueParks = new Set(battledCoasters.map(s => s.park).filter(Boolean)).size;
+    const uniqueManufacturers = new Set(battledCoasters.map(s => s.manufacturer).filter(Boolean)).size;
+    
+    return {
+        totalBattles: totalBattlesCount,
+        sessionBattles: achievementManager.sessionBattles,
+        closeFights: achievementManager.closeFights,
+        hasTopRankedCoaster,
+        allCoastersMinBattles,
+        allPairsCompleted,
+        leftStreak: achievementManager.leftStreak,
+        rightStreak: achievementManager.rightStreak,
+        alternatingStreak: achievementManager.alternatingStreak,
+        perfectMatches: achievementManager.perfectMatches,
+        uniqueParks,
+        uniqueManufacturers,
+        consecutiveDays: achievementManager.consecutiveDays,
+        siblingBattles: achievementManager.siblingBattles,
+        usedKeyboard: achievementManager.usedKeyboard,
+        usedNumberKeys: achievementManager.usedNumberKeys
+    };
+}
+
+// Check for new achievements and show toasts
+function checkAndShowAchievements() {
+    if (!currentUser || typeof achievementManager === 'undefined') return;
+    
+    const stats = getGameStats();
+    const newAchievements = achievementManager.checkAchievements(stats, currentUser);
+    
+    // Show toast for each new achievement with staggered timing
+    newAchievements.forEach((achievement, index) => {
+        setTimeout(() => {
+            showAchievementToast(achievement);
+        }, index * 600); // Stagger by 600ms
+    });
+    
+    // Always update achievements tab display (not just when new achievements)
+    updateAchievementsTab();
+}
+
+// Render the achievements tab
+function updateAchievementsTab() {
+    console.log('updateAchievementsTab called');
+    console.log('achievementManager exists:', typeof achievementManager !== 'undefined');
+    
+    if (typeof achievementManager === 'undefined') {
+        console.warn('achievementManager is undefined');
+        return;
+    }
+    
+    const grid = document.getElementById('achievementsGrid');
+    const progressText = document.getElementById('achievementProgress');
+    const progressPercentage = document.getElementById('achievementPercentage');
+    const progressBar = document.getElementById('achievementProgressBar');
+    const tabCounter = document.getElementById('achievementCount');
+    
+    if (!grid) {
+        console.warn('achievementsGrid element not found');
+        return;
+    }
+    
+    const achievements = achievementManager.getAllAchievements();
+    const unlockedCount = achievementManager.getUnlockedCount();
+    const totalCount = achievementManager.getTotalCount();
+    const percentage = Math.round((unlockedCount / totalCount) * 100);
+    
+    console.log('Updating achievements tab:', { unlockedCount, totalCount, percentage });
+    
+    // Update progress indicators
+    if (progressText) progressText.textContent = `${unlockedCount} / ${totalCount}`;
+    if (progressPercentage) progressPercentage.textContent = `(${percentage}%)`;
+    if (progressBar) progressBar.style.width = `${percentage}%`;
+    if (tabCounter) tabCounter.textContent = `${unlockedCount}/${totalCount}`;
+    
+    // Render achievement cards
+    grid.innerHTML = achievements.map(achievement => {
+        const lockedClass = achievement.unlocked ? 'unlocked' : 'locked';
+        const categoryClass = `category-${achievement.category || 'battles'}`;
+        
+        let dateHtml = '';
+        if (achievement.unlocked && achievement.unlockedDate) {
+            try {
+                const date = new Date(achievement.unlockedDate);
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                dateHtml = `<div class="achievement-date">Unlocked ${dateStr}</div>`;
+            } catch (e) {
+                // Ignore date formatting errors
+            }
+        }
+        
+        return `
+            <div class="achievement-card ${lockedClass} ${categoryClass}" data-category="${achievement.category || 'battles'}">
+                <div class="achievement-icon">${achievement.icon}</div>
+                <div class="achievement-name">${achievement.name}</div>
+                <div class="achievement-desc">${achievement.description}</div>
+                ${dateHtml}
+            </div>
+        `;
+    }).join('');
+    
+    console.log('Achievement cards rendered:', achievements.length);
+}
+
+// Filter achievements by category
+function filterAchievements(category) {
+    const grid = document.getElementById('achievementsGrid');
+    if (!grid) return;
+    
+    const cards = grid.querySelectorAll('.achievement-card');
+    const filterButtons = document.querySelectorAll('.filter-tag');
+    
+    // Update active state on filter buttons
+    filterButtons.forEach(btn => {
+        if (btn.dataset.category === category) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    
+    // Show/hide cards based on filter
+    cards.forEach(card => {
+        if (category === 'all') {
+            card.style.display = '';
+        } else {
+            const hasCategory = card.classList.contains(`category-${category}`);
+            card.style.display = hasCategory ? '' : 'none';
+        }
+    });
 }

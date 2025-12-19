@@ -30,9 +30,9 @@ body {
 .dev-btn {
     font-weight: 700;
     border: 1px solid #e6e6e6;
-    background: #fff;
+    background: #7f3cb3;
     padding: 8px 16px;
-    height: 44px;
+    height: 44px; 
     min-width: 110px;
     border-radius: 10px;
     cursor: pointer;
@@ -126,9 +126,20 @@ body {
 
 /* Make the dev menu header match button weight and size */
 .dev-menu-header { font-weight: 700; font-size: 0.95em; font-family: inherit; color: #111827; margin-bottom: 8px; }
-.dev-menu .dev-btn + .dev-btn { margin-top: 8px; }
 /* primary simulate button styling consolidated below */
 .dev-progress { font-weight: 700; }
+
+/* Ranking Wizard button - purple with white text */
+#rankingWizardBtn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    border: none !important;
+}
+
+#rankingWizardBtn:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #63398c 100%) !important;
+    color: white !important;
+}
 .dev-reset-btn { background: linear-gradient(135deg, #ff6b6b 0%, #f03e3e 100%); color: white; }
 .dev-reset-btn:hover { box-shadow: 0 10px 28px rgba(240,62,62,0.18); }
 
@@ -150,16 +161,37 @@ body {
 .dev-toggle-data.active { background: #fff; color: var(--app-accent); border-color: var(--app-accent); box-shadow: 0 8px 24px rgba(76,161,175,0.12); }
 .dev-toggle-data:focus { outline: 3px solid rgba(76,161,175,0.16); outline-offset: 2px; }
 /* Dev data card displayed next to each coaster */
-.coaster-item { display:flex; gap:12px; align-items:flex-start; flex:1; min-width:280px; max-width:400px; }
-.dev-data { background: #fcfcfd; border:1px solid #eee; padding:8px 10px; border-radius:8px; min-width:160px; color:#111827; font-size:0.9em; line-height:1.4; }
-/* Side boxes when showing dev data without shrinking cards */
-.dev-data-side { position: absolute; width: 180px; z-index: 2500; box-shadow: 0 8px 24px rgba(0,0,0,0.08); pointer-events: none; }
-.dev-data-side.left { text-align: right; }
-.dev-data-side.right { text-align: left; }
+.coaster-item { display:flex; gap:12px; align-items:flex-start; flex:1; min-width:80px; max-width:400px; }
+/* Dev-data overlay inside cards, positioned over coaster images */
+.dev-data-overlay {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    padding: 8px 10px;
+    font-size: 0.75em;
+    line-height: 1.4;
+    pointer-events: none;
+    z-index: 10;
+    border-radius: 6px;
+    max-width: 140px;
+    backdrop-filter: blur(4px);
+}
+
+.dev-data-overlay strong {
+    color: #fff;
+}
+
 @media (max-width: 600px) {
-    .coaster-item { flex-direction: column; }
-    .dev-data { margin-left:0; margin-top:8px; }
-    .dev-data-side { position: static; width: auto; box-shadow: none; }
+    .dev-data-overlay {
+        font-size: 0.7em;
+        padding: 6px 8px;
+        line-height: 1.3;
+        max-width: 120px;
+        top: 6px;
+        left: 6px;
+    }
 }
 
  .simulate-btn {
@@ -184,11 +216,12 @@ body {
     top: 0;
     z-index: 100;
     border-radius: 0;
+    color: white;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
     text-align: left;
     --header-height: 80px;
     padding: 40px 16px;
     min-height: var(--header-height);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
 }
 
 /* Center the active battle tab vertically on desktop */
@@ -389,12 +422,23 @@ body {
 
     .tab-content {
         display: none;
-        padding: 20px;
+        padding: 12px;
         min-height: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
     }
 
     .tab-content.active {
         display: block;
+    }
+
+    .tab-content#battle-tab.active {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: calc(100vh - var(--header-height, 80px) - 60px);
+        padding: 16px 12px;
     }
 
     .header-inner {
@@ -428,17 +472,14 @@ body {
         height: 100%;
         flex: 1;
         overflow: auto;
+        font-size: 0.8em;
     }
 
-    #history-tab {
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        min-height: calc(100vh - 250px);
-    }
-    
     #history-tab.active {
         display: flex !important;
+        overflow: hidden;
+        flex-direction: column;
+        min-height: calc(100vh - 250px);
     }
 }
 
@@ -487,9 +528,17 @@ body {
     cursor: pointer;
     font-size: 1.1em;
     font-weight: 600;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
     border: none;
     background: none;
+}
+
+.tab-icon {
+    display: none;
+}
+
+.tab-text {
+    display: inline;
 }
 
 .tab:hover {
@@ -500,6 +549,35 @@ body {
     background: white;
     color: #4CA1AF;
     border-bottom: 3px solid #4CA1AF;
+}
+
+/* Mobile: Show icons only for inactive tabs, text for active tab */
+@media (max-width: 600px) {
+    .tab {
+        padding: 16px 8px;
+        font-size: 1.4em;
+    }
+    
+    .tab.active {
+        flex: 2;
+    }
+    
+    .tab .tab-icon {
+        display: inline;
+    }
+    
+    .tab .tab-text {
+        display: none;
+    }
+    
+    .tab.active .tab-icon {
+        display: none;
+    }
+    
+    .tab.active .tab-text {
+        display: inline;
+        font-size: 0.7em;
+    }
 }
 
 .tab-content {
@@ -646,7 +724,7 @@ body {
 .rank-change-badge {
     position: absolute;
     top: 10px;
-    right: 10px;
+    left: 10px;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
     padding: 8px 12px;
@@ -728,6 +806,20 @@ body {
     font-weight: 600;
     letter-spacing: 2px;
     border-radius: 20px 20px 0 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.coaster-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+}
+
+.coaster-card:hover .coaster-img {
+    transform: scale(1.05);
 }
 
 .coaster-content {
@@ -776,6 +868,28 @@ body {
 .coaster-subtitle .separator {
     color: #9ca3af;
     font-weight: 300;
+}
+
+/* Highlight animation for matching park/manufacturer */
+.match-highlight {
+    animation: highlightText 1.5s ease-out;
+    background-image: linear-gradient(90deg, transparent 0%, rgba(34, 255, 130, 0.5) 50%, transparent 100%);
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    background-position: -100% 0;
+}
+
+@keyframes highlightText {
+    0% {
+        background-position: 200% 0;
+    }
+    50% {
+        background-position: 0% 0;
+        color: #004d2a;
+    }
+    100% {
+        background-position: -100% 0;
+    }
 }
 
 
@@ -895,9 +1009,9 @@ body {
     }
     
     .history-header-row .autocomplete-container {
-        min-width: 80px !important;
-        max-width: 100px !important;
-        flex: 0 1 100px !important;
+        min-width: 100px !important;
+        max-width: 150px !important;
+        flex: 1 1 150px !important;
     }
     
     .history-filters { 
@@ -1397,57 +1511,6 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
     line-height: 1.4;
 }
 
-/* Segmented pairing toggle */
-.pair-toggle { background: #fff; }
-.pair-toggle .pair-option {
-    padding: 8px 14px;
-    border: none;
-    background: white;
-    cursor: pointer;
-    font-weight: 600;
-    color: #333;
-    position: relative;
-    min-width: 110px;
-}
-.pair-toggle .pair-option + .pair-option { border-left: 1px solid #eee; }
-.pair-toggle .pair-option.active {
-    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
-    color: #fff;
-}
-.pair-option .help-pop {
-    display: none;
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    background: rgba(0,0,0,0.85);
-    color: #fff;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 0.85em;
-    z-index: 999;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
-}
-.pair-option:hover .help-pop { display: block; }
-
-/* Floating tooltip that follows cursor (used for pair-option help) */
-.floating-help {
-    position: fixed;
-    pointer-events: none;
-    background: rgba(0,0,0,0.80);
-    color: #fff;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 0.9em;
-    opacity: 0;
-    transform: translate(-50%, 8px);
-    transition: opacity 180ms ease, transform 180ms ease;
-    z-index: 10000;
-    white-space: nowrap;
-}
-.floating-help.show { opacity: 1; transform: translate(-50%, 0); }
-
 .pairing-controls-wrapper { display:flex;flex-direction:column;align-items:center; }
 #pairingControls { max-height: 240px; opacity: 1; }
 #pairingControls.collapsed { max-height: 0; opacity: 0; padding: 0; margin: 0; pointer-events: none; }
@@ -1461,38 +1524,49 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
 @media (max-width: 768px) {
     #battle-tab {
         position: relative;
+        padding: 10px 5px !important;
     }
 
     .battle-area {
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 10px;
+        padding: 5px;
         position: relative;
+        width: 100%;
     }
 
     .battle-container {
         flex-direction: row;
         flex-wrap: nowrap;
-        gap: 16px;
+        gap: 12px;
         justify-content: center;
-        align-items: center;
+        align-items: stretch;
         width: 100%;
         max-width: 100%;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: visible;
     }
 
     .vs-divider {
         display: flex;
-        width: 60px;
-        height: 60px;
-        font-size: 1.5em;
+        width: 50px;
+        height: 50px;
+        font-size: 1.3em;
+        flex-shrink: 0;
         box-shadow: 0 3px 15px rgba(0, 0, 0, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.9);
     }
 
     .coaster-card {
         max-width: none;
         min-width: 0;
-        flex: 1;
+        flex: 1 1 0;
+        width: 0;
+        box-sizing: border-box;
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
     }
 
     .coaster-image {
@@ -1721,5 +1795,455 @@ body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events:
     opacity:0.6;
     transform:scale(0.96);
     filter: grayscale(0.25) brightness(0.85);
+}
+
+/* ============================================
+   ACHIEVEMENTS TAB
+   ============================================ */
+
+.achievements-header {
+    padding: 24px 20px;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: white;
+    text-align: center;
+}
+
+.achievements-header h2 {
+    margin: 0 0 16px 0;
+    font-size: 2em;
+    font-weight: 800;
+}
+
+.achievements-progress {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 0.95em;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 12px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    border-radius: 20px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.achievement-filters {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px 24px;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.filter-tag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 24px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    position: relative;
+    overflow: hidden;
+}
+
+.filter-tag::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.5), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.filter-tag:hover::before {
+    opacity: 1;
+}
+
+.filter-tag:hover {
+    background: #e2e8f0;
+    transform: translateY(-2px);
+}
+
+.filter-tag.active {
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.filter-tag.active::before {
+    opacity: 0;
+}
+
+/* All filter - neutral gradient */
+.filter-tag[data-rarity="all"].active {
+    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+}
+
+/* Common - gray gradient */
+.filter-tag[data-rarity="common"].active {
+    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+}
+
+/* Uncommon - green gradient */
+.filter-tag[data-rarity="uncommon"].active {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* Rare - blue gradient */
+.filter-tag[data-rarity="rare"].active {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+/* Epic - purple gradient */
+.filter-tag[data-rarity="epic"].active {
+    background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+/* Legendary - gold gradient with pulse */
+.filter-tag[data-rarity="legendary"].active {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    animation: legendaryGlow 2s ease-in-out infinite;
+}
+
+@keyframes legendaryGlow {
+    0%, 100% {
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    }
+    50% {
+        box-shadow: 0 4px 20px rgba(245, 158, 11, 0.6), 0 0 12px rgba(245, 158, 11, 0.3);
+    }
+}
+
+.filter-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    flex-shrink: 0;
+}
+
+.filter-dot.all { background: linear-gradient(135deg, #64748b 0%, #475569 100%); }
+.filter-dot.common { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
+.filter-dot.uncommon { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.filter-dot.rare { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+.filter-dot.epic { background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%); }
+.filter-dot.legendary { 
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+
+/* Hide dots when active to make it cleaner */
+.filter-tag.active .filter-dot {
+    display: none;
+}
+
+@media (max-width: 600px) {
+    .achievement-filters {
+        padding: 16px 12px;
+        gap: 8px;
+    }
+    
+    .filter-tag {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+    
+    .filter-dot {
+        width: 10px;
+        height: 10px;
+    }
+}
+
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 24px;
+}
+
+@media (max-width: 600px) {
+    .achievements-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+        padding: 16px;
+    }
+}
+
+.achievement-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.achievement-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #e5e7eb, #d1d5db);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.achievement-card.unlocked::before {
+    opacity: 1;
+}
+
+.achievement-card.locked {
+    opacity: 0.5;
+    filter: grayscale(1);
+    background: #fafafa;
+}
+
+.achievement-card.unlocked {
+    animation: achievementUnlock 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.achievement-card.unlocked:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.12);
+}
+
+.achievement-icon {
+    font-size: 3.5em;
+    line-height: 1;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.achievement-card.locked .achievement-icon {
+    filter: grayscale(1) brightness(1.2) drop-shadow(0 2px 4px rgba(0,0,0,0.05));
+    opacity: 0.4;
+}
+
+.achievement-name {
+    font-weight: 800;
+    font-size: 1.1em;
+    color: #111827;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.achievement-desc {
+    font-size: 0.9em;
+    color: #6b7280;
+    line-height: 1.4;
+    margin: 0;
+}
+
+.achievement-card.locked .achievement-name {
+    color: #9ca3af;
+}
+
+.achievement-card.locked .achievement-desc {
+    color: transparent;
+    user-select: none;
+}
+
+.achievement-card.locked .achievement-desc::before {
+    content: '???';
+    color: #d1d5db;
+    font-weight: 600;
+}
+
+.achievement-date {
+    font-size: 0.75em;
+    color: #9ca3af;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+/* Rarity indicators */
+.achievement-card.rarity-common.unlocked::before {
+    background: linear-gradient(90deg, #9ca3af, #6b7280);
+}
+
+.achievement-card.rarity-uncommon.unlocked::before {
+    background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.achievement-card.rarity-rare.unlocked::before {
+    background: linear-gradient(90deg, #3b82f6, #2563eb);
+}
+
+.achievement-card.rarity-epic.unlocked::before {
+    background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+}
+
+.achievement-card.rarity-legendary.unlocked::before {
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+    height: 6px;
+    box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4);
+}
+
+@keyframes achievementUnlock {
+    0% {
+        transform: scale(0.8) rotate(-5deg);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.1) rotate(2deg);
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+}
+
+/* Achievement unlock toast notification */
+.achievement-toast {
+    position: fixed;
+    top: 80px;
+    right: -450px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border-radius: 16px;
+    padding: 20px 24px;
+    box-shadow: 0 12px 40px rgba(16, 185, 129, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    z-index: 10000;
+    transition: right 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    min-width: 340px;
+    max-width: 420px;
+    border: 2px solid rgba(255,255,255,0.2);
+}
+
+.achievement-toast.show {
+    right: 20px;
+    animation: achievementShake 0.6s ease 0.6s;
+}
+
+@media (max-width: 600px) {
+    .achievement-toast {
+        top: auto;
+        bottom: 80px;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%) translateY(120%);
+        min-width: 280px;
+        max-width: calc(100% - 32px);
+    }
+    
+    .achievement-toast.show {
+        transform: translateX(-50%) translateY(0);
+        right: auto;
+    }
+}
+
+.achievement-toast .achievement-icon {
+    font-size: 3.5em;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+    flex-shrink: 0;
+}
+
+.achievement-toast .achievement-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.achievement-toast .achievement-header {
+    font-size: 0.85em;
+    opacity: 0.9;
+    margin-bottom: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.achievement-toast .achievement-name {
+    font-size: 1.3em;
+    font-weight: 800;
+    margin-bottom: 4px;
+    line-height: 1.2;
+    color: white;
+}
+
+.achievement-toast .achievement-desc {
+    font-size: 0.95em;
+    opacity: 0.9;
+    line-height: 1.3;
+    color: rgba(255,255,255,0.95);
+}
+
+/* Rarity-specific toast colors */
+.achievement-toast.rarity-uncommon {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 12px 40px rgba(16, 185, 129, 0.5);
+}
+
+.achievement-toast.rarity-rare {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    box-shadow: 0 12px 40px rgba(59, 130, 246, 0.5);
+}
+
+.achievement-toast.rarity-epic {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    box-shadow: 0 12px 40px rgba(139, 92, 246, 0.5);
+}
+
+.achievement-toast.rarity-legendary {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    box-shadow: 0 12px 40px rgba(245, 158, 11, 0.6);
+    animation: legendaryPulse 2s ease-in-out infinite;
+}
+
+@keyframes achievementShake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-6px); }
+    20%, 40%, 60%, 80% { transform: translateX(6px); }
+}
+
+@keyframes legendaryPulse {
+    0%, 100% {
+        box-shadow: 0 12px 40px rgba(245, 158, 11, 0.6);
+    }
+    50% {
+        box-shadow: 0 12px 50px rgba(245, 158, 11, 0.8), 0 0 30px rgba(245, 158, 11, 0.4);
+    }
 }
 
