@@ -221,15 +221,9 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // Roller coaster type IDs for validation
-    const coasterTypeFilter = `
-        VALUES ?rcType { 
-            wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
-            wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
-            wd:Q1318369 wd:Q2252148 wd:Q1377858 wd:Q1497656
-            wd:Q1990148 wd:Q30014587 wd:Q1462039
-        }
-        ?item wdt:P31 ?rcType .`;
+    // Roller coaster type validation - checks if entity is ANY type of roller coaster
+    // Q204832 = roller coaster (parent class), wdt:P279* = subclass of (transitive)
+    const coasterTypeFilter = `?item wdt:P31/wdt:P279* wd:Q204832 .`;
     
     // Generate name variants to try (most specific to least specific)
     const nameVariants = [];
@@ -360,6 +354,9 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Helper to add delay between requests to avoid rate limiting
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
+    // Generic/short names that need exact matching to avoid false positives
+    const exactMatchRequired = ['max', 'speed', 'formula', 'fury', 'python', 'condor', 'limit', 'arthur', 'nessie'];
+    
     // Try first 3 variants (balance between coverage and speed)
     for (let i = 0; i < Math.min(nameVariants.length, 3); i++) {
         const variant = nameVariants[i];
@@ -367,40 +364,42 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         
         if (variant.length < 3) continue; // Skip very short names
         
-        // STRATEGY 1: Exact match with type validation (HIGH QUALITY)
-        // Try multiple languages for international coverage
-        console.log(`  🔍 Strategy 1: Exact match "${variant}" WITH type validation`);
-        const exactWithTypeQuery = `
-            SELECT ?item ?image WHERE {
-              { ?item rdfs:label "${escapedName}"@en . }
-              UNION { ?item rdfs:label "${escapedName}"@de . }
-              UNION { ?item rdfs:label "${escapedName}"@nl . }
-              UNION { ?item rdfs:label "${escapedName}"@fr . }
-              UNION { ?item rdfs:label "${escapedName}"@es . }
-              ${coasterTypeFilter}
-              ?item wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
+        // Check if this name requires exact matching (short/generic names)
+        const requiresExactMatch = exactMatchRequired.includes(variant.toLowerCase()) || variant.length < 6;
         
-        try {
-            const result = await querySPARQL(exactWithTypeQuery);
-            if (result) {
-                console.log(`✓ Found "${coasterName}" - exact match with validation`);
-                return result;
-            }
-            await delay(150);
-        } catch (e) {
-            console.warn(`    ⚠️ Strategy 1 failed: ${e.message}`);
-            if (e.message.includes('429')) {
-                await delay(3000); // Longer wait for rate limit
-            } else {
+        if (requiresExactMatch && i === 0) {
+            // STRATEGY 1a: Exact match for short/generic names (safer, prevents false positives)
+            console.log(`  🔍 Strategy 1a: Exact match "${variant}" (short/generic name protection)`);
+            const exactMatchQuery = `
+                SELECT ?item ?image WHERE {
+                  { ?item rdfs:label "${escapedName}"@en . }
+                  UNION { ?item rdfs:label "${escapedName}"@de . }
+                  ${coasterTypeFilter}
+                  ?item wdt:P18 ?image .
+                }
+                LIMIT 1
+            `;
+            
+            try {
+                const result = await querySPARQL(exactMatchQuery);
+                if (result) {
+                    console.log(`✓ Found "${coasterName}" - exact match (protected)`);
+                    return result;
+                }
                 await delay(150);
+            } catch (e) {
+                console.warn(`    ⚠️ Strategy 1a failed: ${e.message}`);
+                if (e.message.includes('429')) {
+                    await delay(3000);
+                } else {
+                    await delay(150);
+                }
             }
         }
         
-        // STRATEGY 2: CONTAINS search with type validation (GOOD QUALITY, BROADER)
-        console.log(`  🔍 Strategy 2: CONTAINS "${variant}" WITH type validation`);
+        // STRATEGY 1b: CONTAINS search with type validation (PRIMARY - handles both exact and partial matches)
+        // Single query searches all languages automatically, more efficient than multi-language exact match
+        console.log(`  🔍 Strategy 1b: CONTAINS "${variant}" WITH type validation`);
         const containsWithTypeQuery = `
             SELECT ?item ?image WHERE {
               ?item rdfs:label ?label .
@@ -419,18 +418,18 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
             }
             await delay(150);
         } catch (e) {
-            console.warn(`    ⚠️ Strategy 2 failed: ${e.message}`);
+            console.warn(`    ⚠️ Strategy 1 failed: ${e.message}`);
             if (e.message.includes('429')) {
-                await delay(3000);
+                await delay(3000); // Longer wait for rate limit
             } else {
                 await delay(150);
             }
         }
         
-        // STRATEGY 3: CONTAINS without type (FALLBACK - less reliable but catches edge cases)
+        // STRATEGY 2: CONTAINS without type (FALLBACK - less reliable but catches edge cases)
         // Only try for first 2 variants to avoid too many unvalidated queries
         if (i < 2) {
-            console.log(`  🔍 Strategy 3: CONTAINS "${variant}" WITHOUT type validation (fallback)`);
+            console.log(`  🔍 Strategy 2: CONTAINS "${variant}" WITHOUT type validation (fallback)`);
             const containsNoTypeQuery = `
                 SELECT ?item ?image WHERE {
                   ?item rdfs:label ?label .
@@ -448,7 +447,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 }
                 await delay(150);
             } catch (e) {
-                console.warn(`    ⚠️ Strategy 3 failed: ${e.message}`);
+                console.warn(`    ⚠️ Strategy 2 failed: ${e.message}`);
                 if (e.message.includes('429')) {
                     await delay(3000);
                 } else {
@@ -458,8 +457,8 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         }
     }
     
-    // STRATEGY 4: EntitySearch API with validation (LAST RESORT)
-    console.log(`  🔎 Strategy 4: EntitySearch API with type validation`);
+    // STRATEGY 3: EntitySearch API with validation (LAST RESORT)
+    console.log(`  🔎 Strategy 3: EntitySearch API with type validation`);
     for (let i = 0; i < Math.min(2, nameVariants.length); i++) {
         try {
             const searchResult = await searchWikidataEntity(nameVariants[i], true); // true = validate type
@@ -483,13 +482,8 @@ async function searchWikidataEntity(coasterName, validateType = true) {
     
     const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(coasterName)}&language=en&limit=5&format=json&origin=*`;
     
-    // Roller coaster type IDs for validation
-    const coasterTypeIds = [
-        'Q15243209', 'Q476493', 'Q652787', 'Q17287243',
-        'Q1144661', 'Q2537706', 'Q19814130', 'Q29643',
-        'Q1318369', 'Q2252148', 'Q1377858', 'Q1497656',
-        'Q1990148', 'Q30014587', 'Q1462039'
-    ];
+    // Roller coaster parent class for validation
+    const rollerCoasterClassId = 'Q204832';
     
     try {
         const response = await fetchWithTimeout(searchUrl, {}, 10000);
@@ -515,14 +509,27 @@ async function searchWikidataEntity(coasterName, validateType = true) {
             // If validation required, check if it's a roller coaster
             if (validateType && claims.P31) {
                 const instanceOfClaims = claims.P31;
+                // Check if entity is directly a roller coaster or any of its subclasses
                 const hasCoasterType = instanceOfClaims.some(claim => {
                     const typeId = claim.mainsnak?.datavalue?.value?.id;
-                    return typeId && coasterTypeIds.includes(typeId);
+                    return typeId === rollerCoasterClassId;
                 });
                 
-                if (!hasCoasterType) {
+                // If not directly a roller coaster, check P279 (subclass of) chain
+                if (!hasCoasterType && claims.P279) {
+                    const subclassOfClaims = claims.P279;
+                    const isCoasterSubclass = subclassOfClaims.some(claim => {
+                        const parentId = claim.mainsnak?.datavalue?.value?.id;
+                        return parentId === rollerCoasterClassId;
+                    });
+                    
+                    if (!isCoasterSubclass) {
+                        console.log(`    ⚠️ EntitySearch: ${entity.label} is not a roller coaster, skipping`);
+                        continue;
+                    }
+                } else if (!hasCoasterType) {
                     console.log(`    ⚠️ EntitySearch: ${entity.label} is not a roller coaster, skipping`);
-                    continue; // Not a roller coaster, try next result
+                    continue;
                 }
             }
             
@@ -542,6 +549,428 @@ async function searchWikidataEntity(coasterName, validateType = true) {
         console.warn('EntitySearch error:', error.message);
         return null;
     }
+}
+
+// Intensive image search with park/manufacturer verification (triggered by retry button)
+async function intensiveImageSearch(coasterName, parkName, manufacturer) {
+    console.log(`\n🔬 INTENSIVE SEARCH for "${coasterName}" at ${parkName}...`);
+    
+    const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    // Roller coaster type validation
+    const coasterTypeFilter = `?item wdt:P31/wdt:P279* wd:Q204832 .`;
+    
+    // Generate all name variants (not just first 3)
+    const nameVariants = [];
+    let cleanName = coasterName.trim().replace(/\s+/g, ' ');
+    
+    nameVariants.push(cleanName);
+    
+    if (cleanName.includes('(')) {
+        nameVariants.push(cleanName.replace(/\s*\([^)]*\)/g, ''));
+    }
+    if (cleanName.includes(' - ')) {
+        nameVariants.push(cleanName.split(' - ')[0].trim());
+    }
+    if (cleanName.includes(':')) {
+        nameVariants.push(cleanName.split(':')[0].trim());
+    }
+    
+    console.log(`  📝 Trying ${nameVariants.length} variants with park filtering...`);
+    
+    // Strategy: CONTAINS with park verification
+    for (const variant of nameVariants) {
+        const escapedName = escapeSPARQL(variant);
+        const escapedPark = escapeSPARQL(parkName);
+        
+        if (variant.length < 3) continue;
+        
+        console.log(`  🔍 Searching "${variant}" with park context...`);
+        
+        // Query with park and manufacturer metadata
+        const query = `
+            SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
+              ?item rdfs:label ?label .
+              FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+              
+              OPTIONAL { 
+                ?item wdt:P127 ?park . 
+                ?park rdfs:label ?parkLabel . 
+                FILTER(lang(?parkLabel) = "en" || lang(?parkLabel) = "de")
+              }
+              OPTIONAL { 
+                ?item wdt:P176 ?mfg . 
+                ?mfg rdfs:label ?mfgLabel . 
+                FILTER(lang(?mfgLabel) = "en")
+              }
+              ?item rdfs:label ?itemLabel . 
+              FILTER(lang(?itemLabel) = "en" || lang(?itemLabel) = "de")
+            }
+            LIMIT 5
+        `;
+        
+        try {
+            const results = await querySPARQLMultiple(query);
+            
+            if (results && results.length > 0) {
+                console.log(`  ✓ Found ${results.length} candidates`);
+                
+                // Try to find best match based on park
+                for (const result of results) {
+                    const itemLabel = result.itemLabel?.value || '';
+                    const parkLabel = result.parkLabel?.value || '';
+                    const mfgLabel = result.mfgLabel?.value || '';
+                    const imageUrl = result.image?.value;
+                    
+                    console.log(`    Candidate: ${itemLabel} at ${parkLabel || '(unknown)'} by ${mfgLabel || '(unknown)'}`);
+                    
+                    // Check if park matches
+                    const parkMatches = parkLabel && (
+                        parkLabel.toLowerCase().includes(parkName.toLowerCase()) ||
+                        parkName.toLowerCase().includes(parkLabel.toLowerCase())
+                    );
+                    
+                    if (parkMatches) {
+                        console.log(`    ✅ Park match! Using this result.`);
+                        
+                        if (imageUrl) {
+                            const finalUrl = imageUrl.startsWith('http://') 
+                                ? imageUrl.replace('http://', 'https://') 
+                                : imageUrl;
+                            
+                            return {
+                                url: finalUrl,
+                                metadata: {
+                                    name: itemLabel,
+                                    park: parkLabel,
+                                    manufacturer: mfgLabel,
+                                    verified: true
+                                }
+                            };
+                        }
+                    }
+                }
+                
+                // If no park match, use first result but mark as unverified
+                const firstResult = results[0];
+                const imageUrl = firstResult.image?.value;
+                
+                if (imageUrl) {
+                    console.log(`    ⚠️ Using first result (park not verified)`);
+                    const finalUrl = imageUrl.startsWith('http://') 
+                        ? imageUrl.replace('http://', 'https://') 
+                        : imageUrl;
+                    
+                    return {
+                        url: finalUrl,
+                        metadata: {
+                            name: firstResult.itemLabel?.value || '',
+                            park: firstResult.parkLabel?.value || '',
+                            manufacturer: firstResult.mfgLabel?.value || '',
+                            verified: false
+                        }
+                    };
+                }
+            }
+            
+            await delay(200);
+        } catch (e) {
+            console.warn(`    ⚠️ Query failed: ${e.message}`);
+            await delay(200);
+        }
+    }
+    
+    console.log(`  ✗ No image found after intensive search`);
+    return null;
+}
+
+// Query SPARQL endpoint and return multiple results
+async function querySPARQLMultiple(query) {
+    const url = 'https://query.wikidata.org/sparql';
+    const fullUrl = `${url}?query=${encodeURIComponent(query)}&format=json`;
+    
+    try {
+        const response = await fetchWithTimeout(fullUrl, {
+            headers: {
+                'Accept': 'application/sparql-results+json',
+                'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
+            }
+        }, 20000);
+        
+        if (!response.ok) {
+            if (response.status === 429) {
+                throw new Error('429 Rate limit');
+            }
+            return null;
+        }
+        
+        const data = await response.json();
+        return data?.results?.bindings || null;
+    } catch (error) {
+        console.error('SPARQL query error:', error);
+        return null;
+    }
+}
+
+// Retry button handler (called from dev-data overlay)
+window.retryCoasterImage = async function(coasterName, parkName, manufacturer, elementId) {
+    const button = event.target;
+    const infoDiv = document.getElementById(`imageInfo_${elementId}`);
+    
+    button.disabled = true;
+    button.textContent = '⏳ Searching...';
+    
+    if (infoDiv) {
+        infoDiv.textContent = 'Running intensive search...';
+        infoDiv.style.color = '#4CA1AF';
+    }
+    
+    try {
+        const result = await intensiveImageSearch(coasterName, parkName, manufacturer);
+        
+        if (result && result.url) {
+            // Update cache with new image
+            const cacheVersion = 'v1';
+            const cacheKey = `coasterImage_${cacheVersion}_${normalizeCoasterName(coasterName)}`;
+            localStorage.setItem(cacheKey, result.url);
+            
+            // Update image in current battle if visible
+            const cards = document.querySelectorAll('.coaster-card');
+            cards.forEach(card => {
+                const nameEl = card.querySelector('h3');
+                if (nameEl && nameEl.textContent === coasterName) {
+                    const img = card.querySelector('img');
+                    if (img) {
+                        img.src = result.url;
+                    }
+                }
+            });
+            
+            // Display verification result
+            if (infoDiv) {
+                const icon = result.metadata.verified ? '✓✓' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '✓' : '⚠️');
+                const parkInfo = result.metadata.park ? `at ${result.metadata.park}` : '';
+                const mfgInfo = result.metadata.manufacturer ? `by ${result.metadata.manufacturer}` : '';
+                
+                infoDiv.innerHTML = `${icon} ${result.metadata.name} ${parkInfo} ${mfgInfo}`;
+                infoDiv.style.color = result.metadata.verified ? '#10b981' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '#f59e0b' : '#ef4444');
+                
+                // Add warnings for mismatches
+                const warnings = [];
+                if (!result.metadata.parkMatch && result.metadata.park) {
+                    warnings.push(`Expected park: ${parkName}`);
+                }
+                if (!result.metadata.mfgMatch && result.metadata.manufacturer && manufacturer) {
+                    warnings.push(`Expected manufacturer: ${manufacturer}`);
+                }
+                
+                if (warnings.length > 0) {
+                    infoDiv.innerHTML += `<br><span style="font-size:0.8em;color:#ef4444;">⚠️ ${warnings.join(', ')}</span>`;
+                }
+            }
+            
+            button.textContent = '✓ Updated';
+            setTimeout(() => {
+                button.textContent = '🔄 Retry Image';
+                button.disabled = false;
+            }, 2000);
+        } else {
+            if (infoDiv) {
+                infoDiv.textContent = '✗ No image found';
+                infoDiv.style.color = '#ef4444';
+            }
+            button.textContent = '✗ Not Found';
+            setTimeout(() => {
+                button.textContent = '🔄 Retry Image';
+                button.disabled = false;
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Retry image error:', error);
+        if (infoDiv) {
+            infoDiv.textContent = '✗ Search failed';
+            infoDiv.style.color = '#ef4444';
+        }
+        button.textContent = '✗ Error';
+        setTimeout(() => {
+            button.textContent = '🔄 Retry Image';
+            button.disabled = false;
+        }, 2000);
+    }
+};
+
+// Intensive image search with park/manufacturer verification (triggered by retry button)
+async function intensiveImageSearch(coasterName, parkName, manufacturer) {
+    console.log(`\n🔬 INTENSIVE SEARCH for "${coasterName}" at ${parkName}...`);
+    
+    const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    // Roller coaster type validation
+    const coasterTypeFilter = `?item wdt:P31/wdt:P279* wd:Q204832 .`;
+    
+    // Generate all name variants (not just first 3)
+    const nameVariants = [];
+    let cleanName = coasterName.trim().replace(/\s+/g, ' ');
+    
+    nameVariants.push(cleanName);
+    
+    if (cleanName.includes('(')) {
+        nameVariants.push(cleanName.replace(/\s*\([^)]*\)/g, ''));
+    }
+    if (cleanName.includes(' - ')) {
+        nameVariants.push(cleanName.split(' - ')[0].trim());
+    }
+    if (cleanName.includes(':')) {
+        nameVariants.push(cleanName.split(':')[0].trim());
+    }
+    
+    console.log(`  📝 Trying ${nameVariants.length} variants with park filtering...`);
+    
+    // Strategy: CONTAINS with park verification
+    for (const variant of nameVariants) {
+        const escapedName = escapeSPARQL(variant);
+        
+        if (variant.length < 3) continue;
+        
+        console.log(`  🔍 Searching "${variant}" with park context...`);
+        
+        // Query with park and manufacturer metadata
+        const query = `
+            SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
+              ?item rdfs:label ?label .
+              FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+              
+              OPTIONAL { 
+                ?item wdt:P127 ?park . 
+                ?park rdfs:label ?parkLabel . 
+                FILTER(lang(?parkLabel) = "en" || lang(?parkLabel) = "de")
+              }
+              OPTIONAL { 
+                ?item wdt:P176 ?mfg . 
+                ?mfg rdfs:label ?mfgLabel . 
+                FILTER(lang(?mfgLabel) = "en")
+              }
+              ?item rdfs:label ?itemLabel . 
+              FILTER(lang(?itemLabel) = "en" || lang(?itemLabel) = "de")
+            }
+            LIMIT 5
+        `;
+        
+        try {
+            const results = await querySPARQLMultiple(query);
+            
+            if (results && results.length > 0) {
+                console.log(`  ✓ Found ${results.length} candidates`);
+                
+                // Try to find best match based on park AND manufacturer
+                // Priority: Both match > Park only > Manufacturer only > Neither
+                let bestMatch = null;
+                let bestScore = 0;
+                
+                for (const result of results) {
+                    const itemLabel = result.itemLabel?.value || '';
+                    const parkLabel = result.parkLabel?.value || '';
+                    const mfgLabel = result.mfgLabel?.value || '';
+                    const imageUrl = result.image?.value;
+                    
+                    console.log(`    Candidate: ${itemLabel} at ${parkLabel || '(unknown)'} by ${mfgLabel || '(unknown)'}`);
+                    
+                    // Check if park matches
+                    const parkMatches = parkLabel && (
+                        parkLabel.toLowerCase().includes(parkName.toLowerCase()) ||
+                        parkName.toLowerCase().includes(parkLabel.toLowerCase())
+                    );
+                    
+                    // Check if manufacturer matches
+                    const mfgMatches = mfgLabel && manufacturer && (
+                        mfgLabel.toLowerCase().includes(manufacturer.toLowerCase()) ||
+                        manufacturer.toLowerCase().includes(mfgLabel.toLowerCase())
+                    );
+                    
+                    // Calculate match score (both = 3, park only = 2, mfg only = 1)
+                    let score = 0;
+                    if (parkMatches && mfgMatches) {
+                        score = 3;
+                        console.log(`    ✅✅ PERFECT MATCH! Park AND manufacturer verified.`);
+                    } else if (parkMatches) {
+                        score = 2;
+                        console.log(`    ✅ Park match (manufacturer: ${mfgLabel || 'unknown'})`);
+                    } else if (mfgMatches) {
+                        score = 1;
+                        console.log(`    ⚠️ Manufacturer match but wrong park (expected ${parkName}, got ${parkLabel || 'unknown'})`);
+                    }
+                    
+                    if (score > bestScore && imageUrl) {
+                        bestScore = score;
+                        bestMatch = {
+                            url: imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl,
+                            metadata: {
+                                name: itemLabel,
+                                park: parkLabel,
+                                manufacturer: mfgLabel,
+                                verified: score === 3,  // Only fully verified if both match
+                                parkMatch: parkMatches,
+                                mfgMatch: mfgMatches
+                            }
+                        };
+                        
+                        // If perfect match (both park and mfg), return immediately
+                        if (score === 3) {
+                            console.log(`    🎯 Using perfect match!`);
+                            return bestMatch;
+                        }
+                    }
+                }
+                
+                // Return best match found (park-only or mfg-only)
+                if (bestMatch) {
+                    if (bestScore === 2) {
+                        console.log(`    ✓ Using park-verified match (manufacturer differs)`);
+                    } else if (bestScore === 1) {
+                        console.log(`    ⚠️ Using manufacturer-verified match (park differs)`);
+                    }
+                    return bestMatch;
+                }
+                
+                // If no matches at all, use first result but mark as unverified
+                const firstResult = results[0];
+                const imageUrl = firstResult.image?.value;
+                
+                if (imageUrl) {
+                    console.log(`    ⚠️ Using first result (park AND manufacturer not verified)`);
+                    const finalUrl = imageUrl.startsWith('http://') 
+                        ? imageUrl.replace('http://', 'https://') 
+                        : imageUrl;
+                    
+                    return {
+                        url: finalUrl,
+                        metadata: {
+                            name: firstResult.itemLabel?.value || '',
+                            park: firstResult.parkLabel?.value || '',
+                            manufacturer: firstResult.mfgLabel?.value || '',
+                            verified: false,
+                            parkMatch: false,
+                            mfgMatch: false
+                        }
+                    };
+                }
+            }
+            
+            await delay(200);
+        } catch (e) {
+            console.warn(`    ⚠️ Query failed: ${e.message}`);
+            await delay(200);
+        }
+    }
+    
+    console.log(`  ✗ No image found after intensive search`);
+    return null;
 }
 
 // Helper function to add timeout to fetch requests
@@ -1642,6 +2071,10 @@ const DOM = {};
             <div><strong>Battles:</strong> ${leftStats.battles}</div>
             <div><strong>Wins:</strong> ${leftStats.wins}</div>
             <div><strong>Losses:</strong> ${leftStats.losses}</div>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.2);">
+                <div id="imageInfo_${left.naam.replace(/[^a-z0-9]/gi, '_')}" style="font-size:0.85em;color:#aaa;margin-bottom:4px;"></div>
+                <button onclick="retryCoasterImage('${left.naam.replace(/'/g, "\\'")}', '${left.park.replace(/'/g, "\\'")}', '${left.fabrikant.replace(/'/g, "\\'")}', '${left.naam.replace(/[^a-z0-9]/gi, '_')}')" style="font-size:0.85em;padding:2px 6px;background:#4CA1AF;color:white;border:none;border-radius:4px;cursor:pointer;">🔄 Retry Image</button>
+            </div>
         `;
         const devRightHtml = `
             <div><strong>Rank:</strong> ${rank2}</div>
@@ -1651,6 +2084,10 @@ const DOM = {};
             <div><strong>Battles:</strong> ${rightStats.battles}</div>
             <div><strong>Wins:</strong> ${rightStats.wins}</div>
             <div><strong>Losses:</strong> ${rightStats.losses}</div>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.2);">
+                <div id="imageInfo_${right.naam.replace(/[^a-z0-9]/gi, '_')}" style="font-size:0.85em;color:#aaa;margin-bottom:4px;"></div>
+                <button onclick="retryCoasterImage('${right.naam.replace(/'/g, "\\'")}', '${right.park.replace(/'/g, "\\'")}', '${right.fabrikant.replace(/'/g, "\\'")}', '${right.naam.replace(/[^a-z0-9]/gi, '_')}')" style="font-size:0.85em;padding:2px 6px;background:#4CA1AF;color:white;border:none;border-radius:4px;cursor:pointer;">🔄 Retry Image</button>
+            </div>
         `;
 
         // Place overlay inside coaster cards, over the images
