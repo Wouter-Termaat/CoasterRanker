@@ -190,7 +190,7 @@ function normalizeCoasterName(name) {
 
 // Generate a placeholder data URL for coasters without images
 function getPlaceholderImage() {
-    // Simple SVG placeholder with coaster icon
+    // Simple SVG placeholder (no emoji to avoid btoa encoding issues)
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250">
         <defs>
             <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -199,9 +199,11 @@ function getPlaceholderImage() {
             </linearGradient>
         </defs>
         <rect width="400" height="250" fill="url(#grad)"/>
-        <text x="200" y="125" font-family="Arial, sans-serif" font-size="48" fill="#9ca3af" text-anchor="middle" dominant-baseline="middle" font-weight="600">🎢</text>
+        <circle cx="200" cy="125" r="40" fill="#9ca3af" opacity="0.3"/>
+        <rect x="180" y="100" width="40" height="50" rx="5" fill="#9ca3af" opacity="0.5"/>
     </svg>`;
-    return 'data:image/svg+xml;base64,' + btoa(svg);
+    // Use encodeURIComponent instead of btoa to handle all characters safely
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
 // Query Wikidata SPARQL endpoint for coaster image
