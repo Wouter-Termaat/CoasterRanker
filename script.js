@@ -409,10 +409,15 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     }
                     await delay(150);
                 } catch (e) {
+                    console.warn(`    ⚠️ Query failed for "${variant}" at "${parkVariant}": ${e.message}`);
                     if (e.message.includes('429')) {
                         console.log(`    ⏸️ Rate limited, waiting...`);
                         await delay(1000);
+                    } else if (e.message.includes('timeout')) {
+                        console.log(`    ⏱️ Query timeout, skipping...`);
+                        // Continue to next strategy
                     }
+                    // Continue to next variant/strategy on any error
                 }
             }
         }
@@ -437,9 +442,13 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 }
                 await delay(150);
             } catch (e) {
+                console.warn(`    ⚠️ CONTAINS query failed for "${variant}": ${e.message}`);
                 if (e.message.includes('429')) {
                     await delay(1000);
+                } else if (e.message.includes('timeout')) {
+                    console.log(`    ⏱️ Query timeout, continuing...`);
                 }
+                // Continue to next strategy on any error
             }
         }
         
@@ -462,9 +471,13 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 }
                 await delay(150);
             } catch (e) {
+                console.warn(`    ⚠️ Exact match query failed for "${variant}": ${e.message}`);
                 if (e.message.includes('429')) {
                     await delay(1000);
+                } else if (e.message.includes('timeout')) {
+                    console.log(`    ⏱️ Query timeout, continuing...`);
                 }
+                // Continue on any error
             }
         }
     }
@@ -473,18 +486,39 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     return null;
 }
 
+// Helper function to add timeout to fetch requests
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Request timeout');
+        }
+        throw error;
+    }
+}
+
 // Execute SPARQL query against Wikidata
 async function querySPARQL(query) {
     const endpoint = 'https://query.wikidata.org/sparql';
     const url = `${endpoint}?query=${encodeURIComponent(query)}&format=json`;
     
     try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             headers: {
                 'Accept': 'application/sparql-results+json',
                 'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
             }
-        });
+        }, 10000); // 10 second timeout
         
         if (!response.ok) {
             const errorText = await response.text();
