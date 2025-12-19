@@ -213,15 +213,21 @@ async function queryWikidataImage(coasterName, parkName) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // FIRST: Try park-specific search for exact name (prevents wrong matches for generic names)
+    // FIRST: Try park-specific fuzzy search (prevents wrong matches for generic names)
     if (parkName) {
         const escapedName = escapeSPARQL(coasterName.trim());
         const escapedPark = escapeSPARQL(parkName.trim());
         
-        // Try English label first
-        const parkQueryEN = `
+        // Use EntitySearch (fuzzy matching) but validate park location AND roller coaster type
+        const parkQuery = `
             SELECT ?image WHERE {
-              ?coaster rdfs:label "${escapedName}"@en .
+              SERVICE wikibase:mwapi {
+                bd:serviceParam wikibase:api "EntitySearch" .
+                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+                bd:serviceParam mwapi:search "${escapedName}" .
+                bd:serviceParam mwapi:language "en" .
+                ?coaster wikibase:apiOutputItem mwapi:item .
+              }
               ?coaster wdt:P31 wd:Q15243209 .
               ?coaster wdt:P276 ?location .
               ?location rdfs:label ?locLabel .
@@ -232,36 +238,13 @@ async function queryWikidataImage(coasterName, parkName) {
         `;
         
         try {
-            const result = await querySPARQL(parkQueryEN);
+            const result = await querySPARQL(parkQuery);
             if (result) {
-                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (park-specific EN match)`);
+                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (park-specific match)`);
                 return result;
             }
         } catch (e) {
-            // Silent fail, try Dutch
-        }
-        
-        // Try Dutch label
-        const parkQueryNL = `
-            SELECT ?image WHERE {
-              ?coaster rdfs:label "${escapedName}"@nl .
-              ?coaster wdt:P31 wd:Q15243209 .
-              ?coaster wdt:P276 ?location .
-              ?location rdfs:label ?locLabel .
-              FILTER(CONTAINS(LCASE(?locLabel), "${escapedPark.toLowerCase()}"))
-              ?coaster wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result = await querySPARQL(parkQueryNL);
-            if (result) {
-                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (park-specific NL match)`);
-                return result;
-            }
-        } catch (e) {
-            // Silent fail, continue with variants
+            // Silent fail, continue with general search
         }
     }
     
@@ -356,56 +339,10 @@ async function queryWikidataImage(coasterName, parkName) {
     for (const variant of nameVariants) {
         const escapedName = escapeSPARQL(variant);
         
-        // Strategy A1: Direct instance of roller coaster (English label)
-        const query1 = `
-            SELECT ?image WHERE {
-              ?coaster rdfs:label "${escapedName}"@en .
-              ?coaster wdt:P31 wd:Q15243209 .
-              ?coaster wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result1 = await querySPARQL(query1);
-            if (result1) {
-                if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (direct EN match)`);
-                } else {
-                    console.log(`✓ Found image for "${coasterName}" (direct EN match)`);
-                }
-                return result1;
-            }
-        } catch (e) {
-            // Silent fail, try next strategy
-        }
-        
-        // Strategy A2: Direct instance of roller coaster (Dutch label)
-        const query1NL = `
-            SELECT ?image WHERE {
-              ?coaster rdfs:label "${escapedName}"@nl .
-              ?coaster wdt:P31 wd:Q15243209 .
-              ?coaster wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result1NL = await querySPARQL(query1NL);
-            if (result1NL) {
-                if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (direct NL match)`);
-                } else {
-                    console.log(`✓ Found image for "${coasterName}" (direct NL match)`);
-                }
-                return result1NL;
-            }
-        } catch (e) {
-            // Silent fail, try next strategy
-        }
-        
-        // Strategy B: Text search with EntitySearch API (STRICT: roller coasters only)
-        const query3 = `
+
+
+        // Use EntitySearch for fuzzy matching (validates P31=Q15243209 roller coaster)
+        const query = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
                 bd:serviceParam wikibase:api "EntitySearch" .
@@ -421,14 +358,14 @@ async function queryWikidataImage(coasterName, parkName) {
         `;
         
         try {
-            const result3 = await querySPARQL(query3);
-            if (result3) {
+            const result = await querySPARQL(query);
+            if (result) {
                 if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (text search)`);
+                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}"`);
                 } else {
-                    console.log(`✓ Found image for "${coasterName}" (text search)`);
+                    console.log(`✓ Found image for "${coasterName}"`);
                 }
-                return result3;
+                return result;
             }
         } catch (e) {
             // Silent fail, try next variant
