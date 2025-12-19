@@ -218,20 +218,21 @@ async function queryWikidataImage(coasterName, parkName) {
         const escapedName = escapeSPARQL(coasterName.trim());
         const escapedPark = escapeSPARQL(parkName.trim());
         
-        // Use EntitySearch (fuzzy matching) but validate park location AND roller coaster type
+        // Search with both coaster and park name for better EntitySearch results
         const parkQuery = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
                 bd:serviceParam wikibase:api "EntitySearch" .
                 bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName}" .
+                bd:serviceParam mwapi:search "${escapedName} ${escapedPark}" .
                 bd:serviceParam mwapi:language "en" .
                 ?coaster wikibase:apiOutputItem mwapi:item .
               }
-              ?coaster wdt:P31/wdt:P279* wd:Q15243209 .
-              ?coaster wdt:P276 ?location .
-              ?location rdfs:label ?locLabel .
-              FILTER(CONTAINS(LCASE(?locLabel), "${escapedPark.toLowerCase()}"))
+              VALUES ?rcType { 
+                wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
+                wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
+              }
+              ?coaster wdt:P31 ?rcType .
               ?coaster wdt:P18 ?image .
             }
             LIMIT 1
@@ -240,11 +241,11 @@ async function queryWikidataImage(coasterName, parkName) {
         try {
             const result = await querySPARQL(parkQuery);
             if (result) {
-                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (park-specific match)`);
+                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (park-specific)`);
                 return result;
             }
         } catch (e) {
-            console.warn(`Park-specific query error for "${coasterName}":`, e.message);
+            console.warn(`Park query error for "${coasterName}":`, e.message);
         }
     }
     
@@ -335,53 +336,29 @@ async function queryWikidataImage(coasterName, parkName) {
         }
     }
     
-    // Try each variant with fuzzy EntitySearch
+    // Try each variant with comprehensive roller coaster type checking
     for (const variant of nameVariants) {
         const escapedName = escapeSPARQL(variant);
         
-        // Strategy 1: EntitySearch with direct roller coaster check (no property paths)
-        const query1 = `
+        // Build search term with park context when available
+        const searchTerm = parkName ? `${escapedName} ${escapeSPARQL(parkName)}` : escapedName;
+        
+        // Comprehensive list of roller coaster types from Wikidata
+        // Q15243209=roller coaster, Q476493=steel, Q652787=wooden, Q17287243=inverted, 
+        // Q1144661=launched, Q2537706=suspended, Q19814130=hybrid, Q29643=wild mouse
+        const query = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
                 bd:serviceParam wikibase:api "EntitySearch" .
                 bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName}" .
+                bd:serviceParam mwapi:search "${searchTerm}" .
                 bd:serviceParam mwapi:language "en" .
                 ?item wikibase:apiOutputItem mwapi:item .
               }
-              ?item wdt:P31 wd:Q15243209 .
-              ?item wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result = await querySPARQL(query1);
-            if (result) {
-                if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (roller coaster)`);
-                } else {
-                    console.log(`✓ Found image for "${coasterName}" (roller coaster)`);
-                }
-                return result;
-            }
-        } catch (e) {
-            if (variant === cleanName) {
-                console.warn(`Direct RC query error for "${coasterName}":`, e.message);
-            }
-        }
-        
-        // Strategy 2: Check for steel/wooden roller coaster subclasses
-        const query2 = `
-            SELECT ?image WHERE {
-              SERVICE wikibase:mwapi {
-                bd:serviceParam wikibase:api "EntitySearch" .
-                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName}" .
-                bd:serviceParam mwapi:language "en" .
-                ?item wikibase:apiOutputItem mwapi:item .
+              VALUES ?rcType { 
+                wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
+                wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
               }
-              VALUES ?rcType { wd:Q15243209 wd:Q476493 wd:Q652787 }
               ?item wdt:P31 ?rcType .
               ?item wdt:P18 ?image .
             }
@@ -389,17 +366,19 @@ async function queryWikidataImage(coasterName, parkName) {
         `;
         
         try {
-            const result = await querySPARQL(query2);
+            const result = await querySPARQL(query);
             if (result) {
                 if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (RC subclass)`);
+                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}"`);
                 } else {
-                    console.log(`✓ Found image for "${coasterName}" (RC subclass)`);
+                    console.log(`✓ Found image for "${coasterName}"`);
                 }
                 return result;
             }
         } catch (e) {
-            // Silent fail
+            if (variant === cleanName) {
+                console.warn(`Query error for "${coasterName}":`, e.message);
+            }
         }
     }
     
