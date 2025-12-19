@@ -672,11 +672,11 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             const cards = document.querySelectorAll('.coaster-card');
             console.log(`  🔍 Found ${cards.length} coaster cards to check`);
             cards.forEach(card => {
-                const nameEl = card.querySelector('h3');
+                const nameEl = card.querySelector('.coaster-name');
                 const cardName = nameEl?.textContent;
                 console.log(`    📋 Card name: "${cardName}" vs target: "${coasterName}"`);
                 if (nameEl && nameEl.textContent === coasterName) {
-                    const img = card.querySelector('img');
+                    const img = card.querySelector('.coaster-img');
                     console.log(`    🎯 Match found! Image element exists: ${!!img}`);
                     if (img) {
                         console.log(`    🔄 Updating from "${img.src}" to "${result.url}"`);
