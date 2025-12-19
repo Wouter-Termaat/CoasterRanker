@@ -1,6 +1,10 @@
 // Coaster data - will be loaded from CSV files
     let coastersDataLuca = [];
     let coastersDataWouter = [];
+    
+    // Cache version - increment this when improving search logic to invalidate old caches
+    // This allows better searches without manual cache clearing
+    const CACHE_VERSION = 'v5'; // Updated: fixed SPARQL syntax (no double dots, proper VALUES placement)
 
     // Function to parse CSV data
     function parseCSV(csvText) {
@@ -217,10 +221,16 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // Use subclass matching to include ALL roller coaster types (Q15243209)
-    // This automatically includes wooden, steel, inverted, dive, wing, suspended, etc.
-    // without needing to maintain a manual list - future-proof!
-    const rcTypeCheck = '?item wdt:P31/wdt:P279* wd:Q15243209';
+    // Build the type check inline to avoid syntax issues
+    const buildTypeCheck = () => `
+        VALUES ?rcType { 
+            wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
+            wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
+            wd:Q1318369 wd:Q2252148 wd:Q1377858 wd:Q1497656
+            wd:Q1990148 wd:Q30014587
+        }
+        ?item wdt:P31 ?rcType .
+        ?item wdt:P18 ?image .`;
     
     // STRATEGY 1: Most specific - name + park + manufacturer (all must match)
     if (parkName && manufacturer) {
@@ -238,20 +248,23 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 ?item wikibase:apiOutputItem mwapi:item .
                 ?num wikibase:apiOrdinal true .
               }
-              ${rcTypeCheck} .
-              ?item wdt:P18 ?image .
+              ${buildTypeCheck()}
             }
             ORDER BY ASC(?num)
             LIMIT 1
         `;
         
         try {
+            console.log(`  🔍 Strategy 1: Searching "${coasterName}" + "${parkName}" + "${manufacturer}"`);
             const result = await querySPARQL(query);
             if (result) {
                 console.log(`✓ Found "${coasterName}" (name+park+manufacturer)`);
                 return result;
+            } else {
+                console.log(`  ⚠️ Strategy 1: Query succeeded but returned 0 results`);
             }
         } catch (e) {
+            console.log(`  ❌ Strategy 1 failed: ${e.message}`);
             // Fall through to next strategy
         }
     }
@@ -271,20 +284,23 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                 ?item wikibase:apiOutputItem mwapi:item .
                 ?num wikibase:apiOrdinal true .
               }
-              ${rcTypeCheck} .
-              ?item wdt:P18 ?image .
+              ${buildTypeCheck()}
             }
             ORDER BY ASC(?num)
             LIMIT 1
         `;
         
         try {
+            console.log(`  🔍 Strategy 2: Searching "${coasterName}" + "${parkName}"`);
             const result = await querySPARQL(query);
             if (result) {
                 console.log(`✓ Found "${coasterName}" (name+park)`);
                 return result;
+            } else {
+                console.log(`  ⚠️ Strategy 2: Query succeeded but returned 0 results`);
             }
         } catch (e) {
+            console.log(`  ❌ Strategy 2 failed: ${e.message}`);
             // Fall through to name variants
         }
     }
@@ -292,6 +308,8 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Generate name variants to try (most specific to least specific)
     const nameVariants = [];
     let cleanName = coasterName.trim().replace(/\s+/g, ' '); // Fix multiple spaces
+    
+    console.log(`  🔄 Generating name variants for "${coasterName}"...`);
     
     // 1. Try exact name first (most specific)
     nameVariants.push(cleanName);
@@ -412,6 +430,8 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     
     // STRATEGY 3: Try name variants (most specific to least specific)
     // Still ALWAYS validates roller coaster type
+    console.log(`  📝 Generated ${nameVariants.length} name variants:`, nameVariants.slice(0, 5).join(', ') + (nameVariants.length > 5 ? '...' : ''));
+    
     for (let i = 0; i < nameVariants.length; i++) {
         const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
@@ -421,6 +441,8 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         const languages = i < 3 ? ['en', 'de', 'es', 'nl', 'fr'] : ['en'];
         
         for (const lang of languages) {
+            console.log(`  🔍 Strategy 3.${i + 1}: Trying variant "${variant}" (lang: ${lang})`);
+            
             const query = `
                 SELECT ?image WHERE {
                   SERVICE wikibase:mwapi {
@@ -431,8 +453,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     ?item wikibase:apiOutputItem mwapi:item .
                     ?num wikibase:apiOrdinal true .
                   }
-                  ${rcTypeCheck} .
-                  ?item wdt:P18 ?image .
+                  ${buildTypeCheck()}
                 }
                 ORDER BY ASC(?num)
                 LIMIT 1
@@ -447,14 +468,17 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                         console.log(`✓ Found "${coasterName}" (name only)`);
                     }
                     return result;
+                } else {
+                    console.log(`    ⚠️ No results for "${variant}" (${lang})`);
                 }
             } catch (e) {
+                console.log(`    ❌ Query error for "${variant}" (${lang}): ${e.message}`);
                 // Try next language/variant
             }
         }
     }
     
-    console.log(`✗ No image found for "${coasterName}" at "${parkName || 'unknown park'}"`);
+    console.log(`✗ No image found for "${coasterName}" at "${parkName || 'unknown park'}" after trying ${nameVariants.length} variants`);
     return null;
 }
 
@@ -463,30 +487,37 @@ async function querySPARQL(query) {
     const endpoint = 'https://query.wikidata.org/sparql';
     const url = `${endpoint}?query=${encodeURIComponent(query)}&format=json`;
     
-    const response = await fetch(url, {
-        headers: {
-            'Accept': 'application/sparql-results+json',
-            'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Accept': 'application/sparql-results+json',
+                'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('SPARQL query failed:', response.status, response.statusText);
+            console.error('Error details:', errorText.substring(0, 500));
+            throw new Error(`SPARQL query failed: ${response.status}`);
         }
-    });
-    
-    if (!response.ok) {
-        throw new Error(`SPARQL query failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const bindings = data?.results?.bindings;
-    
-    if (bindings && bindings.length > 0 && bindings[0].image) {
-        let imageUrl = bindings[0].image.value;
-        // Ensure HTTPS to avoid mixed content warnings
-        if (imageUrl.startsWith('http://')) {
-            imageUrl = imageUrl.replace('http://', 'https://');
+        
+        const data = await response.json();
+        const bindings = data?.results?.bindings;
+        
+        if (bindings && bindings.length > 0 && bindings[0].image) {
+            let imageUrl = bindings[0].image.value;
+            // Ensure HTTPS to avoid mixed content warnings
+            if (imageUrl.startsWith('http://')) {
+                imageUrl = imageUrl.replace('http://', 'https://');}
+            return imageUrl;
         }
-        return imageUrl;
+        
+        return null;
+    } catch (error) {
+        console.error('SPARQL fetch error:', error.message);
+        throw error;
     }
-    
-    return null;
 }
 
 // Get coaster image (from cache or fetch from Wikidata)
@@ -495,7 +526,7 @@ async function getCoasterImage(coaster) {
     
     const normalizedName = normalizeCoasterName(coaster.naam);
     const normalizedPark = normalizeCoasterName(coaster.park);
-    const cacheKey = `coasterImage_${normalizedName}_${normalizedPark}`;
+    const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
     
     // Check cache first
     try {
@@ -553,7 +584,7 @@ function getCoasterImageSync(coaster) {
     
     const normalizedName = normalizeCoasterName(coaster.naam);
     const normalizedPark = normalizeCoasterName(coaster.park);
-    const cacheKey = `coasterImage_${normalizedName}_${normalizedPark}`;
+    const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
     
     // Check cache only (synchronous)
     try {
@@ -607,6 +638,28 @@ function clearImageCache() {
     }
 }
 
+// Auto-clean old cache versions (called on startup)
+function cleanOldCacheVersions() {
+    try {
+        const keys = Object.keys(localStorage);
+        let cleaned = 0;
+        
+        keys.forEach(key => {
+            // Remove old version caches (anything not matching current version)
+            if (key.startsWith('coasterImage_') && !key.startsWith(`coasterImage_${CACHE_VERSION}_`)) {
+                localStorage.removeItem(key);
+                cleaned++;
+            }
+        });
+        
+        if (cleaned > 0) {
+            console.log(`🧹 Cleaned ${cleaned} old cache entries (outdated version)`);
+        }
+    } catch (e) {
+        console.warn('Error cleaning old cache:', e);
+    }
+}
+
 // Update dev menu with current image loading stats
 function updateImageLoadStats() {
     const progressEl = document.getElementById('imageLoadProgress');
@@ -657,6 +710,9 @@ async function preloadCoasterImages() {
         hideLoadingScreen();
         return;
     }
+    
+    // Auto-clean old cache versions before starting
+    cleanOldCacheVersions();
     
     // IMPORTANT: Reset ALL stats including cached to avoid showing stale numbers
     imageLoadStats.loaded = 0;
