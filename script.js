@@ -4,7 +4,7 @@
     
     // Cache version - increment this when improving search logic to invalidate old caches
     // This allows better searches without manual cache clearing
-    const CACHE_VERSION = 'v6'; // Updated: direct label matching instead of EntitySearch
+    const CACHE_VERSION = 'v7'; // Updated: removed strict type checking, accepts any entity with images
 
     // Function to parse CSV data
     function parseCSV(csvText) {
