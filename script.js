@@ -2099,20 +2099,24 @@ const DOM = {};
             const leftOverlay = document.createElement('div');
             leftOverlay.className = 'dev-data-overlay';
             leftOverlay.innerHTML = devLeftHtml;
-            // Prevent clicks on the overlay from bubbling to card
+            // CRITICAL: Prevent ANY clicks on overlay from reaching the card
+            leftOverlay.style.pointerEvents = 'auto'; // Ensure overlay catches clicks
             leftOverlay.addEventListener('click', (e) => {
                 e.stopPropagation();
-            });
+                e.preventDefault();
+            }, true); // Use capture phase
             cards[0].appendChild(leftOverlay);
         }
         if (cards[1]) {
             const rightOverlay = document.createElement('div');
             rightOverlay.className = 'dev-data-overlay';
             rightOverlay.innerHTML = devRightHtml;
-            // Prevent clicks on the overlay from bubbling to card
+            // CRITICAL: Prevent ANY clicks on overlay from reaching the card
+            rightOverlay.style.pointerEvents = 'auto'; // Ensure overlay catches clicks
             rightOverlay.addEventListener('click', (e) => {
                 e.stopPropagation();
-            });
+                e.preventDefault();
+            }, true); // Use capture phase
             cards[1].appendChild(rightOverlay);
         }
     }
@@ -2891,11 +2895,15 @@ const DOM = {};
         const cards = battleContainer.querySelectorAll('.coaster-card');
         cards.forEach(card => {
             card.addEventListener('click', (e) => {
-                // Only trigger winner selection if NOT clicking on dev-data overlay
-                if (!e.target.closest('.dev-data-overlay')) {
-                    const choice = parseInt(card.getAttribute('data-choice'));
-                    chooseWinner(choice);
+                // STRICT CHECK: Do NOT trigger if clicking inside dev-data overlay
+                const clickedOverlay = e.target.classList.contains('dev-data-overlay') || e.target.closest('.dev-data-overlay');
+                if (clickedOverlay) {
+                    console.log('Click blocked - inside dev-data overlay');
+                    return; // Do nothing
                 }
+                
+                const choice = parseInt(card.getAttribute('data-choice'));
+                chooseWinner(choice);
             });
         });
 

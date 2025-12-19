@@ -235,7 +235,7 @@ body {
     padding: 8px 10px;
     font-size: 0.75em;
     line-height: 1.4;
-    pointer-events: none;
+    pointer-events: auto; /* CHANGED: Allow clicks on overlay (especially for retry button) */
     z-index: 10;
     border-radius: 6px;
     max-width: 140px;
