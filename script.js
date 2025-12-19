@@ -335,14 +335,12 @@ async function queryWikidataImage(coasterName, parkName) {
         }
     }
     
-    // Try each variant with all search strategies
+    // Try each variant with fuzzy EntitySearch
     for (const variant of nameVariants) {
         const escapedName = escapeSPARQL(variant);
         
-
-
-        // Use EntitySearch for fuzzy matching (validates P31=Q15243209 roller coaster)
-        const query = `
+        // Strategy 1: EntitySearch with roller coaster validation
+        const query1 = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
                 bd:serviceParam wikibase:api "EntitySearch" .
@@ -358,19 +356,46 @@ async function queryWikidataImage(coasterName, parkName) {
         `;
         
         try {
-            const result = await querySPARQL(query);
+            const result = await querySPARQL(query1);
             if (result) {
                 if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}"`);
+                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}" (roller coaster match)`);
                 } else {
-                    console.log(`✓ Found image for "${coasterName}"`);
+                    console.log(`✓ Found image for "${coasterName}" (roller coaster match)`);
                 }
                 return result;
             }
         } catch (e) {
-            // Log first error for debugging
             if (variant === cleanName) {
-                console.warn(`Query error for "${coasterName}":`, e.message);
+                console.warn(`Roller coaster query error for "${coasterName}":`, e.message);
+            }
+        }
+        
+        // Strategy 2: Broader search - EntitySearch with ANY item that has an image
+        // (Only for exact name to avoid too many wrong matches)
+        if (variant === cleanName && parkName) {
+            const query2 = `
+                SELECT ?image WHERE {
+                  SERVICE wikibase:mwapi {
+                    bd:serviceParam wikibase:api "EntitySearch" .
+                    bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+                    bd:serviceParam mwapi:search "${escapedName}" .
+                    bd:serviceParam mwapi:language "en" .
+                    ?item wikibase:apiOutputItem mwapi:item .
+                  }
+                  ?item wdt:P18 ?image .
+                }
+                LIMIT 1
+            `;
+            
+            try {
+                const result = await querySPARQL(query2);
+                if (result) {
+                    console.log(`✓ Found image for "${coasterName}" (broad match - verify manually)`);
+                    return result;
+                }
+            } catch (e) {
+                console.warn(`Broad query error for "${coasterName}":`, e.message);
             }
         }
     }
