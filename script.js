@@ -4,7 +4,7 @@
     
     // Cache version - increment this when improving search logic to invalidate old caches
     // This allows better searches without manual cache clearing
-    const CACHE_VERSION = 'v7'; // Updated: removed strict type checking, accepts any entity with images
+    const CACHE_VERSION = 'v8'; // Updated: removed slow park queries, reduced delays 200ms→50ms, only 2 variants
 
     // Function to parse CSV data
     function parseCSV(csvText) {
@@ -371,58 +371,13 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
             .trim();
     };
     
-    for (let i = 0; i < Math.min(nameVariants.length, 3); i++) { // Only try first 3 variants
+    for (let i = 0; i < Math.min(nameVariants.length, 2); i++) { // Only try first 2 variants for speed
         const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
         
-        // Strategy 1: CONTAINS search with park context (BEST - finds "Voltron" in "Voltron Nevera" at Europa-Park)
-        if (parkName && parkName.trim() && variant.length > 3) {
-            // Try multiple park name variations
-            const parkVariants = [
-                parkName.trim(),
-                normalizeParkName(parkName),
-                parkName.replace(/[-\s]/g, ''), // Remove spaces/hyphens
-            ].filter(p => p.length > 2);
-            
-            for (const parkVariant of parkVariants) {
-                console.log(`  🔍 Smart search: "${variant}" at "${parkVariant}"`);
-                const escapedPark = escapeSPARQL(parkVariant);
-                const smartQuery = `
-                    SELECT ?item ?image WHERE {
-                      ?item rdfs:label ?label .
-                      FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
-                      ?item wdt:P18 ?image .
-                      ?item wdt:P276 ?location .
-                      ?location rdfs:label ?parkLabel .
-                      FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedPark}")))
-                      ${preferredTypes}
-                    }
-                    ORDER BY DESC(BOUND(?rcType))
-                    LIMIT 1
-                `;
-                
-                try {
-                    const result = await querySPARQL(smartQuery);
-                    if (result) {
-                        console.log(`✓ Found "${coasterName}" at "${parkVariant}"`);
-                        return result;
-                    }
-                    await delay(150);
-                } catch (e) {
-                    console.warn(`    ⚠️ Query failed for "${variant}" at "${parkVariant}": ${e.message}`);
-                    if (e.message.includes('429')) {
-                        console.log(`    ⏸️ Rate limited, waiting...`);
-                        await delay(1000);
-                    } else if (e.message.includes('timeout')) {
-                        console.log(`    ⏱️ Query timeout, skipping...`);
-                        // Continue to next strategy
-                    }
-                    // Continue to next variant/strategy on any error
-                }
-            }
-        }
+        // SKIP Strategy 1 (park queries are slow and don't give many hits)
         
-        // Strategy 2: CONTAINS without park filter (FALLBACK - if park search failed or no park)
+        // Strategy 1 (was 2): Fast CONTAINS search without park filter
         if (variant.length > 3) {
             console.log(`  🔍 CONTAINS "${variant}" (no park filter)`);
             const containsQuery = `
@@ -440,19 +395,20 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     console.log(`✓ Found "${coasterName}" using "${variant}"`);
                     return result;
                 }
-                await delay(150);
+                await delay(200);
             } catch (e) {
                 console.warn(`    ⚠️ CONTAINS query failed for "${variant}": ${e.message}`);
                 if (e.message.includes('429')) {
-                    await delay(1000);
+                    await delay(2000);
                 } else if (e.message.includes('timeout')) {
                     console.log(`    ⏱️ Query timeout, continuing...`);
+                    await delay(50);
                 }
                 // Continue to next strategy on any error
             }
         }
         
-        // Strategy 3: Exact match (any language) - only for first variant
+        // Strategy 2 (was 3): Exact match - only for first variant
         if (i === 0) {
             console.log(`  🔍 Exact match "${variant}"`);
             const exactQuery = `
@@ -469,13 +425,14 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     console.log(`✓ Found "${coasterName}" exact`);
                     return result;
                 }
-                await delay(150);
+                await delay(50);
             } catch (e) {
                 console.warn(`    ⚠️ Exact match query failed for "${variant}": ${e.message}`);
                 if (e.message.includes('429')) {
-                    await delay(1000);
+                    await delay(2000);
                 } else if (e.message.includes('timeout')) {
                     console.log(`    ⏱️ Query timeout, continuing...`);
+                    await delay(50);
                 }
                 // Continue on any error
             }
@@ -487,7 +444,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
 }
 
 // Helper function to add timeout to fetch requests
-async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
@@ -518,7 +475,7 @@ async function querySPARQL(query) {
                 'Accept': 'application/sparql-results+json',
                 'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
             }
-        }, 10000); // 10 second timeout
+        }, 20000); // 20 second timeout
         
         if (!response.ok) {
             const errorText = await response.text();
@@ -750,9 +707,9 @@ async function preloadCoasterImages() {
     
     console.log(`Starting image preload for ${coasters.length} coasters...`);
     
-    // Larger batches now - we removed wasteful multi-strategy searches
-    const batchSize = 10; // Increased from 3
-    const delay = 100; // Reduced delay
+    // Smaller batches to avoid overwhelming the API
+    const batchSize = 5; // Reduced to avoid rate limiting
+    const delay = 300; // Increased delay between batches
     
     for (let i = 0; i < coasters.length; i += batchSize) {
         const batch = coasters.slice(i, i + batchSize);
