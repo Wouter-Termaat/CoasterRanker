@@ -629,6 +629,9 @@ async function querySPARQLMultiple(query) {
     }
 }
 
+// Track retry attempts per coaster
+const retryAttempts = new Map();
+
 // Retry button handler (called from dev-data overlay)
 window.retryCoasterImage = async function(coasterName, parkName, manufacturer, elementId, event) {
     console.log('🔄 Retry button clicked for:', coasterName);
@@ -643,6 +646,12 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
     const button = event ? event.target : null;
     const infoDiv = document.getElementById(`imageInfo_${elementId}`);
     
+    // Get and increment retry attempt counter
+    const attemptKey = normalizeCoasterName(coasterName);
+    const currentAttempt = retryAttempts.get(attemptKey) || 0;
+    retryAttempts.set(attemptKey, currentAttempt + 1);
+    console.log(`  🔢 Retry attempt #${currentAttempt + 1}`);
+    
     if (button) {
         button.disabled = true;
         button.textContent = '⏳ Searching...';
@@ -656,17 +665,36 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
     console.log('  🔬 Starting intensive search...');
     
     try {
-        const result = await intensiveImageSearch(coasterName, parkName, manufacturer);
+        const allResults = await intensiveImageSearch(coasterName, parkName, manufacturer, true);
         
-        console.log('  📦 Intensive search result:', result);
+        console.log('  📦 Intensive search results:', allResults);
+        console.log(`  📸 Found ${allResults?.length || 0} total images`);
+        
+        // Get the result at current attempt index, or use placeholder if exhausted
+        let result = null;
+        if (allResults && allResults.length > 0) {
+            if (currentAttempt < allResults.length) {
+                result = allResults[currentAttempt];
+                console.log(`  👉 Using image ${currentAttempt + 1} of ${allResults.length}`);
+            } else {
+                console.log(`  ⚠️ All ${allResults.length} images exhausted, using placeholder`);
+                // Reset counter and use placeholder
+                retryAttempts.set(attemptKey, 0);
+                result = null; // Will trigger placeholder logic below
+            }
+        }
         
         if (result && result.url) {
             console.log('  🖼️ Image URL found:', result.url);
-            // Update cache with new image
-            const cacheVersion = 'v1';
-            const cacheKey = `coasterImage_${cacheVersion}_${normalizeCoasterName(coasterName)}`;
+            console.log('  📊 Match quality - Verified:', result.metadata.verified, ', Park:', result.metadata.parkMatch, ', Mfg:', result.metadata.mfgMatch);
+            
+            // Update cache with new image (using same key format as getCoasterImageSync)
+            const normalizedName = normalizeCoasterName(coasterName);
+            const normalizedPark = normalizeCoasterName(parkName);
+            const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
             localStorage.setItem(cacheKey, result.url);
-            console.log('  💾 Cached with key:', cacheKey);
+            console.log('  💾 Cached to:', cacheKey);
+            console.log('  ✅ Image will persist for future battles!');
             
             // Update image in current battle if visible
             const cards = document.querySelectorAll('.coaster-card');
@@ -693,8 +721,9 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
                 const icon = result.metadata.verified ? '✓✓' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '✓' : '⚠️');
                 const parkInfo = result.metadata.park ? `at ${result.metadata.park}` : '';
                 const mfgInfo = result.metadata.manufacturer ? `by ${result.metadata.manufacturer}` : '';
+                const imageNum = allResults?.length > 1 ? ` [${currentAttempt + 1}/${allResults.length}]` : '';
                 
-                infoDiv.innerHTML = `${icon} ${result.metadata.name} ${parkInfo} ${mfgInfo}`;
+                infoDiv.innerHTML = `${icon} ${result.metadata.name} ${parkInfo} ${mfgInfo}${imageNum}`;
                 infoDiv.style.color = result.metadata.verified ? '#10b981' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '#f59e0b' : '#ef4444');
                 
                 // Add warnings for mismatches
@@ -709,6 +738,9 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
                 if (warnings.length > 0) {
                     infoDiv.innerHTML += `<br><span style="font-size:0.8em;color:#ef4444;">⚠️ ${warnings.join(', ')}</span>`;
                 }
+                
+                // Show that image is saved
+                infoDiv.innerHTML += `<br><span style="font-size:0.8em;color:#6b7280;">💾 Saved - will persist in future battles</span>`;
             }
             
             if (button) {
@@ -721,17 +753,38 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             
             console.log('  ✓ Retry complete!');
         } else {
-            console.log('  ✗ No image found');
+            // No image found or exhausted - use placeholder
+            console.log('  🖼️ Using placeholder image');
+            const placeholderUrl = 'https://via.placeholder.com/400x300/1a1a2e/eee?text=No+Image';
+            
+            // Update cache with placeholder (using same key format as getCoasterImageSync)
+            const normalizedName = normalizeCoasterName(coasterName);
+            const normalizedPark = normalizeCoasterName(parkName);
+            const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
+            localStorage.setItem(cacheKey, placeholderUrl);
+            console.log('  💾 Placeholder cached to:', cacheKey);
+            
+            // Update image in cards
+            const cards = document.querySelectorAll('.coaster-card');
+            cards.forEach(card => {
+                const nameEl = card.querySelector('.coaster-name');
+                if (nameEl && nameEl.textContent === coasterName) {
+                    const img = card.querySelector('.coaster-img');
+                    if (img) {
+                        img.src = placeholderUrl;
+                        console.log('  ✓ Placeholder updated in battle view');
+                    }
+                }
+            });
+            
             if (infoDiv) {
-                infoDiv.textContent = '✗ No image found';
-                infoDiv.style.color = '#ef4444';
+                const message = allResults?.length > 0 ? `All ${allResults.length} images tried` : 'No image found';
+                infoDiv.textContent = `🔄 ${message} - Using placeholder`;
+                infoDiv.style.color = '#6b7280';
             }
             if (button) {
-                button.textContent = '✗ Not Found';
-                setTimeout(() => {
-                    button.textContent = '🔄 Retry Image';
-                    button.disabled = false;
-                }, 2000);
+                button.textContent = '🔄 Try Again';
+                button.disabled = false;
             }
         }
     } catch (error) {
@@ -751,8 +804,8 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
 };
 
 // Intensive image search with park/manufacturer verification (triggered by retry button)
-async function intensiveImageSearch(coasterName, parkName, manufacturer) {
-    console.log(`\n🔬 INTENSIVE SEARCH for "${coasterName}" at ${parkName}...`);
+async function intensiveImageSearch(coasterName, parkName, manufacturer, returnAll = false) {
+    console.log(`\n🔬 INTENSIVE SEARCH for "${coasterName}" at ${parkName}... (returnAll: ${returnAll})`);
     
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -793,10 +846,67 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
     
     // Helper function to process results with scoring
     const processResults = (results, strategy) => {
-        if (!results || results.length === 0) return null;
+        if (!results || results.length === 0) return returnAll ? [] : null;
         
         console.log(`  ✓ ${strategy}: Found ${results.length} candidates`);
         
+        // If returnAll is true, collect all valid results
+        if (returnAll) {
+            const allMatches = [];
+            
+            for (const result of results) {
+                const itemLabel = result.itemLabel?.value || '';
+                const parkLabel = result.parkLabel?.value || '';
+                const mfgLabel = result.mfgLabel?.value || '';
+                const imageUrl = result.image?.value;
+                
+                if (!imageUrl) continue; // Skip results without images
+                
+                console.log(`    Candidate: ${itemLabel} at ${parkLabel || '(unknown)'} by ${mfgLabel || '(unknown)'}`);
+                
+                const parkMatches = parkLabel && (
+                    parkLabel.toLowerCase().includes(parkName.toLowerCase()) ||
+                    parkName.toLowerCase().includes(parkLabel.toLowerCase())
+                );
+                
+                const mfgMatches = mfgLabel && manufacturer && (
+                    mfgLabel.toLowerCase().includes(manufacturer.toLowerCase()) ||
+                    manufacturer.toLowerCase().includes(mfgLabel.toLowerCase())
+                );
+                
+                // Calculate match score: both=3, park=2, mfg=1, neither=0
+                let score = 0;
+                if (parkMatches && mfgMatches) {
+                    score = 3;
+                    console.log(`    ✅✅ PERFECT MATCH!`);
+                } else if (parkMatches) {
+                    score = 2;
+                    console.log(`    ✅ Park verified`);
+                } else if (mfgMatches) {
+                    score = 1;
+                    console.log(`    ⚠️ Manufacturer only`);
+                }
+                
+                allMatches.push({
+                    url: imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl,
+                    metadata: {
+                        name: itemLabel,
+                        park: parkLabel,
+                        manufacturer: mfgLabel,
+                        verified: score === 3,
+                        parkMatch: parkMatches,
+                        mfgMatch: mfgMatches
+                    },
+                    score: score
+                });
+            }
+            
+            // Sort by score (best first)
+            allMatches.sort((a, b) => b.score - a.score);
+            return allMatches;
+        }
+        
+        // Original logic for returning single best match
         let bestMatch = null;
         let bestScore = 0;
         
@@ -911,7 +1021,13 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
                 }
             }
             const match = processResults(results, 'CONTAINS');
-            if (match) return match;
+            if (returnAll && Array.isArray(match) && match.length > 0) {
+                // Collect all results for cycling
+                return match;
+            } else if (!returnAll && match) {
+                // Return single best result
+                return match;
+            }
             await delay(150);
         } catch (e) {
             console.warn(`    ⚠️ CONTAINS failed: ${e.message}`);
@@ -953,7 +1069,13 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
         try {
             const results = await querySPARQLMultiple(exactQuery);
             const match = processResults(results, 'EXACT');
-            if (match) return match;
+            if (returnAll && Array.isArray(match) && match.length > 0) {
+                // Collect all results for cycling
+                return match;
+            } else if (!returnAll && match) {
+                // Return single best result
+                return match;
+            }
             await delay(150);
         } catch (e) {
             console.warn(`    ⚠️ EXACT failed: ${e.message}`);
@@ -962,7 +1084,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
     }
     
     console.log(`  ✗ No image found after intensive search`);
-    return null;
+    return returnAll ? [] : null;
 }
 
 // Helper function to add timeout to fetch requests
