@@ -354,125 +354,39 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Helper to add delay between requests to avoid rate limiting
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
-    // Generic/short names that need exact matching to avoid false positives
-    const exactMatchRequired = ['max', 'speed', 'formula', 'fury', 'python', 'condor', 'limit', 'arthur', 'nessie'];
+    // FAST PATH: Single CONTAINS query - searches all languages automatically
+    // Use retry button for exact language matching and park/manufacturer verification
+    const variant = nameVariants[0];
+    const escapedName = escapeSPARQL(variant);
     
-    // Try first 3 variants (balance between coverage and speed)
-    for (let i = 0; i < Math.min(nameVariants.length, 3); i++) {
-        const variant = nameVariants[i];
-        const escapedName = escapeSPARQL(variant);
-        
-        if (variant.length < 3) continue; // Skip very short names
-        
-        // Check if this name requires exact matching (short/generic names)
-        const requiresExactMatch = exactMatchRequired.includes(variant.toLowerCase()) || variant.length < 6;
-        
-        if (requiresExactMatch && i === 0) {
-            // STRATEGY 1a: Exact match for short/generic names (safer, prevents false positives)
-            console.log(`  🔍 Strategy 1a: Exact match "${variant}" (short/generic name protection)`);
-            const exactMatchQuery = `
-                SELECT ?item ?image WHERE {
-                  { ?item rdfs:label "${escapedName}"@en . }
-                  UNION { ?item rdfs:label "${escapedName}"@de . }
-                  ${coasterTypeFilter}
-                  ?item wdt:P18 ?image .
-                }
-                LIMIT 1
-            `;
-            
-            try {
-                const result = await querySPARQL(exactMatchQuery);
-                if (result) {
-                    console.log(`✓ Found "${coasterName}" - exact match (protected)`);
-                    return result;
-                }
-                await delay(150);
-            } catch (e) {
-                console.warn(`    ⚠️ Strategy 1a failed: ${e.message}`);
-                if (e.message.includes('429')) {
-                    await delay(3000);
-                } else {
-                    await delay(150);
-                }
-            }
-        }
-        
-        // STRATEGY 1b: CONTAINS search with type validation (PRIMARY - handles both exact and partial matches)
-        // Single query searches all languages automatically, more efficient than multi-language exact match
-        console.log(`  🔍 Strategy 1b: CONTAINS "${variant}" WITH type validation`);
-        const containsWithTypeQuery = `
-            SELECT ?item ?image WHERE {
-              ?item rdfs:label ?label .
-              FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
-              ${coasterTypeFilter}
-              ?item wdt:P18 ?image .
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result = await querySPARQL(containsWithTypeQuery);
-            if (result) {
-                console.log(`✓ Found "${coasterName}" - contains match with validation`);
-                return result;
-            }
-            await delay(150);
-        } catch (e) {
-            console.warn(`    ⚠️ Strategy 1 failed: ${e.message}`);
-            if (e.message.includes('429')) {
-                await delay(3000); // Longer wait for rate limit
-            } else {
-                await delay(150);
-            }
-        }
-        
-        // STRATEGY 2: CONTAINS without type (FALLBACK - less reliable but catches edge cases)
-        // Only try for first 2 variants to avoid too many unvalidated queries
-        if (i < 2) {
-            console.log(`  🔍 Strategy 2: CONTAINS "${variant}" WITHOUT type validation (fallback)`);
-            const containsNoTypeQuery = `
-                SELECT ?item ?image WHERE {
-                  ?item rdfs:label ?label .
-                  FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
-                  ?item wdt:P18 ?image .
-                }
-                LIMIT 1
-            `;
-            
-            try {
-                const result = await querySPARQL(containsNoTypeQuery);
-                if (result) {
-                    console.log(`✓ Found "${coasterName}" - unvalidated match (may not be coaster)`);
-                    return result;
-                }
-                await delay(150);
-            } catch (e) {
-                console.warn(`    ⚠️ Strategy 2 failed: ${e.message}`);
-                if (e.message.includes('429')) {
-                    await delay(3000);
-                } else {
-                    await delay(150);
-                }
-            }
-        }
+    if (variant.length < 3) {
+        console.log(`✗ Name too short: "${variant}"`);
+        return null;
     }
     
-    // STRATEGY 3: EntitySearch API with validation (LAST RESORT)
-    console.log(`  🔎 Strategy 3: EntitySearch API with type validation`);
-    for (let i = 0; i < Math.min(2, nameVariants.length); i++) {
-        try {
-            const searchResult = await searchWikidataEntity(nameVariants[i], true); // true = validate type
-            if (searchResult) {
-                console.log(`✓ Found "${coasterName}" via EntitySearch (validated)`);
-                return searchResult;
-            }
-            await delay(150);
-        } catch (e) {
-            console.warn(`EntitySearch failed: ${e.message}`);
+    // Single simple query: CONTAINS with type validation
+    console.log(`  🔍 Fast: CONTAINS "${variant}"`);
+    const simpleQuery = `
+        SELECT ?item ?image WHERE {
+          ?item rdfs:label ?label .
+          FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
         }
+        LIMIT 1
+    `;
+    
+    try {
+        const result = await querySPARQL(simpleQuery);
+        if (result) {
+            console.log(`✓ Found "${coasterName}"`);
+            return result;
+        }
+    } catch (e) {
+        console.warn(`    ⚠️ Fast search failed: ${e.message}`);
     }
     
-    console.log(`✗ No image found for "${coasterName}" after trying all strategies with validation`);
+    console.log(`✗ No image found for "${coasterName}" (use retry button for intensive search)`);
     return null;
 }
 
@@ -716,7 +630,11 @@ async function querySPARQLMultiple(query) {
 }
 
 // Retry button handler (called from dev-data overlay)
-window.retryCoasterImage = async function(coasterName, parkName, manufacturer, elementId) {
+window.retryCoasterImage = async function(coasterName, parkName, manufacturer, elementId, event) {
+    // Prevent click from bubbling to card selection
+    event.stopPropagation();
+    event.preventDefault();
+    
     const button = event.target;
     const infoDiv = document.getElementById(`imageInfo_${elementId}`);
     
@@ -812,44 +730,135 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
     // Roller coaster type validation
     const coasterTypeFilter = `?item wdt:P31/wdt:P279* wd:Q204832 .`;
     
-    // Generate all name variants (not just first 3)
-    const nameVariants = [];
+    // Generate smart name variants and deduplicate
+    const nameVariants = new Set();
     let cleanName = coasterName.trim().replace(/\s+/g, ' ');
     
-    nameVariants.push(cleanName);
+    nameVariants.add(cleanName);
     
+    // Remove parentheses (e.g., "Crazy Bats (VR)" → "Crazy Bats")
     if (cleanName.includes('(')) {
-        nameVariants.push(cleanName.replace(/\s*\([^)]*\)/g, ''));
+        nameVariants.add(cleanName.replace(/\s*\([^)]*\)/g, '').trim());
     }
+    
+    // Remove subtitle after dash (e.g., "Colossos - Kampf" → "Colossos")
     if (cleanName.includes(' - ')) {
-        nameVariants.push(cleanName.split(' - ')[0].trim());
+        nameVariants.add(cleanName.split(' - ')[0].trim());
     }
+    
+    // Remove subtitle after colon (e.g., "Xpress: Platform 13" → "Xpress")
     if (cleanName.includes(':')) {
-        nameVariants.push(cleanName.split(':')[0].trim());
+        nameVariants.add(cleanName.split(':')[0].trim());
     }
     
-    console.log(`  📝 Trying ${nameVariants.length} variants with park filtering...`);
+    // Remove "Der/Die/Das" German articles (e.g., "Der Schwur des Kärnan" → "Schwur des Kärnan")
+    if (/^(Der|Die|Das) /i.test(cleanName)) {
+        nameVariants.add(cleanName.replace(/^(Der|Die|Das) /i, '').trim());
+    }
     
-    // Strategy: CONTAINS with park verification
-    for (const variant of nameVariants) {
+    // Convert to array and filter out short names (< 3 chars)
+    const variants = Array.from(nameVariants).filter(v => v.length >= 3);
+    
+    console.log(`  📝 Strategy 1: CONTAINS (${variants.length} variants), Strategy 2: EXACT en+de (${variants.length} variants)`);
+    
+    // Helper function to process results with scoring
+    const processResults = (results, strategy) => {
+        if (!results || results.length === 0) return null;
+        
+        console.log(`  ✓ ${strategy}: Found ${results.length} candidates`);
+        
+        let bestMatch = null;
+        let bestScore = 0;
+        
+        for (const result of results) {
+            const itemLabel = result.itemLabel?.value || '';
+            const parkLabel = result.parkLabel?.value || '';
+            const mfgLabel = result.mfgLabel?.value || '';
+            const imageUrl = result.image?.value;
+            
+            console.log(`    Candidate: ${itemLabel} at ${parkLabel || '(unknown)'} by ${mfgLabel || '(unknown)'}`);
+            
+            const parkMatches = parkLabel && (
+                parkLabel.toLowerCase().includes(parkName.toLowerCase()) ||
+                parkName.toLowerCase().includes(parkLabel.toLowerCase())
+            );
+            
+            const mfgMatches = mfgLabel && manufacturer && (
+                mfgLabel.toLowerCase().includes(manufacturer.toLowerCase()) ||
+                manufacturer.toLowerCase().includes(mfgLabel.toLowerCase())
+            );
+            
+            // Calculate match score: both=3, park=2, mfg=1, neither=0
+            let score = 0;
+            if (parkMatches && mfgMatches) {
+                score = 3;
+                console.log(`    ✅✅ PERFECT MATCH!`);
+            } else if (parkMatches) {
+                score = 2;
+                console.log(`    ✅ Park verified`);
+            } else if (mfgMatches) {
+                score = 1;
+                console.log(`    ⚠️ Manufacturer only`);
+            }
+            
+            if (score > bestScore && imageUrl) {
+                bestScore = score;
+                bestMatch = {
+                    url: imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl,
+                    metadata: {
+                        name: itemLabel,
+                        park: parkLabel,
+                        manufacturer: mfgLabel,
+                        verified: score === 3,
+                        parkMatch: parkMatches,
+                        mfgMatch: mfgMatches
+                    }
+                };
+                
+                // Return immediately on perfect match
+                if (score === 3) {
+                    console.log(`    🎯 Using perfect match!`);
+                    return bestMatch;
+                }
+            }
+        }
+        
+        // Use first result if no matches
+        if (!bestMatch && results[0]?.image?.value) {
+            const firstResult = results[0];
+            const imageUrl = firstResult.image.value;
+            bestMatch = {
+                url: imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl,
+                metadata: {
+                    name: firstResult.itemLabel?.value || '',
+                    park: firstResult.parkLabel?.value || '',
+                    manufacturer: firstResult.mfgLabel?.value || '',
+                    verified: false,
+                    parkMatch: false,
+                    mfgMatch: false
+                }
+            };
+            console.log(`    ⚠️ Using first result (unverified)`);
+        }
+        
+        return bestMatch;
+    };
+    
+    // Strategy 1: CONTAINS search (all languages automatically)
+    for (const variant of variants) {
         const escapedName = escapeSPARQL(variant);
+        console.log(`  🔍 CONTAINS: "${variant}"`);
         
-        if (variant.length < 3) continue;
-        
-        console.log(`  🔍 Searching "${variant}" with park context...`);
-        
-        // Query with park and manufacturer metadata
-        const query = `
+        const containsQuery = `
             SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
               ?item rdfs:label ?label .
               FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
               ${coasterTypeFilter}
               ?item wdt:P18 ?image .
-              
               OPTIONAL { 
                 ?item wdt:P127 ?park . 
                 ?park rdfs:label ?parkLabel . 
-                FILTER(lang(?parkLabel) = "en" || lang(?parkLabel) = "de")
+                FILTER(lang(?parkLabel) = "en")
               }
               OPTIONAL { 
                 ?item wdt:P176 ?mfg . 
@@ -857,115 +866,61 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
                 FILTER(lang(?mfgLabel) = "en")
               }
               ?item rdfs:label ?itemLabel . 
-              FILTER(lang(?itemLabel) = "en" || lang(?itemLabel) = "de")
+              FILTER(lang(?itemLabel) = "en")
             }
             LIMIT 5
         `;
         
         try {
-            const results = await querySPARQLMultiple(query);
-            
-            if (results && results.length > 0) {
-                console.log(`  ✓ Found ${results.length} candidates`);
-                
-                // Try to find best match based on park AND manufacturer
-                // Priority: Both match > Park only > Manufacturer only > Neither
-                let bestMatch = null;
-                let bestScore = 0;
-                
-                for (const result of results) {
-                    const itemLabel = result.itemLabel?.value || '';
-                    const parkLabel = result.parkLabel?.value || '';
-                    const mfgLabel = result.mfgLabel?.value || '';
-                    const imageUrl = result.image?.value;
-                    
-                    console.log(`    Candidate: ${itemLabel} at ${parkLabel || '(unknown)'} by ${mfgLabel || '(unknown)'}`);
-                    
-                    // Check if park matches
-                    const parkMatches = parkLabel && (
-                        parkLabel.toLowerCase().includes(parkName.toLowerCase()) ||
-                        parkName.toLowerCase().includes(parkLabel.toLowerCase())
-                    );
-                    
-                    // Check if manufacturer matches
-                    const mfgMatches = mfgLabel && manufacturer && (
-                        mfgLabel.toLowerCase().includes(manufacturer.toLowerCase()) ||
-                        manufacturer.toLowerCase().includes(mfgLabel.toLowerCase())
-                    );
-                    
-                    // Calculate match score (both = 3, park only = 2, mfg only = 1)
-                    let score = 0;
-                    if (parkMatches && mfgMatches) {
-                        score = 3;
-                        console.log(`    ✅✅ PERFECT MATCH! Park AND manufacturer verified.`);
-                    } else if (parkMatches) {
-                        score = 2;
-                        console.log(`    ✅ Park match (manufacturer: ${mfgLabel || 'unknown'})`);
-                    } else if (mfgMatches) {
-                        score = 1;
-                        console.log(`    ⚠️ Manufacturer match but wrong park (expected ${parkName}, got ${parkLabel || 'unknown'})`);
-                    }
-                    
-                    if (score > bestScore && imageUrl) {
-                        bestScore = score;
-                        bestMatch = {
-                            url: imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl,
-                            metadata: {
-                                name: itemLabel,
-                                park: parkLabel,
-                                manufacturer: mfgLabel,
-                                verified: score === 3,  // Only fully verified if both match
-                                parkMatch: parkMatches,
-                                mfgMatch: mfgMatches
-                            }
-                        };
-                        
-                        // If perfect match (both park and mfg), return immediately
-                        if (score === 3) {
-                            console.log(`    🎯 Using perfect match!`);
-                            return bestMatch;
-                        }
-                    }
-                }
-                
-                // Return best match found (park-only or mfg-only)
-                if (bestMatch) {
-                    if (bestScore === 2) {
-                        console.log(`    ✓ Using park-verified match (manufacturer differs)`);
-                    } else if (bestScore === 1) {
-                        console.log(`    ⚠️ Using manufacturer-verified match (park differs)`);
-                    }
-                    return bestMatch;
-                }
-                
-                // If no matches at all, use first result but mark as unverified
-                const firstResult = results[0];
-                const imageUrl = firstResult.image?.value;
-                
-                if (imageUrl) {
-                    console.log(`    ⚠️ Using first result (park AND manufacturer not verified)`);
-                    const finalUrl = imageUrl.startsWith('http://') 
-                        ? imageUrl.replace('http://', 'https://') 
-                        : imageUrl;
-                    
-                    return {
-                        url: finalUrl,
-                        metadata: {
-                            name: firstResult.itemLabel?.value || '',
-                            park: firstResult.parkLabel?.value || '',
-                            manufacturer: firstResult.mfgLabel?.value || '',
-                            verified: false,
-                            parkMatch: false,
-                            mfgMatch: false
-                        }
-                    };
-                }
-            }
-            
-            await delay(200);
+            const results = await querySPARQLMultiple(containsQuery);
+            const match = processResults(results, 'CONTAINS');
+            if (match) return match;
+            await delay(150);
         } catch (e) {
-            console.warn(`    ⚠️ Query failed: ${e.message}`);
-            await delay(200);
+            console.warn(`    ⚠️ CONTAINS failed: ${e.message}`);
+            await delay(150);
+        }
+    }
+    
+    // Strategy 2: Exact match in English and German
+    for (const variant of variants) {
+        const escapedName = escapeSPARQL(variant);
+        console.log(`  🔍 EXACT (en+de): "${variant}"`);
+        
+        const exactQuery = `
+            SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
+              {
+                ?item rdfs:label "${escapedName}"@en .
+              }
+              UNION {
+                ?item rdfs:label "${escapedName}"@de .
+              }
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+              OPTIONAL { 
+                ?item wdt:P127 ?park . 
+                ?park rdfs:label ?parkLabel . 
+                FILTER(lang(?parkLabel) = "en")
+              }
+              OPTIONAL { 
+                ?item wdt:P176 ?mfg . 
+                ?mfg rdfs:label ?mfgLabel . 
+                FILTER(lang(?mfgLabel) = "en")
+              }
+              ?item rdfs:label ?itemLabel . 
+              FILTER(lang(?itemLabel) = "en")
+            }
+            LIMIT 5
+        `;
+        
+        try {
+            const results = await querySPARQLMultiple(exactQuery);
+            const match = processResults(results, 'EXACT');
+            if (match) return match;
+            await delay(150);
+        } catch (e) {
+            console.warn(`    ⚠️ EXACT failed: ${e.message}`);
+            await delay(150);
         }
     }
     
@@ -2073,7 +2028,7 @@ const DOM = {};
             <div><strong>Losses:</strong> ${leftStats.losses}</div>
             <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.2);">
                 <div id="imageInfo_${left.naam.replace(/[^a-z0-9]/gi, '_')}" style="font-size:0.85em;color:#aaa;margin-bottom:4px;"></div>
-                <button onclick="retryCoasterImage('${left.naam.replace(/'/g, "\\'")}', '${left.park.replace(/'/g, "\\'")}', '${left.fabrikant.replace(/'/g, "\\'")}', '${left.naam.replace(/[^a-z0-9]/gi, '_')}')" style="font-size:0.85em;padding:2px 6px;background:#4CA1AF;color:white;border:none;border-radius:4px;cursor:pointer;">🔄 Retry Image</button>
+                <button onclick="retryCoasterImage('${left.naam.replace(/'/g, "\\'")}', '${left.park.replace(/'/g, "\\'")}', '${left.fabrikant.replace(/'/g, "\\'")}', '${left.naam.replace(/[^a-z0-9]/gi, '_')}', event)" style="font-size:0.85em;padding:2px 6px;background:#4CA1AF;color:white;border:none;border-radius:4px;cursor:pointer;">🔄 Retry Image</button>
             </div>
         `;
         const devRightHtml = `
@@ -2086,7 +2041,7 @@ const DOM = {};
             <div><strong>Losses:</strong> ${rightStats.losses}</div>
             <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.2);">
                 <div id="imageInfo_${right.naam.replace(/[^a-z0-9]/gi, '_')}" style="font-size:0.85em;color:#aaa;margin-bottom:4px;"></div>
-                <button onclick="retryCoasterImage('${right.naam.replace(/'/g, "\\'")}', '${right.park.replace(/'/g, "\\'")}', '${right.fabrikant.replace(/'/g, "\\'")}', '${right.naam.replace(/[^a-z0-9]/gi, '_')}')" style="font-size:0.85em;padding:2px 6px;background:#4CA1AF;color:white;border:none;border-radius:4px;cursor:pointer;">🔄 Retry Image</button>
+                <button onclick="retryCoasterImage('${right.naam.replace(/'/g, "\\'")}', '${right.park.replace(/'/g, "\\'")}', '${right.fabrikant.replace(/'/g, "\\'")}', '${right.naam.replace(/[^a-z0-9]/gi, '_')}', event)" style="font-size:0.85em;padding:2px 6px;background:#4CA1AF;color:white;border:none;border-radius:4px;cursor:pointer;">🔄 Retry Image</button>
             </div>
         `;
 
