@@ -360,47 +360,64 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Helper to add delay between requests to avoid rate limiting
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
+    // Helper to normalize park name for matching (remove common words, spaces, hyphens)
+    const normalizeParkName = (park) => {
+        if (!park) return '';
+        return park
+            .replace(/\s*(Park|Land|Parc|land|park)\s*/gi, '')
+            .replace(/[-\s]/g, '')
+            .toLowerCase()
+            .trim();
+    };
+    
     for (let i = 0; i < Math.min(nameVariants.length, 3); i++) { // Only try first 3 variants
         const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
         
-        // Strategy 1: CONTAINS search with park (BEST - finds "Voltron" in "Voltron Nevera" at Europa-Park)
+        // Strategy 1: CONTAINS search with park context (BEST - finds "Voltron" in "Voltron Nevera" at Europa-Park)
         if (parkName && parkName.trim() && variant.length > 3) {
-            console.log(`  🔍 Smart search: "${variant}" at "${parkName}"`);
-            const escapedPark = escapeSPARQL(parkName.trim());
-            const smartQuery = `
-                SELECT ?item ?image WHERE {
-                  ?item rdfs:label ?label .
-                  FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
-                  ${typeCheck}
-                  ?item wdt:P18 ?image .
-                  ?item wdt:P276 ?location .
-                  ?location rdfs:label ?parkLabel .
-                  FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedPark}")))
-                }
-                LIMIT 1
-            `;
+            // Try multiple park name variations
+            const parkVariants = [
+                parkName.trim(),
+                normalizeParkName(parkName),
+                parkName.replace(/[-\s]/g, ''), // Remove spaces/hyphens
+            ].filter(p => p.length > 2);
             
-            try {
-                const result = await querySPARQL(smartQuery);
-                if (result) {
-                    console.log(`✓ Found "${coasterName}" at "${parkName}"`);
-                    return result;
-                }
-                await delay(200); // Small delay to avoid rate limiting
-            } catch (e) {
-                if (e.message.includes('429')) {
-                    console.log(`    ⏸️ Rate limited, waiting...`);
-                    await delay(1000);
-                } else {
-                    console.log(`    ❌ Error: ${e.message}`);
+            for (const parkVariant of parkVariants) {
+                console.log(`  🔍 Smart search: "${variant}" at "${parkVariant}"`);
+                const escapedPark = escapeSPARQL(parkVariant);
+                const smartQuery = `
+                    SELECT ?item ?image WHERE {
+                      ?item rdfs:label ?label .
+                      FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+                      ${typeCheck}
+                      ?item wdt:P18 ?image .
+                      ?item wdt:P276 ?location .
+                      ?location rdfs:label ?parkLabel .
+                      FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedPark}")))
+                    }
+                    LIMIT 1
+                `;
+                
+                try {
+                    const result = await querySPARQL(smartQuery);
+                    if (result) {
+                        console.log(`✓ Found "${coasterName}" at "${parkVariant}"`);
+                        return result;
+                    }
+                    await delay(150);
+                } catch (e) {
+                    if (e.message.includes('429')) {
+                        console.log(`    ⏸️ Rate limited, waiting...`);
+                        await delay(1000);
+                    }
                 }
             }
         }
         
-        // Strategy 2: CONTAINS without park filter (if no park or first variant)
+        // Strategy 2: CONTAINS without park filter (FALLBACK - if park search failed or no park)
         if (variant.length > 3) {
-            console.log(`  🔍 CONTAINS "${variant}"`);
+            console.log(`  🔍 CONTAINS "${variant}" (no park filter)`);
             const containsQuery = `
                 SELECT ?item ?image WHERE {
                   ?item rdfs:label ?label .
@@ -417,7 +434,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     console.log(`✓ Found "${coasterName}" using "${variant}"`);
                     return result;
                 }
-                await delay(200);
+                await delay(150);
             } catch (e) {
                 if (e.message.includes('429')) {
                     await delay(1000);
@@ -443,7 +460,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     console.log(`✓ Found "${coasterName}" exact`);
                     return result;
                 }
-                await delay(200);
+                await delay(150);
             } catch (e) {
                 if (e.message.includes('429')) {
                     await delay(1000);
