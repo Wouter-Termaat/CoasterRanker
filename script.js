@@ -111,7 +111,7 @@
     }
 
     // Initialize app after data is loaded
-    function initializeApp() {
+    async function initializeApp() {
         // Check if there's a saved user preference
         const savedUser = localStorage.getItem('lastUser');
         if (savedUser && (savedUser === 'luca' || savedUser === 'wouter')) {
@@ -122,8 +122,12 @@
         setHeaderHeight();
         // Post-initialization UI adjustments
         postInitUISetup();
-        // Preload coaster images in background
-        preloadCoasterImages();
+        
+        // Preload ALL coaster images BEFORE allowing battles - wait for completion
+        await preloadCoasterImages();
+        
+        // Now display the first battle
+        displayBattle();
     }
 
     // Set header height CSS variable for sticky tabs positioning
@@ -207,45 +211,84 @@ function getPlaceholderImage() {
 }
 
 // Query Wikidata SPARQL endpoint for coaster image
-async function queryWikidataImage(coasterName, parkName) {
+async function queryWikidataImage(coasterName, parkName, manufacturer) {
     if (!coasterName) return null;
     
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // FIRST: Try park-specific fuzzy search (prevents wrong matches for generic names)
+    // Roller coaster type values (ALWAYS required)
+    const rcTypeValues = `VALUES ?rcType { 
+        wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
+        wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
+    }`;
+    
+    // STRATEGY 1: Most specific - name + park + manufacturer (all must match)
+    if (parkName && manufacturer) {
+        const escapedName = escapeSPARQL(coasterName.trim());
+        const escapedPark = escapeSPARQL(parkName.trim());
+        const escapedMfr = escapeSPARQL(manufacturer.trim());
+        
+        const query = `
+            SELECT ?image WHERE {
+              SERVICE wikibase:mwapi {
+                bd:serviceParam wikibase:api "EntitySearch" .
+                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+                bd:serviceParam mwapi:search "${escapedName} ${escapedPark} ${escapedMfr}" .
+                bd:serviceParam mwapi:language "en" .
+                ?item wikibase:apiOutputItem mwapi:item .
+                ?num wikibase:apiOrdinal true .
+              }
+              ${rcTypeValues}
+              ?item wdt:P31 ?rcType .
+              ?item wdt:P18 ?image .
+            }
+            ORDER BY ASC(?num)
+            LIMIT 1
+        `;
+        
+        try {
+            const result = await querySPARQL(query);
+            if (result) {
+                console.log(`✓ Found "${coasterName}" (name+park+manufacturer)`);
+                return result;
+            }
+        } catch (e) {
+            // Fall through to next strategy
+        }
+    }
+    
+    // STRATEGY 2: name + park (relax manufacturer)
     if (parkName) {
         const escapedName = escapeSPARQL(coasterName.trim());
         const escapedPark = escapeSPARQL(parkName.trim());
         
-        // Search with both coaster and park name for better EntitySearch results
-        const parkQuery = `
+        const query = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
                 bd:serviceParam wikibase:api "EntitySearch" .
                 bd:serviceParam wikibase:endpoint "www.wikidata.org" .
                 bd:serviceParam mwapi:search "${escapedName} ${escapedPark}" .
                 bd:serviceParam mwapi:language "en" .
-                ?coaster wikibase:apiOutputItem mwapi:item .
+                ?item wikibase:apiOutputItem mwapi:item .
+                ?num wikibase:apiOrdinal true .
               }
-              VALUES ?rcType { 
-                wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
-                wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
-              }
-              ?coaster wdt:P31 ?rcType .
-              ?coaster wdt:P18 ?image .
+              ${rcTypeValues}
+              ?item wdt:P31 ?rcType .
+              ?item wdt:P18 ?image .
             }
+            ORDER BY ASC(?num)
             LIMIT 1
         `;
         
         try {
-            const result = await querySPARQL(parkQuery);
+            const result = await querySPARQL(query);
             if (result) {
-                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (park-specific)`);
+                console.log(`✓ Found "${coasterName}" (name+park)`);
                 return result;
             }
         } catch (e) {
-            console.warn(`Park query error for "${coasterName}":`, e.message);
+            // Fall through to name variants
         }
     }
     
@@ -336,32 +379,26 @@ async function queryWikidataImage(coasterName, parkName) {
         }
     }
     
-    // Try each variant with comprehensive roller coaster type checking
+    // STRATEGY 3: Try name variants (most specific to least specific)
+    // Still ALWAYS validates roller coaster type
     for (const variant of nameVariants) {
         const escapedName = escapeSPARQL(variant);
         
-        // Build search term with park context when available
-        const searchTerm = parkName ? `${escapedName} ${escapeSPARQL(parkName)}` : escapedName;
-        
-        // Comprehensive list of roller coaster types from Wikidata
-        // Q15243209=roller coaster, Q476493=steel, Q652787=wooden, Q17287243=inverted, 
-        // Q1144661=launched, Q2537706=suspended, Q19814130=hybrid, Q29643=wild mouse
         const query = `
             SELECT ?image WHERE {
               SERVICE wikibase:mwapi {
                 bd:serviceParam wikibase:api "EntitySearch" .
                 bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${searchTerm}" .
+                bd:serviceParam mwapi:search "${escapedName}" .
                 bd:serviceParam mwapi:language "en" .
                 ?item wikibase:apiOutputItem mwapi:item .
+                ?num wikibase:apiOrdinal true .
               }
-              VALUES ?rcType { 
-                wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
-                wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
-              }
+              ${rcTypeValues}
               ?item wdt:P31 ?rcType .
               ?item wdt:P18 ?image .
             }
+            ORDER BY ASC(?num)
             LIMIT 1
         `;
         
@@ -369,16 +406,14 @@ async function queryWikidataImage(coasterName, parkName) {
             const result = await querySPARQL(query);
             if (result) {
                 if (variant !== cleanName) {
-                    console.log(`✓ Found image for "${coasterName}" using variant "${variant}"`);
+                    console.log(`✓ Found "${coasterName}" using variant "${variant}"`);
                 } else {
-                    console.log(`✓ Found image for "${coasterName}"`);
+                    console.log(`✓ Found "${coasterName}" (name only)`);
                 }
                 return result;
             }
         } catch (e) {
-            if (variant === cleanName) {
-                console.warn(`Query error for "${coasterName}":`, e.message);
-            }
+            // Try next variant
         }
     }
     
@@ -438,7 +473,7 @@ async function getCoasterImage(coaster) {
     
     // Fetch from Wikidata
     try {
-        const imageUrl = await queryWikidataImage(coaster.naam, coaster.park);
+        const imageUrl = await queryWikidataImage(coaster.naam, coaster.park, coaster.fabrikant);
         
         if (imageUrl) {
             // Cache the result
@@ -546,8 +581,35 @@ function updateImageLoadStats() {
 }
 
 // Preload all coaster images in background
+// Update loading screen progress
+function updateLoadingScreen(loaded, total, failed) {
+    const overlay = document.getElementById('imageLoadingOverlay');
+    const progressBar = document.getElementById('loadingProgressBar');
+    const progressText = document.getElementById('loadingProgressText');
+    
+    if (!overlay || !progressBar || !progressText) return;
+    
+    const processed = loaded + failed;
+    const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+    
+    progressBar.style.width = `${percentage}%`;
+    progressText.textContent = `Loading images: ${loaded} found, ${failed} not found (${processed}/${total})`;
+}
+
+// Hide loading screen
+function hideLoadingScreen() {
+    const overlay = document.getElementById('imageLoadingOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 300);
+    }
+}
+
 async function preloadCoasterImages() {
     if (!currentUser || !coasters || coasters.length === 0) {
+        hideLoadingScreen();
         return;
     }
     
@@ -560,6 +622,7 @@ async function preloadCoasterImages() {
     };
     
     updateImageLoadStats();
+    updateLoadingScreen(0, coasters.length, 0);
     
     console.log(`Starting image preload for ${coasters.length} coasters...`);
     
@@ -575,6 +638,7 @@ async function preloadCoasterImages() {
             batch.map(async (coaster) => {
                 await getCoasterImage(coaster);
                 updateImageLoadStats();
+                updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
             })
         );
         
@@ -586,6 +650,9 @@ async function preloadCoasterImages() {
     
     const successRate = Math.round((imageLoadStats.loaded / imageLoadStats.total) * 100);
     console.info(`Image preloading complete: ${successRate}% success (${imageLoadStats.loaded} found, ${imageLoadStats.failed} not found, ${imageLoadStats.cached} cached)`, imageLoadStats);
+    
+    // Hide loading screen after all images are processed
+    hideLoadingScreen();
 }
 
 // ========================================
