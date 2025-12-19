@@ -228,7 +228,7 @@ async function queryWikidataImage(coasterName, parkName) {
                 bd:serviceParam mwapi:language "en" .
                 ?coaster wikibase:apiOutputItem mwapi:item .
               }
-              ?coaster wdt:P31 wd:Q15243209 .
+              ?coaster wdt:P31/wdt:P279* wd:Q15243209 .
               ?coaster wdt:P276 ?location .
               ?location rdfs:label ?locLabel .
               FILTER(CONTAINS(LCASE(?locLabel), "${escapedPark.toLowerCase()}"))
@@ -351,7 +351,7 @@ async function queryWikidataImage(coasterName, parkName) {
                 bd:serviceParam mwapi:language "en" .
                 ?item wikibase:apiOutputItem mwapi:item .
               }
-              ?item wdt:P31 wd:Q15243209 .
+              ?item wdt:P31/wdt:P279* wd:Q15243209 .
               ?item wdt:P18 ?image .
             }
             LIMIT 1
