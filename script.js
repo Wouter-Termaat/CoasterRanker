@@ -244,7 +244,7 @@ async function queryWikidataImage(coasterName, parkName) {
                 return result;
             }
         } catch (e) {
-            // Silent fail, continue with general search
+            console.warn(`Park-specific query error for "${coasterName}":`, e.message);
         }
     }
     
@@ -368,7 +368,10 @@ async function queryWikidataImage(coasterName, parkName) {
                 return result;
             }
         } catch (e) {
-            // Silent fail, try next variant
+            // Log first error for debugging
+            if (variant === cleanName) {
+                console.warn(`Query error for "${coasterName}":`, e.message);
+            }
         }
     }
     
