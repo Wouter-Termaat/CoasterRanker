@@ -215,31 +215,37 @@ async function queryWikidataImage(coasterName, parkName) {
     const escapedName = escapeSPARQL(coasterName);
     const escapedPark = parkName ? escapeSPARQL(parkName) : '';
     
-    // Strategy A: Search by label (any language) with roller coaster instance
-    const query1 = `
-        SELECT ?image WHERE {
-          ?coaster rdfs:label "${escapedName}"@en .
-          ?coaster wdt:P31 wd:Q15243209 .
-          ?coaster wdt:P18 ?image .
+    // Strategy A: Exact match - roller coaster with specific name AND park
+    if (parkName) {
+        const query1 = `
+            SELECT ?image WHERE {
+              ?coaster rdfs:label "${escapedName}"@en .
+              ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
+              ?coaster wdt:P276 ?park .
+              ?park rdfs:label ?parkLabel .
+              FILTER(CONTAINS(LCASE(?parkLabel), "${escapedPark.toLowerCase()}"))
+              ?coaster wdt:P18 ?image .
+            }
+            LIMIT 1
+        `;
+        
+        try {
+            const result1 = await querySPARQL(query1);
+            if (result1) {
+                console.log(`✓ Found image for "${coasterName}" at "${parkName}" (exact match with park)`);
+                return result1;
+            }
+        } catch (e) {
+            // Silent fail, try next strategy
         }
-        LIMIT 1
-    `;
-    
-    try {
-        const result1 = await querySPARQL(query1);
-        if (result1) {
-            console.log(`✓ Found image for "${coasterName}" (exact match)`);
-            return result1;
-        }
-    } catch (e) {
-        // Silent fail, try next strategy
     }
     
-    // Strategy B: Broader search - any item with this label that has an image
+    // Strategy B: Exact match - roller coaster with specific name (any park)
     const query2 = `
         SELECT ?image WHERE {
-          ?item rdfs:label "${escapedName}"@en .
-          ?item wdt:P18 ?image .
+          ?coaster rdfs:label "${escapedName}"@en .
+          ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
+          ?coaster wdt:P18 ?image .
         }
         LIMIT 1
     `;
@@ -247,39 +253,68 @@ async function queryWikidataImage(coasterName, parkName) {
     try {
         const result2 = await querySPARQL(query2);
         if (result2) {
-            console.log(`✓ Found image for "${coasterName}" (broad match)`);
+            console.log(`✓ Found image for "${coasterName}" (roller coaster match)`);
             return result2;
         }
     } catch (e) {
         // Silent fail, try next strategy
     }
     
-    // Strategy C: Text search with roller coaster type
-    const query3 = `
+    // Strategy C: Text search for roller coaster with park context
+    if (parkName) {
+        const query3 = `
+            SELECT ?image WHERE {
+              SERVICE wikibase:mwapi {
+                bd:serviceParam wikibase:api "EntitySearch" .
+                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+                bd:serviceParam mwapi:search "${escapedName} ${escapedPark}" .
+                bd:serviceParam mwapi:language "en" .
+                ?coaster wikibase:apiOutputItem mwapi:item .
+              }
+              ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
+              ?coaster wdt:P18 ?image .
+            }
+            LIMIT 1
+        `;
+        
+        try {
+            const result3 = await querySPARQL(query3);
+            if (result3) {
+                console.log(`✓ Found image for "${coasterName}" (text search with park)`);
+                return result3;
+            }
+        } catch (e) {
+            // Silent fail, try next strategy
+        }
+    }
+    
+    // Strategy D: Broader text search for any roller coaster
+    const query4 = `
         SELECT ?image WHERE {
           SERVICE wikibase:mwapi {
             bd:serviceParam wikibase:api "EntitySearch" .
             bd:serviceParam wikibase:endpoint "www.wikidata.org" .
             bd:serviceParam mwapi:search "${escapedName}" .
             bd:serviceParam mwapi:language "en" .
-            ?item wikibase:apiOutputItem mwapi:item .
+            ?coaster wikibase:apiOutputItem mwapi:item .
           }
-          ?item wdt:P18 ?image .
+          ?coaster (wdt:P31/wdt:P279*) wd:Q15243209 .
+          ?coaster wdt:P18 ?image .
         }
         LIMIT 1
     `;
     
     try {
-        const result3 = await querySPARQL(query3);
-        if (result3) {
+        const result4 = await querySPARQL(query4);
+        if (result4) {
             console.log(`✓ Found image for "${coasterName}" (text search)`);
-            return result3;
+            return result4;
         }
     } catch (e) {
         // Silent fail
     }
     
-    console.log(`✗ No image found for "${coasterName}"`);
+    console.log(`✗ No image found for "${coasterName}" at "${parkName || 'unknown park'}"`);
     return null;
 }
 
@@ -357,6 +392,28 @@ async function getCoasterImage(coaster) {
         imageLoadStats.failed++;
         return getPlaceholderImage();
     }
+}
+
+// Synchronous cache-only image retrieval (for instant display in battles)
+function getCoasterImageSync(coaster) {
+    if (!coaster || !coaster.naam) return getPlaceholderImage();
+    
+    const normalizedName = normalizeCoasterName(coaster.naam);
+    const normalizedPark = normalizeCoasterName(coaster.park);
+    const cacheKey = `coasterImage_${normalizedName}_${normalizedPark}`;
+    
+    // Check cache only (synchronous)
+    try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            return cached;
+        }
+    } catch (e) {
+        // Silent fail
+    }
+    
+    // Return placeholder if not in cache
+    return getPlaceholderImage();
 }
 
 // Clear all cached images from localStorage
@@ -1937,12 +1994,16 @@ const DOM = {};
         const parkClass = matchingPark ? 'match-highlight' : '';
         const fabrikantClass = matchingFabrikant ? 'match-highlight' : '';
         
-        // Render only the cards; dev-data will be positioned separately (desktop) or in-flow (mobile)
+        // Load images first (synchronously from cache if available)
+        const leftImageUrl = getCoasterImageSync(left);
+        const rightImageUrl = getCoasterImageSync(right);
+        
+        // Render cards with images already loaded
         battleContainer.innerHTML = `
             <div class="coaster-item">
                 <div class="coaster-card left-card" onclick="chooseWinner(0)">
                     <div class="coaster-image">
-                        <img class="coaster-img" src="${getPlaceholderImage()}" alt="${escapeHtml(left.naam)}" data-coaster-index="0" />
+                        <img class="coaster-img" src="${leftImageUrl}" alt="${escapeHtml(left.naam)}" />
                     </div>
                     <div class="coaster-rank-badge">${rank1}</div>
                     <div class="coaster-content">
@@ -1959,7 +2020,7 @@ const DOM = {};
             <div class="coaster-item">
                 <div class="coaster-card right-card" onclick="chooseWinner(1)">
                     <div class="coaster-image">
-                        <img class="coaster-img" src="${getPlaceholderImage()}" alt="${escapeHtml(right.naam)}" data-coaster-index="1" />
+                        <img class="coaster-img" src="${rightImageUrl}" alt="${escapeHtml(right.naam)}" />
                     </div>
                     <div class="coaster-rank-badge">${rank2}</div>
                     <div class="coaster-content">
@@ -1973,17 +2034,6 @@ const DOM = {};
                 </div>
             </div>
         `;
-
-        // Load images asynchronously after rendering
-        getCoasterImage(left).then(url => {
-            const img = document.querySelector('img[data-coaster-index="0"]');
-            if (img) img.src = url;
-        }).catch(e => console.warn('Failed to load left image:', e));
-        
-        getCoasterImage(right).then(url => {
-            const img = document.querySelector('img[data-coaster-index="1"]');
-            if (img) img.src = url;
-        }).catch(e => console.warn('Failed to load right image:', e));
 
         // If this matchup qualifies as a close fight, play the intro animation
         const getRankingNum = (coasterName) => {
