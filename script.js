@@ -210,48 +210,76 @@ function getPlaceholderImage() {
 async function queryWikidataImage(coasterName, parkName) {
     if (!coasterName) return null;
     
-    // Strategy A: Exact match with coaster name
-    const exactQuery = `
+    // Escape special characters for SPARQL
+    const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
+    const escapedName = escapeSPARQL(coasterName);
+    const escapedPark = parkName ? escapeSPARQL(parkName) : '';
+    
+    // Strategy A: Search by label (any language) with roller coaster instance
+    const query1 = `
         SELECT ?image WHERE {
-          ?coaster rdfs:label "${coasterName}"@en .
-          ?coaster wdt:P31/wdt:P279* wd:Q21573182 .
+          ?coaster rdfs:label "${escapedName}"@en .
+          ?coaster wdt:P31 wd:Q15243209 .
           ?coaster wdt:P18 ?image .
         }
         LIMIT 1
     `;
     
     try {
-        const exactResult = await querySPARQL(exactQuery);
-        if (exactResult) return exactResult;
+        const result1 = await querySPARQL(query1);
+        if (result1) {
+            console.log(`✓ Found image for "${coasterName}" (exact match)`);
+            return result1;
+        }
     } catch (e) {
-        console.warn('Exact Wikidata query failed:', e);
+        // Silent fail, try next strategy
     }
     
-    // Strategy B: Fuzzy search with coaster name and optional park
-    const fuzzyQuery = parkName ? `
+    // Strategy B: Broader search - any item with this label that has an image
+    const query2 = `
         SELECT ?image WHERE {
-          ?coaster ?label "${coasterName}"@en .
-          ?coaster wdt:P18 ?image .
-          ?coaster wdt:P276|wdt:P131 ?location .
-          ?location rdfs:label ?locLabel .
-          FILTER(CONTAINS(LCASE(?locLabel), "${parkName.toLowerCase()}"))
-        }
-        LIMIT 1
-    ` : `
-        SELECT ?image WHERE {
-          ?coaster ?label "${coasterName}"@en .
-          ?coaster wdt:P18 ?image .
+          ?item rdfs:label "${escapedName}"@en .
+          ?item wdt:P18 ?image .
         }
         LIMIT 1
     `;
     
     try {
-        const fuzzyResult = await querySPARQL(fuzzyQuery);
-        if (fuzzyResult) return fuzzyResult;
+        const result2 = await querySPARQL(query2);
+        if (result2) {
+            console.log(`✓ Found image for "${coasterName}" (broad match)`);
+            return result2;
+        }
     } catch (e) {
-        console.warn('Fuzzy Wikidata query failed:', e);
+        // Silent fail, try next strategy
     }
     
+    // Strategy C: Text search with roller coaster type
+    const query3 = `
+        SELECT ?image WHERE {
+          SERVICE wikibase:mwapi {
+            bd:serviceParam wikibase:api "EntitySearch" .
+            bd:serviceParam wikibase:endpoint "www.wikidata.org" .
+            bd:serviceParam mwapi:search "${escapedName}" .
+            bd:serviceParam mwapi:language "en" .
+            ?item wikibase:apiOutputItem mwapi:item .
+          }
+          ?item wdt:P18 ?image .
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const result3 = await querySPARQL(query3);
+        if (result3) {
+            console.log(`✓ Found image for "${coasterName}" (text search)`);
+            return result3;
+        }
+    } catch (e) {
+        // Silent fail
+    }
+    
+    console.log(`✗ No image found for "${coasterName}"`);
     return null;
 }
 
@@ -403,9 +431,11 @@ async function preloadCoasterImages() {
     
     updateImageLoadStats();
     
-    // Process in batches to avoid overwhelming the API
-    const batchSize = 10;
-    const delay = 50; // 50ms delay between requests
+    console.log(`Starting image preload for ${coasters.length} coasters...`);
+    
+    // Process in smaller batches with longer delays to avoid rate limiting
+    const batchSize = 5;
+    const delay = 200; // 200ms delay between batches
     
     for (let i = 0; i < coasters.length; i += batchSize) {
         const batch = coasters.slice(i, i + batchSize);
@@ -424,7 +454,8 @@ async function preloadCoasterImages() {
         }
     }
     
-    console.info('Image preloading complete:', imageLoadStats);
+    const successRate = Math.round((imageLoadStats.loaded / imageLoadStats.total) * 100);
+    console.info(`Image preloading complete: ${successRate}% success (${imageLoadStats.loaded} found, ${imageLoadStats.failed} not found, ${imageLoadStats.cached} cached)`, imageLoadStats);
 }
 
 // ========================================
