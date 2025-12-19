@@ -4,7 +4,7 @@
     
     // Cache version - increment this when improving search logic to invalidate old caches
     // This allows better searches without manual cache clearing
-    const CACHE_VERSION = 'v5'; // Updated: fixed SPARQL syntax (no double dots, proper VALUES placement)
+    const CACHE_VERSION = 'v6'; // Updated: direct label matching instead of EntitySearch
 
     // Function to parse CSV data
     function parseCSV(csvText) {
@@ -221,89 +221,15 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
-    // Build the type check inline to avoid syntax issues
-    const buildTypeCheck = () => `
+    // Type check - roller coaster types
+    const typeCheck = `
         VALUES ?rcType { 
             wd:Q15243209 wd:Q476493 wd:Q652787 wd:Q17287243 
             wd:Q1144661 wd:Q2537706 wd:Q19814130 wd:Q29643
             wd:Q1318369 wd:Q2252148 wd:Q1377858 wd:Q1497656
             wd:Q1990148 wd:Q30014587
         }
-        ?item wdt:P31 ?rcType .
-        ?item wdt:P18 ?image .`;
-    
-    // STRATEGY 1: Most specific - name + park + manufacturer (all must match)
-    if (parkName && manufacturer) {
-        const escapedName = escapeSPARQL(coasterName.trim());
-        const escapedPark = escapeSPARQL(parkName.trim());
-        const escapedMfr = escapeSPARQL(manufacturer.trim());
-        
-        const query = `
-            SELECT ?image WHERE {
-              SERVICE wikibase:mwapi {
-                bd:serviceParam wikibase:api "EntitySearch" .
-                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName} ${escapedPark} ${escapedMfr}" .
-                bd:serviceParam mwapi:language "en" .
-                ?item wikibase:apiOutputItem mwapi:item .
-                ?num wikibase:apiOrdinal true .
-              }
-              ${buildTypeCheck()}
-            }
-            ORDER BY ASC(?num)
-            LIMIT 1
-        `;
-        
-        try {
-            console.log(`  🔍 Strategy 1: Searching "${coasterName}" + "${parkName}" + "${manufacturer}"`);
-            const result = await querySPARQL(query);
-            if (result) {
-                console.log(`✓ Found "${coasterName}" (name+park+manufacturer)`);
-                return result;
-            } else {
-                console.log(`  ⚠️ Strategy 1: Query succeeded but returned 0 results`);
-            }
-        } catch (e) {
-            console.log(`  ❌ Strategy 1 failed: ${e.message}`);
-            // Fall through to next strategy
-        }
-    }
-    
-    // STRATEGY 2: name + park (relax manufacturer)
-    if (parkName) {
-        const escapedName = escapeSPARQL(coasterName.trim());
-        const escapedPark = escapeSPARQL(parkName.trim());
-        
-        const query = `
-            SELECT ?image WHERE {
-              SERVICE wikibase:mwapi {
-                bd:serviceParam wikibase:api "EntitySearch" .
-                bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                bd:serviceParam mwapi:search "${escapedName} ${escapedPark}" .
-                bd:serviceParam mwapi:language "en" .
-                ?item wikibase:apiOutputItem mwapi:item .
-                ?num wikibase:apiOrdinal true .
-              }
-              ${buildTypeCheck()}
-            }
-            ORDER BY ASC(?num)
-            LIMIT 1
-        `;
-        
-        try {
-            console.log(`  🔍 Strategy 2: Searching "${coasterName}" + "${parkName}"`);
-            const result = await querySPARQL(query);
-            if (result) {
-                console.log(`✓ Found "${coasterName}" (name+park)`);
-                return result;
-            } else {
-                console.log(`  ⚠️ Strategy 2: Query succeeded but returned 0 results`);
-            }
-        } catch (e) {
-            console.log(`  ❌ Strategy 2 failed: ${e.message}`);
-            // Fall through to name variants
-        }
-    }
+        ?item wdt:P31 ?rcType .`;
     
     // Generate name variants to try (most specific to least specific)
     const nameVariants = [];
@@ -428,52 +354,55 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         }
     }
     
-    // STRATEGY 3: Try name variants (most specific to least specific)
-    // Still ALWAYS validates roller coaster type
+    // Direct label/alias matching - much more reliable than EntitySearch
     console.log(`  📝 Generated ${nameVariants.length} name variants:`, nameVariants.slice(0, 5).join(', ') + (nameVariants.length > 5 ? '...' : ''));
     
     for (let i = 0; i < nameVariants.length; i++) {
         const variant = nameVariants[i];
         const escapedName = escapeSPARQL(variant);
         
-        // Try multiple languages for first 3 variants (most likely matches), then English-only
-        // This balances thoroughness with performance
-        const languages = i < 3 ? ['en', 'de', 'es', 'nl', 'fr'] : ['en'];
+        // Try English first, then German/Spanish/Dutch for specific cases
+        const languages = i === 0 ? ['en', 'de'] : ['en'];
         
         for (const lang of languages) {
-            console.log(`  🔍 Strategy 3.${i + 1}: Trying variant "${variant}" (lang: ${lang})`);
+            console.log(`  🔍 Searching "${variant}" (${lang})`);
             
+            // Use direct label matching - searches rdfs:label and skos:altLabel
             const query = `
-                SELECT ?image WHERE {
-                  SERVICE wikibase:mwapi {
-                    bd:serviceParam wikibase:api "EntitySearch" .
-                    bd:serviceParam wikibase:endpoint "www.wikidata.org" .
-                    bd:serviceParam mwapi:search "${escapedName}" .
-                    bd:serviceParam mwapi:language "${lang}" .
-                    ?item wikibase:apiOutputItem mwapi:item .
-                    ?num wikibase:apiOrdinal true .
-                  }
-                  ${buildTypeCheck()}
+                SELECT ?item ?image WHERE {
+                  ?item rdfs:label "${escapedName}"@${lang} .
+                  ${typeCheck}
+                  ?item wdt:P18 ?image .
                 }
-                ORDER BY ASC(?num)
                 LIMIT 1
             `;
             
             try {
                 const result = await querySPARQL(query);
                 if (result) {
-                    if (variant !== cleanName || lang !== 'en') {
-                        console.log(`✓ Found "${coasterName}" using variant "${variant}" (lang: ${lang})`);
-                    } else {
-                        console.log(`✓ Found "${coasterName}" (name only)`);
-                    }
+                    console.log(`✓ Found "${coasterName}" using "${variant}" (${lang})`);
                     return result;
-                } else {
-                    console.log(`    ⚠️ No results for "${variant}" (${lang})`);
                 }
+                
+                // Try with altLabel if label didn't work
+                const altQuery = `
+                    SELECT ?item ?image WHERE {
+                      ?item skos:altLabel "${escapedName}"@${lang} .
+                      ${typeCheck}
+                      ?item wdt:P18 ?image .
+                    }
+                    LIMIT 1
+                `;
+                
+                const altResult = await querySPARQL(altQuery);
+                if (altResult) {
+                    console.log(`✓ Found "${coasterName}" via alias "${variant}" (${lang})`);
+                    return altResult;
+                }
+                
+                console.log(`    ⚠️ No match for "${variant}" (${lang})`);
             } catch (e) {
-                console.log(`    ❌ Query error for "${variant}" (${lang}): ${e.message}`);
-                // Try next language/variant
+                console.log(`    ❌ Error for "${variant}" (${lang}): ${e.message}`);
             }
         }
     }
@@ -725,9 +654,9 @@ async function preloadCoasterImages() {
     
     console.log(`Starting image preload for ${coasters.length} coasters...`);
     
-    // Process in smaller batches to avoid rate limiting
-    const batchSize = 3; // Smaller batches since we try multiple languages now
-    const delay = 150; // Delay between batches with API calls
+    // Larger batches now - we removed wasteful multi-strategy searches
+    const batchSize = 10; // Increased from 3
+    const delay = 100; // Reduced delay
     
     for (let i = 0; i < coasters.length; i += batchSize) {
         const batch = coasters.slice(i, i + batchSize);
