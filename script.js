@@ -4,7 +4,7 @@
     
     // Cache version - increment this when improving search logic to invalidate old caches
     // This allows better searches without manual cache clearing
-    const CACHE_VERSION = 'v8'; // Updated: removed slow park queries, reduced delays 200ms→50ms, only 2 variants
+    const CACHE_VERSION = 'v8-progressive'; // Progressive loading: first 10 instant, rest in background
 
     // Function to parse CSV data
     function parseCSV(csvText) {
@@ -127,10 +127,10 @@
         // Post-initialization UI adjustments
         postInitUISetup();
         
-        // Preload ALL coaster images BEFORE allowing battles - wait for completion
-        await preloadCoasterImages();
+        // NEW: Progressive loading - load first 10 coasters immediately, then rest in background
+        await preloadCoasterImagesProgressive();
         
-        // Now display the first battle
+        // Now display the first battle (with first 10 already loaded)
         displayBattle();
     }
 
@@ -402,7 +402,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     await delay(2000);
                 } else if (e.message.includes('timeout')) {
                     console.log(`    ⏱️ Query timeout, continuing...`);
-                    await delay(50);
+                    await delay(150);
                 }
                 // Continue to next strategy on any error
             }
@@ -425,7 +425,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     console.log(`✓ Found "${coasterName}" exact`);
                     return result;
                 }
-                await delay(50);
+                await delay(150);
             } catch (e) {
                 console.warn(`    ⚠️ Exact match query failed for "${variant}": ${e.message}`);
                 if (e.message.includes('429')) {
@@ -687,6 +687,77 @@ function hideLoadingScreen() {
     }
 }
 
+// Progressive loading: load priority coasters first, then background load rest
+async function preloadCoasterImagesProgressive() {
+    if (!currentUser || !coasters || coasters.length === 0) {
+        hideLoadingScreen();
+        return;
+    }
+    
+    cleanOldCacheVersions();
+    
+    imageLoadStats.loaded = 0;
+    imageLoadStats.failed = 0;
+    imageLoadStats.cached = 0;
+    imageLoadStats.total = coasters.length;
+    
+    updateImageLoadStats();
+    updateLoadingScreen(0, coasters.length, 0);
+    
+    console.log(`🚀 Progressive loading: Loading first 20 coasters immediately...`);
+    
+    // PRIORITY: Load first 20 coasters that will show in initial battles
+    const priorityCount = Math.min(20, coasters.length);
+    const priorityCoasters = coasters.slice(0, priorityCount);
+    
+    // Load priority coasters with minimal delay
+    for (const coaster of priorityCoasters) {
+        await getCoasterImage(coaster);
+        coastersWithImages.add(coaster.naam); // Track as loaded
+        updateImageLoadStats();
+        updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to avoid instant rate limit
+    }
+    
+    console.log(`✓ First ${priorityCount} coasters loaded - starting battles!`);
+    hideLoadingScreen();
+    
+    // BACKGROUND: Load remaining coasters slowly to avoid rate limits
+    if (coasters.length > priorityCount) {
+        console.log(`📦 Background loading remaining ${coasters.length - priorityCount} coasters...`);
+        backgroundLoadRemainingImages(priorityCount);
+    }
+}
+
+// Background loader - loads remaining images slowly without blocking UI
+async function backgroundLoadRemainingImages(startIndex) {
+    const remainingCoasters = coasters.slice(startIndex);
+    const batchSize = 5; // Balanced batch size for speed without rate limiting
+    const batchDelay = 800; // 800ms delay - completes ~100 coasters in under 1 minute
+    
+    for (let i = 0; i < remainingCoasters.length; i += batchSize) {
+        const batch = remainingCoasters.slice(i, i + batchSize);
+        
+        // Process batch
+        await Promise.all(
+            batch.map(async (coaster) => {
+                await getCoasterImage(coaster);
+                coastersWithImages.add(coaster.naam); // Track as loaded
+                // Silently update stats without UI noise
+            })
+        );
+        
+        // Wait between batches to avoid rate limiting
+        if (i + batchSize < remainingCoasters.length) {
+            await new Promise(resolve => setTimeout(resolve, batchDelay));
+        }
+    }
+    
+    allCoastersLoadingComplete = true;
+    console.log(`✓ Background loading complete - all ${coasters.length} coasters ready! Returning to normal selection.`);
+}
+
+// Original full preload function (kept for fallback/manual use)
 async function preloadCoasterImages() {
     if (!currentUser || !coasters || coasters.length === 0) {
         hideLoadingScreen();
@@ -767,6 +838,8 @@ const onResize = debounce(() => {
 window.addEventListener('resize', onResize, { passive: true });
     let currentUser = null;
     let coasters = [];
+    let coastersWithImages = new Set(); // Track coasters that have images loaded
+    let allCoastersLoadingComplete = false; // True when all coasters have been attempted
     let coasterStats = {};
     let totalBattlesCount = 0;
     let currentBattle = null;
@@ -1614,7 +1687,11 @@ const DOM = {};
                         const stats = coasterStats && coasterStats[name] ? coasterStats[name] : null;
                         const battles = stats && typeof stats.battles === 'number' ? stats.battles : 0;
                         // base exploration weight: inverse of (1 + battles) ^ EXPLORATION_POWER
-                        const w = 1 / Math.pow(1 + Math.max(0, battles), EXPLORATION_POWER);
+                        let w = 1 / Math.pow(1 + Math.max(0, battles), EXPLORATION_POWER);
+                        // BOOST: Strongly prefer coasters with loaded images (10x weight) - only during initial loading
+                        if (!allCoastersLoadingComplete && coastersWithImages.has(name)) {
+                            w *= 10;
+                        }
                         weights[i] = w;
                     } catch (e) {
                         weights[i] = 1;
@@ -2103,8 +2180,16 @@ const DOM = {};
             localStorage.setItem(CR_STORAGE_COUNTER,'0');
             localStorage.setItem(CR_STORAGE_THRESHOLD,String(randInt(25,50)));
 
-            epicCloseBattleSequence(coasterA, coasterB, rankA, rankB, winnerId).then((forcedSwap)=>{
-                resolve({triggered:true, forcedSwap: !!forcedSwap});
+            // Show the intro overlay first, then the epic sequence
+            showCloseIntro(coasterA, coasterB).then(() => {
+                epicCloseBattleSequence(coasterA, coasterB, rankA, rankB, winnerId).then((forcedSwap)=>{
+                    resolve({triggered:true, forcedSwap: !!forcedSwap});
+                });
+            }).catch(() => {
+                // If intro fails, still show epic sequence
+                epicCloseBattleSequence(coasterA, coasterB, rankA, rankB, winnerId).then((forcedSwap)=>{
+                    resolve({triggered:true, forcedSwap: !!forcedSwap});
+                });
             });
         });
     }
