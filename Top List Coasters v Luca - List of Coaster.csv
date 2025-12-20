@@ -1,7 +1,7 @@
 ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
-1,Der Schwur des Kärnan,Hansa Park,Gerstlauer,1,100,100
+1,Der Schwur des Kärnan,Hansa-Park,Gerstlauer,1,100,100
 2,Troy,Toverland,GCI,1,98,98
-3,Ride to Happiness,Plopsaland DePanne,Mack Rides,1,96,96
+3,The Ride to Happiness,Plopsaland Belgium ,Mack Rides,1,96,96
 4,Taron,Phantasialand,Intamin,1,94,94
 5,Hyperion,Energylandia,Intamin,1,92,92
 6,Voltron,Europa-Park,Mack Rides,1,89,89
@@ -10,7 +10,7 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 9,Zadra,Energylandia,RMC,1,83,83
 10,Red Force,Ferrari Land,Intamin,1,81,81
 11,Kondaa,Walibi Belgium,Intamin,1,79,79
-12,Flucht von Novgorod,Hansa Park,Gerstlauer,1,77,77
+12,Flucht von Novgorod,Hansa-Park,Gerstlauer,1,77,77
 13,Untamed,Walibi Holland,RMC,1,75,75
 14,Rutschebanen,Tivoli Gardens,Valdemar Lebech,1,73,73
 15,F.L.Y.,Phantasialand,Vekoma,1,71,71
@@ -21,23 +21,23 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 20,Karacho,Tripsdrill,Gerstlauer,1,60,60
 21,Cancan Coaster,Europa-Park,Mack Rides,1,58,58
 22,Flug der Dämonen,Heide Park,B&M,1,56,56
-23,Fenix,Toverland,B&M,1,54,54
+23,Fénix,Toverland,B&M,1,54,54
 24,Wodan Timber Coaster,Europa-Park,GCI,1,52,52
 25,Expedition GeForce,Holiday Park,Intamin,1,50,50
 26,Van Helsing's Factory,Moviepark Germany,Gerstlauer,1,47,47
 27,Dragon Khan,PortAventura,B&M,1,45,45
-28,Anubis the Ride,Plopsaland DePanne,Gerstlauer,1,43,43
+28,Anubis the Ride,Plopsaland Belgium ,Gerstlauer,1,43,43
 29,Turbine,Walibi Belgium,Schwarzkopf,0,0,41
 30,Blue Fire,Europa-Park,Mack Rides,1,39,39
 31,Silver Star,Europa-Park,B&M,1,37,37
 32,Hals-über-Kopf,Tripsdrill,Vekoma,1,35,35
-33,Heidi the Ride,Plopsaland DePanne,GCI,1,33,33
+33,Heidi the Ride,Plopsaland Belgium ,GCI,1,33,33
 34,Gold Rush,Slagharen,Gerstlauer,1,31,31
 35,Cop Car Chase,Moviepark Germany,Intamin,0,0,29
-36,Olympia Looping,Prater Park,Schwarzkopf,1,26,26
+36,Olympia Looping,Prater,Schwarzkopf,1,26,26
 37,ARTHUR,Europa-Park,Mack Rides,1,24,24
 38,Furius Baco,PortAventura,Intamin,1,22,22
-39,Nessie,Hansa Park,Schwarzkopf,1,20,20
+39,Nessie,Hansa-Park,Schwarzkopf,1,20,20
 40,Goliath,Walibi Holland,Intamin,1,18,18
 41,De Vliegende Hollander,Efteling,KumbaK,1,16,16
 42,Krake,Heide Park,B&M,1,14,14
@@ -64,7 +64,7 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 63,Poseidon,Europa-Park,Mack Rides,1,0,0
 64,Dragon Rollercoaster,Energylandia,Vekoma,1,0,0
 65,Sky Scream,Holiday Park,Premier Rides,1,0,0
-66,Schlange von Midgard,Hansa Park,Gerstlauer,1,0,0
+66,Schlange von Midgard,Hansa-Park,Gerstlauer,1,0,0
 67,The Milky Way Express,Tivoli Gardens,Mack Rides,1,0,0
 68,Typhoon,Bobbejaanland,Gerstlauer,1,0,0
 69,Python,Efteling,Vekoma,1,0,0
@@ -76,8 +76,8 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 75,Vogelrok,Efteling,Vekoma,1,0,0
 76,Dreamcatcher,Bobbejaanland,Vekoma,1,0,0
 77,Revolution,Bobbejaanland,Vekoma,1,0,0
-78,Winja's - Fear,Phantasialand,Mauer Rides,1,0,0
-79,Winja's - Force,Phantasialand,Mauer Rides,1,0,0
+78,Winja's - Fear,Phantasialand,Maurer Rides,1,0,0
+79,Winja's - Force,Phantasialand,Maurer Rides,1,0,0
 80,Toos-Express,Toverland,Vekoma,1,0,0
 81,Xpress: Platform 13,Walibi Holland,Vekoma,1,0,0
 82,De Bob,Efteling,Intamin,0,0,0
@@ -102,14 +102,14 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 101,MP-Xpress,Moviepark Germany,Vekoma,1,0,0
 102,Tomahawk,PortAventura,CCI,1,0,0
 103,Rioolrat,Hellendoorn,Vekoma,1,0,0
-104,Naga Bay,Bobbejaanland,Mauer Rides,1,0,0
+104,Naga Bay,Bobbejaanland,Maurer Rides,1,0,0
 105,Bandit,Moviepark Germany,RCCA,1,0,0
 106,Light Explores,Energylandia,Vekoma,1,0,0
-107,Crazy Mine,Hansa Park,Mauer Rides,1,0,0
+107,Crazy Mine,Hansa-Park,Maurer Rides,1,0,0
 108,Ghost Chasers,Moviepark Germany,Mack Rides,1,0,0
 109,Mine Train,Slagharen,Vekoma,1,0,0
 110,Jul's RollerSkates,Juliana Toren,Vekoma,1,0,0
-111,Royal Scotsman,Hansa Park,Vekoma,1,0,0
+111,Royal Scotsman,Hansa-Park,Vekoma,1,0,0
 112,Donderstenen,Hellendoorn,Zierer,1,0,0
 113,Grottenblitz,Heide Park,Mack Rides,1,0,0
 114,Indy-Blitz,Heide Park,Zierer,1,0,0
@@ -123,10 +123,10 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 122,Achterbahn,Wunderland Kalkar,Zamperla,1,0,0
 123,Junior Red Force,Ferrari Land,SBF Visa,1,0,0
 124,Energus,Energylandia,Vekoma,1,0,0
-125,Draak,Plopsaland DePanne,Mack Rides,1,0,0
+125,Draak,Plopsaland Belgium ,Mack Rides,1,0,0
 126,Bob Express,Bobbejaanland,Mack Rides,1,0,0
 127,Oki Doki,Bobbejaanland,Vekoma,1,0,0
-128,Kleine Zar,Hansa Park,Preston & Bareiri,1,0,0
-129,Volare,Prater Park,Zamperla,1,0,0
+128,Kleine Zar,Hansa-Park,Preston & Bareiri,1,0,0
+129,Volare,Prater,Zamperla,1,0,0
 130,Viking Rollercoaster,Energylandia,SBF Visa,1,0,0
-131,Pegasus,Europa-Park,Mack Rides,1,0,0
+131,	Pegasus,Europa-Park,Mack Rides,1,0,0

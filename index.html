@@ -11,8 +11,19 @@
     <div id="imageLoadingOverlay" class="loading-overlay">
         <div class="loading-content">
             <h2>Loading Coaster Images...</h2>
-            <div class="loading-progress">
-                <div id="loadingProgressBar" class="loading-progress-bar"></div>
+            <div class="roller-coaster-container">
+                <svg class="coaster-track" viewBox="0 0 400 120" preserveAspectRatio="none">
+                    <!-- Track path with 3 hills -->
+                    <path d="M 0,80 Q 50,20 100,80 Q 150,20 200,80 Q 250,20 300,80 L 400,80" 
+                          class="track-outline" fill="none" stroke="#8B4513" stroke-width="2" />
+                    <path d="M 0,84 Q 50,24 100,84 Q 150,24 200,84 Q 250,24 300,84 L 400,84" 
+                          class="track-outline" fill="none" stroke="#8B4513" stroke-width="2" />
+                </svg>
+                <div id="coasterTrain" class="coaster-train">
+                    <div class="cart cart-1">🎢</div>
+                    <div class="cart cart-2">🚃</div>
+                    <div class="cart cart-3">🚃</div>
+                </div>
             </div>
             <p id="loadingProgressText">Preparing images (0/0)</p>
         </div>

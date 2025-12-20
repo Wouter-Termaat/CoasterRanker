@@ -736,17 +736,9 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
                 infoDiv.innerHTML = `${icon} ${result.metadata.name} ${parkInfo} ${mfgInfo}${imageNum}`;
                 infoDiv.style.color = result.metadata.verified ? '#10b981' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '#f59e0b' : '#ef4444');
                 
-                // Add warnings for mismatches
-                const warnings = [];
+                // Add warning for park mismatch only
                 if (!result.metadata.parkMatch && result.metadata.park) {
-                    warnings.push(`Expected park: ${parkName}`);
-                }
-                if (!result.metadata.mfgMatch && result.metadata.manufacturer && manufacturer) {
-                    warnings.push(`Expected manufacturer: ${manufacturer}`);
-                }
-                
-                if (warnings.length > 0) {
-                    infoDiv.innerHTML += `<br><span style="font-size:0.8em;color:#ef4444;">⚠️ ${warnings.join(', ')}</span>`;
+                    infoDiv.innerHTML += `<br><span style="font-size:0.8em;color:#ef4444;">⚠️ Expected park: ${parkName}</span>`;
                 }
                 
                 // Show that image is saved
@@ -993,37 +985,15 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
     // STRATEGY 0: Combined Park+Name query (HIGHEST PRIORITY - most accurate)
     console.log(`  🎯 STRATEGY 0: Combined Park+Name filter (most accurate)`);
     
-    // Generate basic name variants for Strategy 0
+    // Generate SMART basic name variants for Strategy 0 (avoid over-generation)
     const basicVariants = new Set();
     let cleanName = coasterName.trim().replace(/\s+/g, ' ');
     basicVariants.add(cleanName);
     
-    // Add accent variants if name has no accents
-    if (!/[àáâãäåèéêëìíîïòóôõöùúûüýÿ]/i.test(cleanName)) {
-        const accentMap = {
-            'a': ['á', 'à'], 'e': ['é', 'è', 'ê'], 'i': ['í', 'ì'],
-            'o': ['ó', 'ò'], 'u': ['ú', 'ù'], 'y': ['ý']
-        };
-        for (let i = 0; i < cleanName.length; i++) {
-            const char = cleanName[i].toLowerCase();
-            if (accentMap[char]) {
-                for (const accent of accentMap[char]) {
-                    const accented = cleanName.substring(0, i) + accent + cleanName.substring(i + 1);
-                    basicVariants.add(accented);
-                }
-            }
-        }
-    }
+    // First try with just the basic name
+    let foundBasicResults = false;
     
-    // Try common name substitutions
-    const nameMap = { 'fenix': 'fénix', 'phoenix': 'fénix', 'phenix': 'fénix' };
-    const lowerName = cleanName.toLowerCase();
-    if (nameMap[lowerName]) {
-        basicVariants.add(nameMap[lowerName]);
-        basicVariants.add(nameMap[lowerName].charAt(0).toUpperCase() + nameMap[lowerName].slice(1));
-    }
-    
-    for (const nameVariant of Array.from(basicVariants).slice(0, 5)) {
+    for (const nameVariant of Array.from(basicVariants).slice(0, 3)) { // Max 3 variants for Strategy 0
         console.log(`  🔍 COMBINED: "${nameVariant}" + "${parkName}"`);
         
         const combinedQuery = `
@@ -1055,6 +1025,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                 const match = processResults(results, 'COMBINED');
                 if (returnAll && Array.isArray(match) && match.length > 0) {
                     allFoundMatches.push(...match);
+                    foundBasicResults = true;
                     console.log(`    ✓ COMBINED found ${match.length} results`);
                 } else if (!returnAll && match) {
                     console.log(`    🎯 COMBINED found best match!`);
@@ -1066,6 +1037,78 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
             console.warn(`    ⚠️ COMBINED failed: ${e.message}`);
             await delay(200);
         }
+    }
+    
+    // Only try accent variants if no basic results found
+    if (!foundBasicResults && returnAll) {
+        console.log(`  🔤 No results from basic search, trying accent variants...`);
+        
+        // Simplify first (remove punctuation) - often helps
+        const simplified = cleanName.replace(/[']/g, '').replace(/ - /g, ' ').trim();
+        if (simplified !== cleanName && simplified.length >= 3) {
+            basicVariants.add(simplified);
+        }
+        
+        // Only use KNOWN accent substitutions (not random combinations)
+        const knownAccentMap = {
+            'fenix': 'Fénix',
+            'phoenix': 'Fénix',
+            'geforce': 'G-Force',
+            'baron': 'Baron 1898',
+            'joris': 'Joris en de Draak'
+        };
+        
+        const lowerName = cleanName.toLowerCase();
+        for (const [from, to] of Object.entries(knownAccentMap)) {
+            if (lowerName.includes(from)) {
+                basicVariants.add(to);
+            }
+        }
+        
+        // Try accent variants (skip first one as it was already tried)
+        for (const nameVariant of Array.from(basicVariants).slice(1, 3)) {
+            console.log(`  🔍 COMBINED VARIANT: "${nameVariant}" + "${parkName}"`);
+            
+            const combinedQuery = `
+                SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
+                  ?item rdfs:label ?itemLabel .
+                  FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapeSPARQL(nameVariant)}")))
+                  
+                  ${coasterTypeFilter}
+                  ?item wdt:P18 ?image .
+                  
+                  ?item wdt:P127 ?park .
+                  ?park rdfs:label ?parkLabel .
+                  FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapeSPARQL(parkName)}")))
+                  
+                  OPTIONAL { 
+                    ?item wdt:P176 ?mfg . 
+                    ?mfg rdfs:label ?mfgLabel . 
+                    FILTER(lang(?mfgLabel) = "en")
+                  }
+                }
+                LIMIT 10
+            `;
+            
+            try {
+                const results = await querySPARQLMultiple(combinedQuery, 15000);
+                console.log(`    📊 Combined variant query results: ${results?.length || 0}`);
+                
+                if (results && results.length > 0) {
+                    const match = processResults(results, 'COMBINED');
+                    if (Array.isArray(match) && match.length > 0) {
+                        allFoundMatches.push(...match);
+                        console.log(`    ✓ COMBINED VARIANT found ${match.length} results`);
+                    }
+                }
+                await delay(200);
+            } catch (e) {
+                console.warn(`    ⚠️ COMBINED VARIANT failed: ${e.message}`);
+                await delay(200);
+            }
+        }
+    } else if (foundBasicResults) {
+        console.log(`  ⚡ Basic search found results, skipping accent variants for speed`);
     }
     
     // If combined search succeeded and returnAll, we can return early
@@ -1128,6 +1171,11 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         nameVariants.add(cleanName.replace(/-/g, ' ').trim());
     }
     
+    // Remove apostrophes (e.g., "Winja's" → "Winjas")
+    if (cleanName.includes("'")) {
+        nameVariants.add(cleanName.replace(/'/g, '').trim());
+    }
+    
     // Try without special characters/accents (e.g., "Köln" → "Koln", "über" → "uber")
     const normalized = cleanName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (normalized !== cleanName) {
@@ -1147,38 +1195,15 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         nameVariants.add(germanized);
     }
     
-    // ADD ACCENTED VERSIONS if name has no accents (e.g., "Fenix" → "Fénix")
-    if (!/[àáâãäåèéêëìíîïòóôõöùúûüýÿ]/i.test(cleanName)) {
-        // Common accent patterns for each vowel
-        const accentMap = {
-            'a': ['á', 'à', 'â', 'ä'],
-            'e': ['é', 'è', 'ê', 'ë'],
-            'i': ['í', 'ì', 'î', 'ï'],
-            'o': ['ó', 'ò', 'ô', 'ö'],
-            'u': ['ú', 'ù', 'û', 'ü'],
-            'y': ['ý', 'ÿ']
-        };
-        
-        // Try adding accents to each vowel position
-        for (let i = 0; i < cleanName.length; i++) {
-            const char = cleanName[i].toLowerCase();
-            if (accentMap[char]) {
-                // Try each accent variant for this vowel
-                for (const accent of accentMap[char]) {
-                    const accented = cleanName.substring(0, i) + accent + cleanName.substring(i + 1);
-                    if (accented.length >= 3) {
-                        nameVariants.add(accented);
-                    }
-                }
-            }
-        }
-    }
+    // REMOVED: Random accent generation - too many useless variants
+    // Only use known substitutions below
     
-    // Common name variations (e.g., "Fenix" → "Phoenix", "Taron" → "Talon")
+    // Common name variations (TARGETED - only known coasters)
     const nameSubstitutions = {
-        'fenix': 'fénix',
-        'phoenix': 'fénix',
-        'geforce': 'g-force'
+        'fenix': 'Fénix',
+        'phoenix': 'Fénix',
+        'geforce': 'G-Force',
+        'baron': 'Baron 1898'
     };
     
     const lowerCleanName = cleanName.toLowerCase();
@@ -1237,6 +1262,11 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
             if (returnAll && Array.isArray(match) && match.length > 0) {
                 // Collect all results for cycling
                 allFoundMatches.push(...match);
+                // Early exit if we found enough good results
+                if (allFoundMatches.length >= 5) {
+                    console.log(`  ✓ Found ${allFoundMatches.length} images, stopping early`);
+                    break;
+                }
             } else if (!returnAll && match) {
                 // Return single best result
                 return match;
@@ -1248,10 +1278,14 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         }
     }
     
-    // Strategy 2: Exact match in English, German, Dutch, French, Spanish
-    for (const variant of variants) {
-        const escapedName = escapeSPARQL(variant);
-        console.log(`  🔍 EXACT (en+de+nl+fr+es): "${variant}"`);
+    // Skip EXACT strategy if we already have enough results
+    if (returnAll && allFoundMatches.length >= 5) {
+        console.log(`  ⏭️ Skipping EXACT strategy - already have ${allFoundMatches.length} results`);
+    } else {
+        // Strategy 2: Exact match in English, German, Dutch, French, Spanish
+        for (const variant of variants) {
+            const escapedName = escapeSPARQL(variant);
+            console.log(`  🔍 EXACT (en+de+nl+fr+es): "${variant}"`);
         
         const exactQuery = `
             SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
@@ -1294,6 +1328,11 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
             if (returnAll && Array.isArray(match) && match.length > 0) {
                 // Collect all results for cycling
                 allFoundMatches.push(...match);
+                // Early exit if we found enough good results
+                if (allFoundMatches.length >= 5) {
+                    console.log(`  ✓ Found ${allFoundMatches.length} images, stopping early`);
+                    break;
+                }
             } else if (!returnAll && match) {
                 // Return single best result
                 return match;
@@ -1302,6 +1341,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         } catch (e) {
             console.warn(`    ⚠️ EXACT failed: ${e.message}`);
             await delay(150);
+        }
         }
     }
     
@@ -1675,18 +1715,40 @@ function updateImageLoadStats() {
 }
 
 // Preload all coaster images in background
+// Calculate Y position on the rollercoaster track based on percentage
+function getCoasterYPosition(percentage) {
+    // 3 hills: peaks at 25%, 55%, 85%
+    // Using sine waves for smooth hills
+    const x = percentage / 100;
+    
+    // Create 3 hill waves
+    const hill1 = Math.sin(x * Math.PI * 3) * 30; // 3 complete waves for 3 hills
+    const baseY = 80; // Base track position
+    
+    return baseY - hill1; // Subtract to go up (lower Y = higher on screen)
+}
+
 // Update loading screen progress
 function updateLoadingScreen(loaded, total, failed, customMessage = null) {
     const overlay = document.getElementById('imageLoadingOverlay');
-    const progressBar = document.getElementById('loadingProgressBar');
+    const train = document.getElementById('coasterTrain');
     const progressText = document.getElementById('loadingProgressText');
     
-    if (!overlay || !progressBar || !progressText) return;
+    if (!overlay || !train || !progressText) return;
     
     const processed = loaded + failed;
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
     
-    progressBar.style.width = `${percentage}%`;
+    // Move train along the track
+    const xPosition = percentage * 3.7; // Scale to fit track width (0-370px in 400px viewBox)
+    const yPosition = getCoasterYPosition(percentage);
+    
+    // Calculate rotation based on slope
+    const nextY = getCoasterYPosition(Math.min(percentage + 2, 100));
+    const slope = (nextY - yPosition) / 2;
+    const rotation = Math.atan(slope) * (180 / Math.PI) * 0.5; // Convert to degrees and dampen
+    
+    train.style.transform = `translateX(${xPosition}px) translateY(${yPosition}px) rotate(${rotation}deg)`;
     
     if (customMessage) {
         progressText.textContent = `${customMessage} (${processed}/${total})`;
