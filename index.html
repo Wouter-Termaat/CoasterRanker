@@ -12,17 +12,14 @@
         <div class="loading-content">
             <h2>Loading Coaster Images...</h2>
             <div class="roller-coaster-container">
-                <svg class="coaster-track" viewBox="0 0 400 120" preserveAspectRatio="none">
-                    <!-- Track path with 3 hills -->
-                    <path d="M 0,80 Q 50,20 100,80 Q 150,20 200,80 Q 250,20 300,80 L 400,80" 
-                          class="track-outline" fill="none" stroke="#8B4513" stroke-width="2" />
-                    <path d="M 0,84 Q 50,24 100,84 Q 150,24 200,84 Q 250,24 300,84 L 400,84" 
-                          class="track-outline" fill="none" stroke="#8B4513" stroke-width="2" />
+                <svg class="coaster-track" viewBox="0 0 400 80" preserveAspectRatio="none">
+                    <!-- Straight track -->
+                    <line x1="0" y1="60" x2="400" y2="60" class="track-line" stroke="white" stroke-width="5" stroke-linecap="round" />
                 </svg>
                 <div id="coasterTrain" class="coaster-train">
-                    <div class="cart cart-1">🎢</div>
-                    <div class="cart cart-2">🚃</div>
-                    <div class="cart cart-3">🚃</div>
+                    <div class="train-car"></div>
+                    <div class="train-car"></div>
+                    <div class="train-car"></div>
                 </div>
             </div>
             <p id="loadingProgressText">Preparing images (0/0)</p>
@@ -87,12 +84,12 @@
                     </div>
                     <div id="historyAutocomplete" class="autocomplete-dropdown"></div>
                 </div>
-                <!-- History Filters: visible when a coaster is selected -->
+                <!-- History Filters: always visible, but wins/losses only when coaster selected -->
                 <div class="history-filters" id="historyFilters" aria-hidden="false">
                     <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all')">All battles</button>
-                    <button class="filter-btn" data-filter="wins" onclick="setHistoryFilter('wins')">Wins</button>
-                    <button class="filter-btn" data-filter="losses" onclick="setHistoryFilter('losses')">Losses</button>
                     <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close')">Close fights</button>
+                    <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins')">Wins</button>
+                    <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses')">Losses</button>
                 </div>
             </div>
             <div id="historyContainer" style="overflow:auto;">
@@ -282,7 +279,6 @@
             <div class="coaster-side" id="cLeft">
                 <div class="coaster-name" id="cLeftName"></div>
             </div>
-            <div class="vs-mark">VS</div>
             <div class="coaster-side" id="cRight">
                 <div class="coaster-name" id="cRightName"></div>
             </div>

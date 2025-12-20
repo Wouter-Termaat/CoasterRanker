@@ -56,7 +56,7 @@ body {
 .roller-coaster-container {
     position: relative;
     width: 100%;
-    height: 120px;
+    height: 80px;
     margin: 20px 0;
 }
 
@@ -68,44 +68,26 @@ body {
     left: 0;
 }
 
-.track-outline {
-    opacity: 0.6;
+.track-line {
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
 }
 
 .coaster-train {
     position: absolute;
-    top: 0;
+    top: 60px;
     left: 0;
-    transform: translateX(0%) translateY(80px);
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateY(calc(-100% - 5px));
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
-    gap: 2px;
-    transform-origin: center;
+    gap: 8px;
 }
 
-.cart {
-    font-size: 24px;
-    filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
-    animation: cartBounce 0.6s ease-in-out infinite alternate;
-}
-
-.cart-1 {
-    animation-delay: 0s;
-}
-
-.cart-2 {
-    animation-delay: 0.1s;
-    opacity: 0.95;
-}
-
-.cart-3 {
-    animation-delay: 0.2s;
-    opacity: 0.9;
-}
-
-@keyframes cartBounce {
-    0% { transform: translateY(0px); }
-    100% { transform: translateY(-2px); }
+.train-car {
+    width: 16px;
+    height: 12px;
+    background: white;
+    border-radius: 3px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
 }
 
 .loading-content p {
@@ -727,15 +709,15 @@ body {
 }
 
 .coaster-card.winner {
-    animation: winShine 1.5s ease-out, winBounce 1.5s ease-out;
+    animation: winShine 0.8s ease-out, winBounce 0.8s ease-out;
     box-shadow: 0 12px 32px rgba(16, 185, 129, 0.3);
 }
 
 .coaster-card.loser {
     transform: scale(0.95);
     opacity: 0.6;
-    transition: all 0.4s ease;
-    animation: loserRecover 0.3s ease 1.3s forwards;
+    transition: all 0.25s ease;
+    animation: loserRecover 0.2s ease 0.7s forwards;
 }
 
 @keyframes loserRecover {
@@ -840,7 +822,7 @@ body {
     display: flex;
     align-items: center;
     gap: 5px;
-    animation: badgePopIn 0.4s ease-out, badgeFadeOut 0.5s ease-in 3.5s forwards;
+    animation: badgePopIn 0.25s ease-out, badgeFadeOut 0.4s ease-in 1.5s forwards;
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
     z-index: 10;
 }
@@ -1038,6 +1020,39 @@ body {
     pointer-events: none; /* allow clicks through the VS badge */
 }
 
+/* Close Fight Banner */
+.close-fight-banner {
+    position: absolute;
+    top: -55px;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    text-align: center;
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    padding: 6px 18px;
+    letter-spacing: 2px;
+    background: #ffd86b;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(255, 200, 90, 0.3);
+    white-space: nowrap;
+    z-index: 50;
+    animation: closeFightPulse 2s ease-in-out infinite;
+}
+
+@keyframes closeFightPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes closeFightPulse {
+    0%, 100% { transform: scale(1); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.4); }
+    50% { transform: scale(1.05); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 215, 0, 0.6); }
+}
+
 /* Ranking Tab */
 .ranking-controls {
     display: flex;
@@ -1146,13 +1161,13 @@ body {
     }
 }
 
-/* Utility: show filters enabled when body has .coaster-selected */
-body:not(.coaster-selected) .history-filters .filter-btn {
-    opacity: 0.45;
-    pointer-events: none;
-    filter: grayscale(0.08);
+/* Utility: always show 'all' and 'close' buttons, but hide wins/losses when no coaster selected */
+.history-filters .filter-btn.coaster-specific {
+    display: none;
 }
-body.coaster-selected .history-filters .filter-btn { opacity: 1; pointer-events: auto; }
+body.coaster-selected .history-filters .filter-btn.coaster-specific {
+    display: inline-block;
+}
 
 /* History row layout: center the arrow regardless of name lengths */
 .history-row {

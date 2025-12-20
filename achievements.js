@@ -95,6 +95,32 @@ const ACHIEVEMENTS = {
         condition: (stats) => stats.closeFights >= 25
     },
     
+    // Underdog victories
+    giantSlayer: {
+        id: 'giantSlayer',
+        name: 'Giant Slayer',
+        description: 'Win your first close fight as the underdog',
+        icon: '🗡️',
+        category: 'close-fights',
+        condition: (stats) => stats.underdogWins >= 1
+    },
+    upsetSpecialist: {
+        id: 'upsetSpecialist',
+        name: 'Upset Specialist',
+        description: 'Win 5 close fights as the underdog',
+        icon: '🎯',
+        category: 'close-fights',
+        condition: (stats) => stats.underdogWins >= 5
+    },
+    davidVsGoliath: {
+        id: 'davidVsGoliath',
+        name: 'David vs Goliath',
+        description: 'Win 10 close fights as the underdog',
+        icon: '🏹',
+        category: 'close-fights',
+        condition: (stats) => stats.underdogWins >= 10
+    },
+    
     // Ranking
     balancedJudge: {
         id: 'balancedJudge',
@@ -252,6 +278,8 @@ class AchievementManager {
         this.alternatingStreak = 0;
         this.lastCardPosition = null;
         this.closeFights = 0;
+        this.underdogWins = 0;
+        this.underdogWinStreak = 0;
         this.perfectMatches = 0;
         this.lastBattleDate = null;
         this.consecutiveDays = 1;
@@ -285,6 +313,8 @@ class AchievementManager {
                 this.alternatingStreak = stats.alternatingStreak || 0;
                 this.lastCardPosition = stats.lastCardPosition !== undefined ? stats.lastCardPosition : null;
                 this.closeFights = stats.closeFights || 0;
+                this.underdogWins = stats.underdogWins || 0;
+                this.underdogWinStreak = stats.underdogWinStreak || 0;
                 this.perfectMatches = stats.perfectMatches || 0;
                 this.lastBattleDate = stats.lastBattleDate || null;
                 this.consecutiveDays = stats.consecutiveDays || 1;
@@ -319,6 +349,8 @@ class AchievementManager {
                 lastCardPosition: this.lastCardPosition,
                 perfectMatches: this.perfectMatches,
                 closeFights: this.closeFights,
+                underdogWins: this.underdogWins,
+                underdogWinStreak: this.underdogWinStreak,
                 lastBattleDate: this.lastBattleDate,
                 consecutiveDays: this.consecutiveDays,
                 dailyBattleDates: [...this.dailyBattleDates],
@@ -385,7 +417,7 @@ class AchievementManager {
     }
     
     // Record a battle outcome for achievement tracking
-    recordBattle(cardPosition, perfectMatch, wasCloseFight, coasterA, coasterB) {
+    recordBattle(cardPosition, perfectMatch, wasCloseFight, coasterA, coasterB, underdogWon = false) {
         this.sessionBattles++;
         
         // Track alternating pattern
@@ -413,6 +445,17 @@ class AchievementManager {
         // Track close fights
         if (wasCloseFight) {
             this.closeFights++;
+            
+            // Track underdog victories in close fights
+            if (underdogWon) {
+                this.underdogWins++;
+                this.underdogWinStreak++;
+            } else {
+                this.underdogWinStreak = 0;
+            }
+        } else {
+            // Reset underdog streak if not a close fight
+            this.underdogWinStreak = 0;
         }
         
         // Track sibling battles

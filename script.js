@@ -186,6 +186,16 @@ let imageLoadStats = {
     cached: 0
 };
 
+// In-memory cache for super-fast image retrieval during rapid battles
+const imageMemoryCache = new Map();
+
+// Preload queue for background loading of next battles
+let preloadQueue = [];
+let isPreloading = false;
+let keyboardUsageDetected = false;
+const PRELOAD_QUEUE_SIZE_NORMAL = 3;
+const PRELOAD_QUEUE_SIZE_FAST = 6;
+
 // Normalize coaster/park name for cache key matching
 function normalizeCoasterName(name) {
     if (!name) return '';
@@ -1622,10 +1632,17 @@ function getCoasterImageSync(coaster) {
     const normalizedPark = normalizeCoasterName(coaster.park);
     const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
     
-    // Check cache only (synchronous)
+    // Check memory cache first (fastest)
+    if (imageMemoryCache.has(cacheKey)) {
+        return imageMemoryCache.get(cacheKey);
+    }
+    
+    // Check localStorage (slower)
     try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
+            // Store in memory cache for next time
+            imageMemoryCache.set(cacheKey, cached);
             return cached;
         }
     } catch (e) {
@@ -1634,6 +1651,56 @@ function getCoasterImageSync(coaster) {
     
     // Return placeholder if not in cache
     return getPlaceholderImage();
+}
+
+// Preload a single image (returns promise that resolves when loaded)
+function preloadImage(imageUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false); // Don't reject, just resolve with false
+        img.src = imageUrl;
+    });
+}
+
+// Preload images for a pair of coasters
+async function preloadBattleImages(coaster1, coaster2) {
+    const url1 = getCoasterImageSync(coaster1);
+    const url2 = getCoasterImageSync(coaster2);
+    
+    // Load both in parallel
+    await Promise.all([
+        preloadImage(url1),
+        preloadImage(url2)
+    ]);
+}
+
+// Background preloader - loads images for next potential battles
+async function preloadNextBattles() {
+    if (isPreloading || !currentUser || !coasters || coasters.length < 2) return;
+    
+    isPreloading = true;
+    const queueSize = keyboardUsageDetected ? PRELOAD_QUEUE_SIZE_FAST : PRELOAD_QUEUE_SIZE_NORMAL;
+    
+    try {
+        // Generate next potential battles
+        const battlesToPreload = [];
+        for (let i = 0; i < queueSize; i++) {
+            const pair = getRandomCoasters();
+            if (pair && pair.length === 2) {
+                battlesToPreload.push(pair);
+            }
+        }
+        
+        // Preload all images
+        for (const [c1, c2] of battlesToPreload) {
+            await preloadBattleImages(c1, c2);
+        }
+    } catch (e) {
+        console.warn('Preload error:', e);
+    } finally {
+        isPreloading = false;
+    }
 }
 
 // Clear all cached images from localStorage
@@ -1715,19 +1782,6 @@ function updateImageLoadStats() {
 }
 
 // Preload all coaster images in background
-// Calculate Y position on the rollercoaster track based on percentage
-function getCoasterYPosition(percentage) {
-    // 3 hills: peaks at 25%, 55%, 85%
-    // Using sine waves for smooth hills
-    const x = percentage / 100;
-    
-    // Create 3 hill waves
-    const hill1 = Math.sin(x * Math.PI * 3) * 30; // 3 complete waves for 3 hills
-    const baseY = 80; // Base track position
-    
-    return baseY - hill1; // Subtract to go up (lower Y = higher on screen)
-}
-
 // Update loading screen progress
 function updateLoadingScreen(loaded, total, failed, customMessage = null) {
     const overlay = document.getElementById('imageLoadingOverlay');
@@ -1739,16 +1793,10 @@ function updateLoadingScreen(loaded, total, failed, customMessage = null) {
     const processed = loaded + failed;
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
     
-    // Move train along the track
-    const xPosition = percentage * 3.7; // Scale to fit track width (0-370px in 400px viewBox)
-    const yPosition = getCoasterYPosition(percentage);
-    
-    // Calculate rotation based on slope
-    const nextY = getCoasterYPosition(Math.min(percentage + 2, 100));
-    const slope = (nextY - yPosition) / 2;
-    const rotation = Math.atan(slope) * (180 / Math.PI) * 0.5; // Convert to degrees and dampen
-    
-    train.style.transform = `translateX(${xPosition}px) translateY(${yPosition}px) rotate(${rotation}deg)`;
+    // Move train horizontally across the track
+    const container = train.parentElement;
+    const maxPosition = container ? container.offsetWidth - 60 : 340; // Leave space for train length
+    train.style.left = `${(percentage / 100) * maxPosition}px`;
     
     if (customMessage) {
         progressText.textContent = `${customMessage} (${processed}/${total})`;
@@ -2581,7 +2629,7 @@ const DOM = {};
         const menu = document.getElementById('devMenu');
         const btn = document.getElementById('devToggleBtn');
         if (!menu || !btn) return;
-        if (!menu.contains(ev.target) && ev.target !== btn) {
+        if (!menu.contains(ev.target) && !btn.contains(ev.target)) {
             closeDevMenu();
         }
     }
@@ -3429,7 +3477,7 @@ const DOM = {};
     // initialize storage counters
     initCloseBattleSystem();
 
-    function displayBattle() {
+    async function displayBattle() {
         const vsEl = document.querySelector('.vs-divider');
         const battleContainerEl = DOM.battleContainer;
         // If no user selected, show hint and hide VS
@@ -3516,12 +3564,27 @@ const DOM = {};
         const parkClass = matchingPark ? 'match-highlight' : '';
         const fabrikantClass = matchingFabrikant ? 'match-highlight' : '';
         
-        // Load images first (synchronously from cache if available)
+        // Load images first and wait for them to be ready
         const leftImageUrl = getCoasterImageSync(left);
         const rightImageUrl = getCoasterImageSync(right);
         
+        // Preload both images to ensure they're ready before rendering
+        await Promise.all([
+            preloadImage(leftImageUrl),
+            preloadImage(rightImageUrl)
+        ]);
+        
+        // Start background preloading for next battles
+        setTimeout(() => preloadNextBattles(), 50);
+        
+        // Check if this is a close fight (will be used for banner)
+        const leftStatsForCheck = coasterStats[left.naam] || { battles: 0 };
+        const rightStatsForCheck = coasterStats[right.naam] || { battles: 0 };
+        const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles >= 3) && (rightStatsForCheck.battles >= 3));
+        
         // Render cards with images already loaded
         battleContainer.innerHTML = `
+            ${isCloseFightMatch ? '<div class="close-fight-banner">⚔️ CLOSE FIGHT ⚔️</div>' : ''}
             <div class="coaster-item">
                 <div class="coaster-card left-card" data-choice="0">
                     <div class="coaster-image">
@@ -3583,7 +3646,7 @@ const DOM = {};
         const r2 = getRankingNum(right.naam);
         const leftStatsObj = coasterStats[left.naam] || { battles: 0 };
         const rightStatsObj = coasterStats[right.naam] || { battles: 0 };
-        const isCloseEligible = ((Math.abs(r1 - r2) < 3) && (leftStatsObj.battles > 3) && (rightStatsObj.battles > 3));
+        const isCloseEligible = ((Math.abs(r1 - r2) <= 3) && (leftStatsObj.battles >= 3) && (rightStatsObj.battles >= 3));
         // Determine whether an epic intro will fire on the next battle (rare event)
         function willEpicTriggerOnNext(){
             try{
@@ -3593,21 +3656,15 @@ const DOM = {};
             }catch(e){ return false; }
         }
 
-        const willEpic = devForceCloseBattle || willEpicTriggerOnNext();
-
-        if (isCloseEligible) {
-            if (willEpic) {
-                // full intro sequence only for epic or dev forced
-                try { if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; } } catch (e) {}
-                closeIntroTimeout = setTimeout(() => { closeIntroTimeout = null; showCloseIntro(left, right).catch(()=>{}); }, 60);
-            } else {
-                // regular close matchup: subtle highlight only
-                const cards = document.querySelectorAll('.coaster-card');
-                if (cards[0]) cards[0].classList.add('close-subtle');
-                if (cards[1]) cards[1].classList.add('close-subtle');
-                // remove subtle after a short while so it doesn't persist
-                setTimeout(()=>{ if (cards[0]) cards[0].classList.remove('close-subtle'); if (cards[1]) cards[1].classList.remove('close-subtle'); }, 1600);
-            }
+        // If dev forced a close battle, show intro immediately (before cards are visible)
+        if (devForceCloseBattle) {
+            try { if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; } } catch (e) {}
+            // Trigger intro immediately with no delay
+            showCloseIntro(left, right).catch(()=>{});
+        } else if (isCloseEligible) {
+            // Always show the full intro sequence for close fights
+            try { if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; } } catch (e) {}
+            closeIntroTimeout = setTimeout(() => { closeIntroTimeout = null; showCloseIntro(left, right).catch(()=>{}); }, 60);
         }
 
         // Delegate overlay rendering to a dedicated function so we can update without reselecting the pair
@@ -3679,10 +3736,17 @@ const DOM = {};
         triggerCloseBattleIfNeeded(winner, loser, oldWinnerRank, oldLoserRank, winnerId).then(({triggered, forcedSwap}) => {
             // apply ranking changes
             if (forcedSwap) {
-                // force winner to be above loser regardless of ELO calculation
-                const baseLoserElo = (loserStats && typeof loserStats.elo === 'number') ? loserStats.elo : ELO_BASE;
-                winnerStats.elo = baseLoserElo + 2;
-                loserStats.elo = baseLoserElo - 1;
+                // Check if normal ELO calculation would already cause a position swap
+                if (newWinnerElo > newLoserElo) {
+                    // Normal ELO already results in winner being above loser - use it to maintain consistency
+                    winnerStats.elo = newWinnerElo;
+                    loserStats.elo = newLoserElo;
+                } else {
+                    // Force winner to be above loser (only when necessary)
+                    const baseLoserElo = (loserStats && typeof loserStats.elo === 'number') ? loserStats.elo : ELO_BASE;
+                    winnerStats.elo = baseLoserElo + 2;
+                    loserStats.elo = baseLoserElo - 1;
+                }
             } else {
                 winnerStats.elo = newWinnerElo;
                 loserStats.elo = newLoserElo;
@@ -3731,14 +3795,16 @@ const DOM = {};
             saveData();
 
             // Track for achievements
-            const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) <= 3;
             const perfectMatch = (winner.park === loser.park) && 
                                (winner.fabrikant === loser.fabrikant) &&
                                winner.park && loser.park && 
                                winner.fabrikant && loser.fabrikant;
+            // Check if underdog won (lower-ranked coaster won in a close fight)
+            const underdogWon = wasCloseFight && (oldWinnerRank > oldLoserRank);
             
             if (typeof achievementManager !== 'undefined') {
-                achievementManager.recordBattle(index, perfectMatch, wasCloseFight, currentBattle[0].naam, currentBattle[1].naam);
+                achievementManager.recordBattle(index, perfectMatch, wasCloseFight, currentBattle[0].naam, currentBattle[1].naam, underdogWon);
             }
 
             // Visual feedback on cards
@@ -3754,7 +3820,7 @@ const DOM = {};
                 badge.className = 'rank-change-badge';
                 badge.innerHTML = `<span class="arrow">↑</span><span>+${rankChange}</span>`;
                 if (cards[index]) { cards[index].style.position = 'relative'; cards[index].appendChild(badge); }
-                setTimeout(() => { if (badge.parentElement) badge.remove(); }, 4000);
+                setTimeout(() => { if (badge.parentElement) badge.remove(); }, 2000);
             }
 
             // refresh ranking table and animate swap if the relative ordering changed between these two
@@ -3792,11 +3858,11 @@ const DOM = {};
                     // Check achievements after celebration
                     checkAndShowAchievements();
                     // small pause then continue
-                    setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 220);
+                    setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 150);
                 });
             } else {
                 // delay before next battle: celebrate longer if we triggered epic
-                const DELAY = triggered ? 1800 : 1500;
+                const DELAY = triggered ? 1000 : 800;
                 setTimeout(()=>{ 
                     try{ restoreVsDivider(); }catch(e){} 
                     displayBattle(); 
@@ -3843,10 +3909,20 @@ const DOM = {};
         if (event.key === 'ArrowLeft') {
             event.preventDefault();
             achievementManager.usedKeyboard = 1;
+            // Detect keyboard usage for more aggressive preloading
+            if (!keyboardUsageDetected) {
+                keyboardUsageDetected = true;
+                console.log('🚀 Keyboard mode detected - increasing preload queue');
+            }
             chooseWinner(0);
         } else if (event.key === 'ArrowRight') {
             event.preventDefault();
             achievementManager.usedKeyboard = 1;
+            // Detect keyboard usage for more aggressive preloading
+            if (!keyboardUsageDetected) {
+                keyboardUsageDetected = true;
+                console.log('🚀 Keyboard mode detected - increasing preload queue');
+            }
             chooseWinner(1);
         }
     });
@@ -4016,19 +4092,20 @@ const DOM = {};
                 }
             }
 
-            // Apply active filter when a coaster is selected
-            if (hasSelected && typeof historyFilter !== 'undefined' && historyFilter && historyFilter !== 'all') {
+            // Apply active filter
+            if (typeof historyFilter !== 'undefined' && historyFilter && historyFilter !== 'all') {
                 const selectedName = query;
                 if (historyFilter === 'wins') {
-                    // only show battles where selectedName is the winner
-                    if (winner !== selectedName) return '';
+                    // only show battles where selectedName is the winner (requires selected coaster)
+                    if (!hasSelected || winner !== selectedName) return '';
                 } else if (historyFilter === 'losses') {
-                    // only show battles where selectedName lost
-                    if (winner === selectedName) return '';
+                    // only show battles where selectedName lost (requires selected coaster)
+                    if (!hasSelected || winner === selectedName) return '';
                     if (a !== selectedName && b !== selectedName) return '';
                 } else if (historyFilter === 'close') {
+                    // show all close fights (or only those involving selected coaster if one is selected)
                     if (!entry.closeFight) return '';
-                    if (a !== selectedName && b !== selectedName) return '';
+                    if (hasSelected && a !== selectedName && b !== selectedName) return '';
                 }
             }
 
@@ -4064,6 +4141,8 @@ const DOM = {};
     let selectedAutocompleteIndex = -1;
     // History filter state: 'all' | 'wins' | 'losses' | 'close'
     let historyFilter = 'all';
+    // Track if user actually selected a coaster (vs just typing)
+    let coasterSelected = false;
 
     function setHistoryFilter(filter) {
         if (!filter) return;
@@ -4080,21 +4159,20 @@ const DOM = {};
 
     function updateHistoryFilterUI() {
         const input = document.getElementById('historySearch');
-        const has = input && input.value && input.value.trim() !== '';
         const historyFilters = document.getElementById('historyFilters');
         if (!historyFilters) return;
-        if (has) {
+        if (coasterSelected) {
             document.body.classList.add('coaster-selected');
-            historyFilters.setAttribute('aria-hidden', 'false');
         } else {
             document.body.classList.remove('coaster-selected');
-            historyFilters.setAttribute('aria-hidden', 'true');
-            // reset to 'all' visually when nothing selected
-            historyFilter = 'all';
-            const btns = historyFilters.querySelectorAll('.filter-btn');
-            btns.forEach(b => { b.classList.remove('active'); });
-            const first = historyFilters.querySelector('.filter-btn[data-filter="all"]');
-            if (first) first.classList.add('active');
+            // reset to 'all' when no coaster selected (wins/losses won't make sense)
+            if (historyFilter === 'wins' || historyFilter === 'losses') {
+                historyFilter = 'all';
+                const btns = historyFilters.querySelectorAll('.filter-btn');
+                btns.forEach(b => { b.classList.remove('active'); });
+                const first = historyFilters.querySelector('.filter-btn[data-filter="all"]');
+                if (first) first.classList.add('active');
+            }
         }
     }
 
@@ -4108,6 +4186,7 @@ const DOM = {};
         const input = document.getElementById('historySearch');
         const clearBtn = document.getElementById('clearHistorySearchBtn');
         clearBtn.style.display = input.value.trim() ? 'block' : 'none';
+        coasterSelected = false; // Reset when typing
         showHistoryAutocomplete();
         updateHistoryFilterUI();
     }
@@ -4119,6 +4198,7 @@ const DOM = {};
         clearBtn.style.display = 'none';
         const dropdown = document.getElementById('historyAutocomplete');
         dropdown.classList.remove('show');
+        coasterSelected = false;
         displayHistory();
         updateHistoryFilterUI();
     }
@@ -4152,6 +4232,7 @@ const DOM = {};
         input.value = name;
         clearBtn.style.display = 'block';
         document.getElementById('historyAutocomplete').classList.remove('show');
+        coasterSelected = true;
         displayHistory();
         updateHistoryFilterUI();
     }
@@ -4846,6 +4927,9 @@ const DOM = {};
         historySearch.value = coasterName;
         clearBtn.style.display = 'block';
         
+        // Mark as selected
+        coasterSelected = true;
+        
         // Trigger the search/filter
         displayHistory();
         updateHistoryFilterUI();
@@ -4974,6 +5058,8 @@ function getGameStats() {
         totalBattles: totalBattlesCount,
         sessionBattles: achievementManager.sessionBattles,
         closeFights: achievementManager.closeFights,
+        underdogWins: achievementManager.underdogWins,
+        underdogWinStreak: achievementManager.underdogWinStreak,
         hasTopRankedCoaster,
         allCoastersMinBattles,
         allPairsCompleted,
