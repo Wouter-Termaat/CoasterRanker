@@ -602,7 +602,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
 }
 
 // Query SPARQL endpoint and return multiple results
-async function querySPARQLMultiple(query) {
+async function querySPARQLMultiple(query, timeoutMs = 20000) {
     const url = 'https://query.wikidata.org/sparql';
     const fullUrl = `${url}?query=${encodeURIComponent(query)}&format=json`;
     
@@ -612,7 +612,7 @@ async function querySPARQLMultiple(query) {
                 'Accept': 'application/sparql-results+json',
                 'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
             }
-        }, 20000);
+        }, timeoutMs);
         
         if (!response.ok) {
             if (response.status === 429) {
@@ -823,71 +823,10 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
     // Roller coaster type validation
     const coasterTypeFilter = `?item wdt:P31/wdt:P279* wd:Q204832 .`;
     
-    // Generate smart name variants and deduplicate
-    const nameVariants = new Set();
-    let cleanName = coasterName.trim().replace(/\s+/g, ' ');
-    
-    nameVariants.add(cleanName);
-    
-    // Remove parentheses (e.g., "Crazy Bats (VR)" → "Crazy Bats")
-    if (cleanName.includes('(')) {
-        nameVariants.add(cleanName.replace(/\s*\([^)]*\)/g, '').trim());
-    }
-    
-    // Remove subtitle after dash (e.g., "Colossos - Kampf" → "Colossos")
-    if (cleanName.includes(' - ')) {
-        nameVariants.add(cleanName.split(' - ')[0].trim());
-    }
-    
-    // Remove subtitle after colon (e.g., "Xpress: Platform 13" → "Xpress")
-    if (cleanName.includes(':')) {
-        nameVariants.add(cleanName.split(':')[0].trim());
-    }
-    
-    // Remove "Der/Die/Das" German articles (e.g., "Der Schwur des Kärnan" → "Schwur des Kärnan")
-    if (/^(Der|Die|Das) /i.test(cleanName)) {
-        nameVariants.add(cleanName.replace(/^(Der|Die|Das) /i, '').trim());
-    }
-    
-    // Remove "The" English article (e.g., "The Smiler" → "Smiler")
-    if (/^The /i.test(cleanName)) {
-        nameVariants.add(cleanName.replace(/^The /i, '').trim());
-    }
-    
-    // Remove apostrophes (e.g., "Hals-über-Kopf" → "Hals uber Kopf")
-    if (cleanName.includes('-')) {
-        nameVariants.add(cleanName.replace(/-/g, ' ').trim());
-    }
-    
-    // Try without special characters/accents (e.g., "Köln" → "Koln", "über" → "uber")
-    const normalized = cleanName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (normalized !== cleanName) {
-        nameVariants.add(normalized);
-    }
-    
-    // Try common English/German spellings (e.g., "ü" → "ue", "ö" → "oe", "ä" → "ae")
-    const germanized = cleanName
-        .replace(/ü/g, 'ue')
-        .replace(/ö/g, 'oe')
-        .replace(/ä/g, 'ae')
-        .replace(/ß/g, 'ss')
-        .replace(/Ü/g, 'Ue')
-        .replace(/Ö/g, 'Oe')
-        .replace(/Ä/g, 'Ae');
-    if (germanized !== cleanName) {
-        nameVariants.add(germanized);
-    }
-    
-    // Convert to array and filter out short names (< 3 chars)
-    const variants = Array.from(nameVariants).filter(v => v.length >= 3);
-    
-    console.log(`  📝 Generated ${variants.length} name variants:`, variants);
-    console.log(`  🎯 Strategies: CONTAINS (all langs), EXACT (en+de), RELAXED (no type filter)`);
-    
     // Collection for all found results when returnAll=true
     const allFoundMatches = [];
     
-    // Helper function to process results with scoring
+    // Helper function to process results with scoring (defined early for use in all strategies)
     const processResults = (results, strategy) => {
         if (!results || results.length === 0) return returnAll ? [] : null;
         
@@ -909,7 +848,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                 // Normalize URL and check for duplicates
                 const normalizedUrl = imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl;
                 if (seenUrls.has(normalizedUrl)) {
-                    console.log(`    ⏭️ Skipping duplicate image: ${normalizedUrl}`);
+                    console.log(`    ⏭️ Skipping duplicate image`);
                     continue;
                 }
                 seenUrls.add(normalizedUrl);
@@ -927,7 +866,6 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                 );
                 
                 // Calculate match score - PRIORITIZE PARK MATCHES
-                // Perfect match (park + mfg) = 100, Park only = 50, Mfg only = 10, Neither = 0
                 let score = 0;
                 let qualityLabel = '';
                 if (parkMatches && mfgMatches) {
@@ -962,10 +900,9 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                 });
             }
             
-            // Sort by score (best first) - Park matches (50) will come before Mfg matches (10)
+            // Sort by score (best first)
             allMatches.sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
-                // If same score, prefer shorter park names (more specific)
                 const aParkLen = a.metadata.park?.length || 999;
                 const bParkLen = b.metadata.park?.length || 999;
                 return aParkLen - bParkLen;
@@ -975,7 +912,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
             return allMatches;
         }
         
-        // Original logic for returning single best match
+        // Original logic for returning single best match (when returnAll=false)
         let bestMatch = null;
         let bestScore = 0;
         
@@ -997,7 +934,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                 manufacturer.toLowerCase().includes(mfgLabel.toLowerCase())
             );
             
-            // Calculate match score - PRIORITIZE PARK MATCHES
+            // Calculate match score
             let score = 0;
             if (parkMatches && mfgMatches) {
                 score = 100;
@@ -1053,6 +990,213 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         return bestMatch;
     };
     
+    // STRATEGY 0: Combined Park+Name query (HIGHEST PRIORITY - most accurate)
+    console.log(`  🎯 STRATEGY 0: Combined Park+Name filter (most accurate)`);
+    
+    // Generate basic name variants for Strategy 0
+    const basicVariants = new Set();
+    let cleanName = coasterName.trim().replace(/\s+/g, ' ');
+    basicVariants.add(cleanName);
+    
+    // Add accent variants if name has no accents
+    if (!/[àáâãäåèéêëìíîïòóôõöùúûüýÿ]/i.test(cleanName)) {
+        const accentMap = {
+            'a': ['á', 'à'], 'e': ['é', 'è', 'ê'], 'i': ['í', 'ì'],
+            'o': ['ó', 'ò'], 'u': ['ú', 'ù'], 'y': ['ý']
+        };
+        for (let i = 0; i < cleanName.length; i++) {
+            const char = cleanName[i].toLowerCase();
+            if (accentMap[char]) {
+                for (const accent of accentMap[char]) {
+                    const accented = cleanName.substring(0, i) + accent + cleanName.substring(i + 1);
+                    basicVariants.add(accented);
+                }
+            }
+        }
+    }
+    
+    // Try common name substitutions
+    const nameMap = { 'fenix': 'fénix', 'phoenix': 'fénix', 'phenix': 'fénix' };
+    const lowerName = cleanName.toLowerCase();
+    if (nameMap[lowerName]) {
+        basicVariants.add(nameMap[lowerName]);
+        basicVariants.add(nameMap[lowerName].charAt(0).toUpperCase() + nameMap[lowerName].slice(1));
+    }
+    
+    for (const nameVariant of Array.from(basicVariants).slice(0, 5)) {
+        console.log(`  🔍 COMBINED: "${nameVariant}" + "${parkName}"`);
+        
+        const combinedQuery = `
+            SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
+              ?item rdfs:label ?itemLabel .
+              FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapeSPARQL(nameVariant)}")))
+              
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+              
+              ?item wdt:P127 ?park .
+              ?park rdfs:label ?parkLabel .
+              FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapeSPARQL(parkName)}")))
+              
+              OPTIONAL { 
+                ?item wdt:P176 ?mfg . 
+                ?mfg rdfs:label ?mfgLabel . 
+                FILTER(lang(?mfgLabel) = "en")
+              }
+            }
+            LIMIT 10
+        `;
+        
+        try {
+            const results = await querySPARQLMultiple(combinedQuery, 15000);
+            console.log(`    📊 Combined query results: ${results?.length || 0}`);
+            
+            if (results && results.length > 0) {
+                const match = processResults(results, 'COMBINED');
+                if (returnAll && Array.isArray(match) && match.length > 0) {
+                    allFoundMatches.push(...match);
+                    console.log(`    ✓ COMBINED found ${match.length} results`);
+                } else if (!returnAll && match) {
+                    console.log(`    🎯 COMBINED found best match!`);
+                    return match;
+                }
+            }
+            await delay(200);
+        } catch (e) {
+            console.warn(`    ⚠️ COMBINED failed: ${e.message}`);
+            await delay(200);
+        }
+    }
+    
+    // If combined search succeeded and returnAll, we can return early
+    if (returnAll && allFoundMatches.length >= 3) {
+        console.log(`  ✓ Strategy 0 found ${allFoundMatches.length} good matches, skipping other strategies`);
+        // Still deduplicate and sort
+        const uniqueMatches = [];
+        const seenUrls = new Set();
+        for (const match of allFoundMatches) {
+            if (!seenUrls.has(match.url)) {
+                seenUrls.add(match.url);
+                uniqueMatches.push(match);
+            }
+        }
+        uniqueMatches.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const aParkLen = a.metadata.park?.length || 999;
+            const bParkLen = b.metadata.park?.length || 999;
+            return aParkLen - bParkLen;
+        });
+        return uniqueMatches;
+    }
+    
+    // Continue with original strategies if Strategy 0 didn't find enough
+    console.log(`  📝 Strategy 0 found ${allFoundMatches.length} results, continuing with fallback strategies...`);
+    
+    // Generate smart name variants and deduplicate
+    const nameVariants = new Set();
+    cleanName = coasterName.trim().replace(/\s+/g, ' ');
+    
+    nameVariants.add(cleanName);
+    
+    // Remove parentheses (e.g., "Crazy Bats (VR)" → "Crazy Bats")
+    if (cleanName.includes('(')) {
+        nameVariants.add(cleanName.replace(/\s*\([^)]*\)/g, '').trim());
+    }
+    
+    // Remove subtitle after dash (e.g., "Colossos - Kampf" → "Colossos")
+    if (cleanName.includes(' - ')) {
+        nameVariants.add(cleanName.split(' - ')[0].trim());
+    }
+    
+    // Remove subtitle after colon (e.g., "Xpress: Platform 13" → "Xpress")
+    if (cleanName.includes(':')) {
+        nameVariants.add(cleanName.split(':')[0].trim());
+    }
+    
+    // Remove "Der/Die/Das" German articles (e.g., "Der Schwur des Kärnan" → "Schwur des Kärnan")
+    if (/^(Der|Die|Das) /i.test(cleanName)) {
+        nameVariants.add(cleanName.replace(/^(Der|Die|Das) /i, '').trim());
+    }
+    
+    // Remove "The" English article (e.g., "The Smiler" → "Smiler")
+    if (/^The /i.test(cleanName)) {
+        nameVariants.add(cleanName.replace(/^The /i, '').trim());
+    }
+    
+    // Remove hyphens (e.g., "Hals-über-Kopf" → "Hals uber Kopf")
+    if (cleanName.includes('-')) {
+        nameVariants.add(cleanName.replace(/-/g, ' ').trim());
+    }
+    
+    // Try without special characters/accents (e.g., "Köln" → "Koln", "über" → "uber")
+    const normalized = cleanName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (normalized !== cleanName) {
+        nameVariants.add(normalized);
+    }
+    
+    // Try common English/German spellings (e.g., "ü" → "ue", "ö" → "oe", "ä" → "ae")
+    const germanized = cleanName
+        .replace(/ü/g, 'ue')
+        .replace(/ö/g, 'oe')
+        .replace(/ä/g, 'ae')
+        .replace(/ß/g, 'ss')
+        .replace(/Ü/g, 'Ue')
+        .replace(/Ö/g, 'Oe')
+        .replace(/Ä/g, 'Ae');
+    if (germanized !== cleanName) {
+        nameVariants.add(germanized);
+    }
+    
+    // ADD ACCENTED VERSIONS if name has no accents (e.g., "Fenix" → "Fénix")
+    if (!/[àáâãäåèéêëìíîïòóôõöùúûüýÿ]/i.test(cleanName)) {
+        // Common accent patterns for each vowel
+        const accentMap = {
+            'a': ['á', 'à', 'â', 'ä'],
+            'e': ['é', 'è', 'ê', 'ë'],
+            'i': ['í', 'ì', 'î', 'ï'],
+            'o': ['ó', 'ò', 'ô', 'ö'],
+            'u': ['ú', 'ù', 'û', 'ü'],
+            'y': ['ý', 'ÿ']
+        };
+        
+        // Try adding accents to each vowel position
+        for (let i = 0; i < cleanName.length; i++) {
+            const char = cleanName[i].toLowerCase();
+            if (accentMap[char]) {
+                // Try each accent variant for this vowel
+                for (const accent of accentMap[char]) {
+                    const accented = cleanName.substring(0, i) + accent + cleanName.substring(i + 1);
+                    if (accented.length >= 3) {
+                        nameVariants.add(accented);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Common name variations (e.g., "Fenix" → "Phoenix", "Taron" → "Talon")
+    const nameSubstitutions = {
+        'fenix': 'fénix',
+        'phoenix': 'fénix',
+        'geforce': 'g-force'
+    };
+    
+    const lowerCleanName = cleanName.toLowerCase();
+    for (const [from, to] of Object.entries(nameSubstitutions)) {
+        if (lowerCleanName === from || lowerCleanName.includes(from)) {
+            const replaced = cleanName.replace(new RegExp(from, 'gi'), to);
+            if (replaced !== cleanName && replaced.length >= 3) {
+                nameVariants.add(replaced);
+            }
+        }
+    }
+    
+    // Convert to array and filter out short names (< 3 chars)
+    const variants = Array.from(nameVariants).filter(v => v.length >= 3);
+    
+    console.log(`  📝 Generated ${variants.length} additional name variants for fallback:`, variants);
+    console.log(`  🎯 Fallback Strategies: CONTAINS (all langs), EXACT (multi-lang), RELAXED (no type filter)`);
+    
     // Strategy 1: CONTAINS search (all languages automatically)
     for (const variant of variants) {
         const escapedName = escapeSPARQL(variant);
@@ -1104,10 +1248,10 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         }
     }
     
-    // Strategy 2: Exact match in English and German
+    // Strategy 2: Exact match in English, German, Dutch, French, Spanish
     for (const variant of variants) {
         const escapedName = escapeSPARQL(variant);
-        console.log(`  🔍 EXACT (en+de): "${variant}"`);
+        console.log(`  🔍 EXACT (en+de+nl+fr+es): "${variant}"`);
         
         const exactQuery = `
             SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
@@ -1116,6 +1260,15 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
               }
               UNION {
                 ?item rdfs:label "${escapedName}"@de .
+              }
+              UNION {
+                ?item rdfs:label "${escapedName}"@nl .
+              }
+              UNION {
+                ?item rdfs:label "${escapedName}"@fr .
+              }
+              UNION {
+                ?item rdfs:label "${escapedName}"@es .
               }
               ${coasterTypeFilter}
               ?item wdt:P18 ?image .
@@ -1155,20 +1308,26 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
     // Strategy 3: Relaxed search without strict type filter (if no results yet)
     if (returnAll && allFoundMatches.length === 0) {
         console.log(`  🔓 RELAXED: Trying without strict type filter...`);
-        for (const variant of variants.slice(0, 2)) { // Only try first 2 variants to avoid too many queries
+        for (const variant of variants.slice(0, 3)) { // Try first 3 variants
             const escapedName = escapeSPARQL(variant);
             console.log(`  🔍 RELAXED: "${variant}"`);
+            
+            // More targeted relaxed query - add park filter to narrow results
+            const parkFilter = parkName ? `
+              OPTIONAL { 
+                ?item wdt:P127 ?park . 
+                ?park rdfs:label ?parkLabel . 
+                FILTER(lang(?parkLabel) = "en")
+              }
+              FILTER(!BOUND(?park) || CONTAINS(LCASE(?parkLabel), LCASE("${escapeSPARQL(parkName)}")))
+            ` : '';
             
             const relaxedQuery = `
                 SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
                   ?item rdfs:label ?label .
                   FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
                   ?item wdt:P18 ?image .
-                  OPTIONAL { 
-                    ?item wdt:P127 ?park . 
-                    ?park rdfs:label ?parkLabel . 
-                    FILTER(lang(?parkLabel) = "en")
-                  }
+                  ${parkFilter}
                   OPTIONAL { 
                     ?item wdt:P176 ?mfg . 
                     ?mfg rdfs:label ?mfgLabel . 
@@ -1181,15 +1340,17 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
             `;
             
             try {
-                const results = await querySPARQLMultiple(relaxedQuery);
+                const results = await querySPARQLMultiple(relaxedQuery, 30000); // 30 second timeout for relaxed
                 const match = processResults(results, 'RELAXED');
                 if (Array.isArray(match) && match.length > 0) {
                     allFoundMatches.push(...match);
+                    console.log(`    ✓ RELAXED found ${match.length} results`);
                 }
-                await delay(150);
+                await delay(200);
             } catch (e) {
                 console.warn(`    ⚠️ RELAXED failed: ${e.message}`);
-                await delay(150);
+                // Don't block on RELAXED failures - continue with what we have
+                await delay(200);
             }
         }
     }
@@ -1220,6 +1381,80 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
     
     console.log(`  ✗ No image found after intensive search`);
     return returnAll ? [] : null;
+}
+
+// Enhanced search for second round bulk loading (combines coaster name + park for better results)
+async function enhancedCoasterImageSearch(coaster) {
+    if (!coaster?.naam || !coaster?.park) return null;
+    
+    const coasterName = coaster.naam;
+    const parkName = coaster.park;
+    const manufacturer = coaster.fabrikant;
+    
+    console.log(`  🔍 Enhanced search: "${coasterName}" at ${parkName}`);
+    
+    const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
+    const coasterTypeFilter = `?item wdt:P31/wdt:P279* wd:Q204832 .`;
+    
+    // Create a targeted query that searches for BOTH coaster name AND park name
+    const enhancedQuery = `
+        SELECT ?item ?image ?itemLabel ?parkLabel ?mfgLabel WHERE {
+          ?item rdfs:label ?itemLabel .
+          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapeSPARQL(coasterName)}")))
+          FILTER(lang(?itemLabel) = "en")
+          
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
+          
+          ?item wdt:P127 ?park .
+          ?park rdfs:label ?parkLabel .
+          FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapeSPARQL(parkName)}")))
+          FILTER(lang(?parkLabel) = "en")
+          
+          OPTIONAL { 
+            ?item wdt:P176 ?mfg . 
+            ?mfg rdfs:label ?mfgLabel . 
+            FILTER(lang(?mfgLabel) = "en")
+          }
+        }
+        LIMIT 5
+    `;
+    
+    try {
+        const results = await querySPARQLMultiple(enhancedQuery, 15000);
+        
+        if (results && results.length > 0) {
+            console.log(`    ✓ Enhanced search found ${results.length} results`);
+            
+            // Pick best match (prefer manufacturer match if available)
+            let bestMatch = results[0];
+            for (const result of results) {
+                const mfgLabel = result.mfgLabel?.value || '';
+                if (manufacturer && mfgLabel.toLowerCase().includes(manufacturer.toLowerCase())) {
+                    bestMatch = result;
+                    break;
+                }
+            }
+            
+            const imageUrl = bestMatch.image?.value;
+            if (imageUrl) {
+                const finalUrl = imageUrl.startsWith('http://') ? imageUrl.replace('http://', 'https://') : imageUrl;
+                
+                // Cache the found image
+                const normalizedName = normalizeCoasterName(coasterName);
+                const normalizedPark = normalizeCoasterName(parkName);
+                const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
+                localStorage.setItem(cacheKey, finalUrl);
+                
+                console.log(`    ✓ Cached enhanced result for "${coasterName}"`);
+                return finalUrl;
+            }
+        }
+    } catch (error) {
+        console.warn(`    ⚠️ Enhanced search failed: ${error.message}`);
+    }
+    
+    return null;
 }
 
 // Helper function to add timeout to fetch requests
@@ -1441,7 +1676,7 @@ function updateImageLoadStats() {
 
 // Preload all coaster images in background
 // Update loading screen progress
-function updateLoadingScreen(loaded, total, failed) {
+function updateLoadingScreen(loaded, total, failed, customMessage = null) {
     const overlay = document.getElementById('imageLoadingOverlay');
     const progressBar = document.getElementById('loadingProgressBar');
     const progressText = document.getElementById('loadingProgressText');
@@ -1452,7 +1687,12 @@ function updateLoadingScreen(loaded, total, failed) {
     const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
     
     progressBar.style.width = `${percentage}%`;
-    progressText.textContent = `Loading images: ${loaded} found, ${failed} not found (${processed}/${total})`;
+    
+    if (customMessage) {
+        progressText.textContent = `${customMessage} (${processed}/${total})`;
+    } else {
+        progressText.textContent = `Loading images: ${loaded} found, ${failed} not found (${processed}/${total})`;
+    }
 }
 
 // Hide loading screen
@@ -1630,13 +1870,18 @@ async function preloadCoasterImages() {
     
     console.log(`Starting image preload for ${coasters.length} coasters...`);
     
+    // Track failed coasters for second round
+    const failedCoasters = [];
+    
     // Smaller batches to avoid overwhelming the API
     const batchSize = 5; // Reduced to avoid rate limiting
     const delay = 300; // Increased delay between batches
     
+    // FIRST ROUND: Standard search
     for (let i = 0; i < coasters.length; i += batchSize) {
         const batch = coasters.slice(i, i + batchSize);
         const startCached = imageLoadStats.cached;
+        const startFailed = imageLoadStats.failed;
         
         // Process batch in parallel
         await Promise.all(
@@ -1647,11 +1892,63 @@ async function preloadCoasterImages() {
             })
         );
         
+        // Track which coasters in this batch failed
+        const newFailures = imageLoadStats.failed - startFailed;
+        if (newFailures > 0) {
+            // Check which ones failed and add to retry list
+            for (const coaster of batch) {
+                const normalizedName = normalizeCoasterName(coaster.naam);
+                const normalizedPark = normalizeCoasterName(coaster.park);
+                const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
+                const cached = localStorage.getItem(cacheKey);
+                // If it's a placeholder, mark for retry
+                if (cached && cached.includes('data:image/svg+xml')) {
+                    failedCoasters.push(coaster);
+                }
+            }
+        }
+        
         // Only delay if this batch made API calls (not all cached)
         const newlyCached = imageLoadStats.cached - startCached;
         if (i + batchSize < coasters.length && newlyCached < batch.length) {
             await new Promise(resolve => setTimeout(resolve, delay));
         }
+    }
+    
+    const firstRoundSuccess = imageLoadStats.loaded;
+    const firstRoundFailed = imageLoadStats.failed;
+    console.log(`First round complete: ${firstRoundSuccess} found, ${firstRoundFailed} failed`);
+    
+    // SECOND ROUND: Enhanced search for failed coasters with park+name combined query
+    if (failedCoasters.length > 0) {
+        console.log(`🔄 Starting second round for ${failedCoasters.length} failed coasters...`);
+        updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed, 'Retrying failed images...');
+        
+        let secondRoundSuccess = 0;
+        
+        for (let i = 0; i < failedCoasters.length; i += batchSize) {
+            const batch = failedCoasters.slice(i, i + batchSize);
+            
+            await Promise.all(
+                batch.map(async (coaster) => {
+                    const result = await enhancedCoasterImageSearch(coaster);
+                    if (result) {
+                        secondRoundSuccess++;
+                        imageLoadStats.loaded++;
+                        imageLoadStats.failed--;
+                        updateImageLoadStats();
+                        updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
+                    }
+                })
+            );
+            
+            // Delay between batches
+            if (i + batchSize < failedCoasters.length) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        
+        console.log(`Second round complete: ${secondRoundSuccess} additional images found`);
     }
     
     const successRate = Math.round((imageLoadStats.loaded / imageLoadStats.total) * 100);
