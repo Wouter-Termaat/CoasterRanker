@@ -2,16 +2,12 @@
     let coastersDataLuca = [];
     let coastersDataWouter = [];
     
-    // Cache version - increment this when improving search logic to invalidate old caches
-    // This allows better searches without manual cache clearing
-    const CACHE_VERSION = 'v10-validated'; // Type validation + multi-strategy: quality AND coverage
+    const CACHE_VERSION = 'v10-validated';
 
-    // Function to parse CSV data
     function parseCSV(csvText) {
         const lines = csvText.trim().split('\n');
         const data = [];
         
-        // Skip header line
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
@@ -30,7 +26,6 @@
         return data;
     }
 
-    // Load CSV files
     async function loadCoasterData() {
         try {
             const [lucaResponse, wouterResponse] = await Promise.all([
@@ -48,13 +43,10 @@
             coastersDataLuca = parseCSV(lucaText);
             coastersDataWouter = parseCSV(wouterText);
             
-            console.info(`Loaded coaster data: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
-            
-            // Initialize the app after data is loaded
+            console.info(`Loaded: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
             initializeApp();
         } catch (error) {
-            console.error('Error loading coaster data:', error);
-            console.error('Error details:', error.message);
+            console.error('Error loading data:', error.message);
             
             // Show a more helpful error message and offer a file-input fallback
             const errorDiv = document.createElement('div');
@@ -156,27 +148,51 @@
             try { if (!currentUser) setBattleVisibility(false); } catch (e) {}
             // Sync sim input width
             try { syncSimInputWidth(); } catch (e) {}
+            // Hide any close battle overlay that might be showing from previous session
+            try {
+                const overlay = document.getElementById('closeBattleOverlay');
+                if (overlay) {
+                    overlay.classList.remove('show');
+                    overlay.style.display = 'none';
+                }
+            } catch (e) {}
+            // Cancel any pending close intro animations
+            try { cancelCloseIntro(); } catch (e) {}
+            
+            // Safety mechanism: periodically check and hide overlay if it appears unexpectedly
+            setInterval(() => {
+                try {
+                    const overlay = document.getElementById('closeBattleOverlay');
+                    // Only hide if we're not currently in a battle resolution
+                    if (overlay && !resolvingBattle && !isProcessingChoice) {
+                        if (overlay.classList.contains('show') || overlay.style.display !== 'none') {
+                            overlay.classList.remove('show');
+                            overlay.style.display = 'none';
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            }, 500);
         } catch (e) {
             // swallow any unexpected errors to avoid breaking initialization
             console.warn('postInitUISetup error', e);
         }
     }
 
-// Utility: debounce function to reduce frequency of hot handlers
 function debounce(fn, wait = 120) {
-    let t = null;
+    let timeoutId = null;
     return (...args) => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => { t = null; fn(...args); }, wait);
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn(...args), wait);
     };
 }
 
-// Small DOM helper (convenience wrapper)
 const $id = (id) => document.getElementById(id);
 
-// ========================================
-// IMAGE FETCHING SERVICE (Wikidata/Wikimedia Commons)
-// ========================================
+const CR_STORAGE_COUNTER = 'cr_rareBattleCounter';
+const CR_STORAGE_THRESHOLD = 'cr_rareBattleThreshold';
+
+function getCoasterId(c) { return (c && (c.naam || c.name || c.id)) || String(Math.random()); }
+function getCoasterName(c) { return (c && (c.naam || c.name)) || 'Coaster'; }
 
 // Global stats for image loading progress (visible in dev menu)
 let imageLoadStats = {
@@ -206,9 +222,7 @@ function normalizeCoasterName(name) {
         .replace(/\s+/g, ' ');     // Normalize whitespace
 }
 
-// Generate a placeholder data URL for coasters without images
 function getPlaceholderImage() {
-    // Simple SVG placeholder (no emoji to avoid btoa encoding issues)
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250">
         <defs>
             <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -224,11 +238,9 @@ function getPlaceholderImage() {
     return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
-// Query Wikidata SPARQL endpoint for coaster image
 async function queryWikidataImage(coasterName, parkName, manufacturer) {
     if (!coasterName) return null;
     
-    // Escape special characters for SPARQL
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     
     // Roller coaster type validation - checks if entity is ANY type of roller coaster
@@ -237,20 +249,14 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     
     // Generate name variants to try (most specific to least specific)
     const nameVariants = [];
-    let cleanName = coasterName.trim().replace(/\s+/g, ' '); // Fix multiple spaces
-    
-    console.log(`  🔄 Generating name variants for "${coasterName}"...`);
-    
-    // 1. Try exact name first (most specific)
+    let cleanName = coasterName.trim().replace(/\s+/g, ' ');
     nameVariants.push(cleanName);
     
-    // 2. Remove anything in parentheses (e.g., "Crazy Bats (VR)" → "Crazy Bats")
     if (/\([^)]+\)/.test(cleanName)) {
         const variant = cleanName.replace(/\s*\([^)]+\)\s*/g, ' ').trim();
-        if (!nameVariants.includes(variant)) nameVariants.push(variant);
+        if (variant && !nameVariants.includes(variant)) nameVariants.push(variant);
     }
     
-    // 3. Remove track/side suffixes after dash (e.g., "Joris - Water" → "Joris")
     if (/ - [A-Z][a-z]+$/.test(cleanName)) {
         const variant = cleanName.replace(/ - [A-Z][a-z]+$/, '').trim();
         if (!nameVariants.includes(variant)) nameVariants.push(variant);
@@ -364,18 +370,46 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Helper to add delay between requests to avoid rate limiting
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
-    // FAST PATH: Single CONTAINS query - searches all languages automatically
-    // Use retry button for exact language matching and park/manufacturer verification
+    // FAST PATH: Try park-aware search first (most accurate), then fallback to name-only
+    // This prevents wrong matches like "iSpeed" when searching for "Speed"
     const variant = nameVariants[0];
     const escapedName = escapeSPARQL(variant);
+    const escapedPark = escapeSPARQL(parkName);
     
     if (variant.length < 3) {
         console.log(`✗ Name too short: "${variant}"`);
         return null;
     }
     
-    // Single simple query: CONTAINS with type validation
-    console.log(`  🔍 Fast: CONTAINS "${variant}"`);
+    // STRATEGY 1: Combined park + name query (most accurate, prevents wrong park matches)
+    console.log(`  🔍 Fast (Park-aware): "${variant}" at "${parkName}"`);
+    const parkAwareQuery = `
+        SELECT ?item ?image WHERE {
+          ?item rdfs:label ?itemLabel .
+          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapedName}")))
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
+          
+          ?item wdt:P127 ?park .
+          ?park rdfs:label ?parkLabel .
+          FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedPark}")))
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const result = await querySPARQL(parkAwareQuery);
+        if (result) {
+            console.log(`✓ Found "${coasterName}" with park verification`);
+            return result;
+        }
+    } catch (e) {
+        console.warn(`    ⚠️ Park-aware search failed: ${e.message}`);
+    }
+    
+    // STRATEGY 2: Fallback to name-only if park search failed
+    // (Some coasters might not have park data in Wikidata)
+    console.log(`  🔍 Fast (Name-only fallback): "${variant}"`);
     const simpleQuery = `
         SELECT ?item ?image WHERE {
           ?item rdfs:label ?label .
@@ -389,7 +423,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     try {
         const result = await querySPARQL(simpleQuery);
         if (result) {
-            console.log(`✓ Found "${coasterName}"`);
+            console.log(`✓ Found "${coasterName}" (park not verified - may need retry)`);
             return result;
         }
     } catch (e) {
@@ -644,23 +678,17 @@ const retryAttempts = new Map();
 
 // Retry button handler (called from dev-data overlay)
 window.retryCoasterImage = async function(coasterName, parkName, manufacturer, elementId, event) {
-    console.log('🔄 Retry button clicked for:', coasterName);
-    
-    // Prevent click from bubbling to card selection
     if (event) {
         event.stopPropagation();
         event.preventDefault();
-        console.log('  ✓ Event propagation stopped');
     }
     
     const button = event ? event.target : null;
     const infoDiv = document.getElementById(`imageInfo_${elementId}`);
     
-    // Get and increment retry attempt counter
     const attemptKey = normalizeCoasterName(coasterName);
     const currentAttempt = retryAttempts.get(attemptKey) || 0;
     retryAttempts.set(attemptKey, currentAttempt + 1);
-    console.log(`  🔢 Retry attempt #${currentAttempt + 1}`);
     
     if (button) {
         button.disabled = true;
@@ -668,71 +696,39 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
     }
     
     if (infoDiv) {
-        infoDiv.textContent = 'Running intensive search...';
+        infoDiv.textContent = 'Searching...';
         infoDiv.style.color = '#4CA1AF';
     }
-    
-    console.log('  🔬 Starting intensive search...');
     
     try {
         const allResults = await intensiveImageSearch(coasterName, parkName, manufacturer, true);
         
-        console.log('  📦 Intensive search results:', allResults);
-        console.log(`  📸 Found ${allResults?.length || 0} total images`);
-        
-        // Get the result at current attempt index, or use placeholder if exhausted
         let result = null;
         if (allResults && allResults.length > 0) {
             if (currentAttempt < allResults.length) {
                 result = allResults[currentAttempt];
-                console.log(`  👉 Using image ${currentAttempt + 1} of ${allResults.length}`);
             } else {
-                console.log(`  ⚠️ All ${allResults.length} images exhausted, using placeholder`);
-                // Reset counter and use placeholder
                 retryAttempts.set(attemptKey, 0);
-                result = null; // Will trigger placeholder logic below
+                result = null;
             }
         }
         
         if (result && result.url) {
-            console.log('  🖼️ Image URL found:', result.url);
-            console.log('  📊 Match quality - Verified:', result.metadata.verified, ', Park:', result.metadata.parkMatch, ', Mfg:', result.metadata.mfgMatch);
-            
-            // Update cache with new image (using same key format as getCoasterImageSync)
             const normalizedName = normalizeCoasterName(coasterName);
             const normalizedPark = normalizeCoasterName(parkName);
             const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
             localStorage.setItem(cacheKey, result.url);
-            console.log('  💾 Cached to:', cacheKey);
-            console.log('  ✅ Image will persist for future battles!');
             
-            // Update image in current battle if visible
             const cards = document.querySelectorAll('.coaster-card');
-            console.log(`  🔍 Found ${cards.length} coaster cards to check`);
             cards.forEach(card => {
                 const nameEl = card.querySelector('.coaster-name');
                 const cardName = nameEl?.textContent;
-                console.log(`    📋 Card name: "${cardName}" vs target: "${coasterName}"`);
                 if (nameEl && nameEl.textContent === coasterName) {
                     const img = card.querySelector('.coaster-img');
-                    console.log(`    🎯 Match found! Image element exists: ${!!img}`);
                     if (img) {
                         const oldSrc = img.src;
-                        console.log(`    🔄 Updating image src...`);
-                        console.log(`       FROM: ${oldSrc}`);
-                        console.log(`       TO:   ${result.url}`);
                         img.src = result.url;
-                        
-                        // Force reload and verify
-                        setTimeout(() => {
-                            console.log(`       ✓ New src set to: ${img.src}`);
-                            console.log(`       📏 Image size: ${img.naturalWidth}x${img.naturalHeight}`);
-                        }, 100);
-                        
-                        console.log('    ✓ Image src updated in DOM');
                     }
-                } else {
-                    console.log(`    ⏭️ Skipping non-matching card`);
                 }
             });
             
@@ -765,27 +761,19 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             
             console.log('  ✓ Retry complete!');
         } else {
-            // No image found or exhausted - use placeholder
-            console.log('  🖼️ Using placeholder image');
             const placeholderUrl = getPlaceholderImage();
             
-            // Update cache with placeholder (using same key format as getCoasterImageSync)
             const normalizedName = normalizeCoasterName(coasterName);
             const normalizedPark = normalizeCoasterName(parkName);
             const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
             localStorage.setItem(cacheKey, placeholderUrl);
-            console.log('  💾 Placeholder cached to:', cacheKey);
             
-            // Update image in cards
             const cards = document.querySelectorAll('.coaster-card');
             cards.forEach(card => {
                 const nameEl = card.querySelector('.coaster-name');
                 if (nameEl && nameEl.textContent === coasterName) {
                     const img = card.querySelector('.coaster-img');
-                    if (img) {
-                        img.src = placeholderUrl;
-                        console.log('  ✓ Placeholder updated in battle view');
-                    }
+                    if (img) img.src = placeholderUrl;
                 }
             });
             
@@ -817,7 +805,6 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
 
 // Intensive image search with park/manufacturer verification (triggered by retry button)
 async function intensiveImageSearch(coasterName, parkName, manufacturer, returnAll = false) {
-    console.log(`\n🔬 INTENSIVE SEARCH for "${coasterName}" at ${parkName}... (returnAll: ${returnAll})`);
     
     const escapeSPARQL = (str) => str.replace(/["\\]/g, '\\$&');
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -1783,10 +1770,11 @@ function updateImageLoadStats() {
 
 // Preload all coaster images in background
 // Update loading screen progress
-function updateLoadingScreen(loaded, total, failed, customMessage = null) {
-    const overlay = document.getElementById('imageLoadingOverlay');
-    const train = document.getElementById('coasterTrain');
-    const progressText = document.getElementById('loadingProgressText');
+    function updateLoadingScreen(loaded, total, failed, customMessage = null) {
+        requestAnimationFrame(() => {
+            const overlay = document.getElementById('imageLoadingOverlay');
+            const train = document.getElementById('coasterTrain');
+            const progressText = document.getElementById('loadingProgressText');
     
     if (!overlay || !train || !progressText) return;
     
@@ -1803,7 +1791,8 @@ function updateLoadingScreen(loaded, total, failed, customMessage = null) {
     } else {
         progressText.textContent = `Loading images: ${loaded} found, ${failed} not found (${processed}/${total})`;
     }
-}
+        });
+    }
 
 // Hide loading screen
 function hideLoadingScreen() {
@@ -1868,13 +1857,13 @@ async function preloadAllCoasterImages() {
     for (let i = 0; i < coasters.length; i += batchSize) {
         const batch = coasters.slice(i, i + batchSize);
         
-        // Process batch in parallel
         await Promise.all(
-            batch.map(async (coaster) => {
-                await getCoasterImage(coaster);
-                updateImageLoadStats();
-                updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
-            })
+            batch.map(coaster => 
+                getCoasterImage(coaster).then(() => {
+                    updateImageLoadStats();
+                    updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
+                })
+            )
         );
         
         // Wait between batches only if fetching new images
@@ -2199,9 +2188,14 @@ const DOM = {};
             updateAchievementsTab();
         }
         
+        // Reset session stats when switching users
+        resetSessionStats();
+        
         // Refresh displays
         displayBattle();
         updateRanking();
+        displayHome(); // Update home tab with new user data
+        
         // close menu after selection (if open)
         try { closeUserMenu(); } catch (e) {}
     }
@@ -3026,13 +3020,14 @@ const DOM = {};
     }
 
     function calculateElo(winnerElo, loserElo, K = 32) {
-        const expectedWinner = 1 / (1 + Math.pow(10, (loserElo - winnerElo) / 400));
-        const expectedLoser = 1 / (1 + Math.pow(10, (winnerElo - loserElo) / 400));
+        const eloDiff = (loserElo - winnerElo) / 400;
+        const expectedWinner = 1 / (1 + Math.pow(10, eloDiff));
+        const expectedLoser = 1 - expectedWinner;
         
-        const newWinnerElo = winnerElo + K * (1 - expectedWinner);
-        const newLoserElo = loserElo + K * (0 - expectedLoser);
-        
-        return { newWinnerElo, newLoserElo };
+        return {
+            newWinnerElo: winnerElo + K * (1 - expectedWinner),
+            newLoserElo: loserElo + K * (0 - expectedLoser)
+        };
     }
 
     // Compute adaptive K based on number of battles (automatic, internal)
@@ -3092,12 +3087,8 @@ const DOM = {};
        - Rare trigger once every 25-50 battles (per localStorage)
        - If adjacent and triggered, force a visible swap in ranking
     */
-    const CR_STORAGE_COUNTER = 'cr_rareBattleCounter';
-    const CR_STORAGE_THRESHOLD = 'cr_rareBattleThreshold';
-    function randInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
-    function getCoasterId(c){ return (c && (c.naam || c.name || c.id)) || String(Math.random()); }
-    function getCoasterName(c){ return (c && (c.naam || c.name)) || 'Coaster'; }
-
+    function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+    
     function initCloseBattleSystem(){
         if (localStorage.getItem(CR_STORAGE_COUNTER)===null) localStorage.setItem(CR_STORAGE_COUNTER,'0');
         if (localStorage.getItem(CR_STORAGE_THRESHOLD)===null) localStorage.setItem(CR_STORAGE_THRESHOLD,String(randInt(25,50)));
@@ -3299,38 +3290,30 @@ const DOM = {};
     // Celebrate a winner by animating the existing card in-place and spawning confetti
     function celebrateWinner(cardEl, winnerName){
         return new Promise((resolve)=>{
-            try{
+            try {
                 if (!cardEl) return resolve();
 
-                // Ensure intro overlay, banner and burst are hidden during celebration.
-                // Save inline styles so we can restore them after celebration (if needed).
-                try {
-                    const overlayEl = document.getElementById('closeBattleOverlay');
-                    const bannerEl = document.getElementById('closeBanner');
-                    const winnerBurst = document.getElementById('winnerBurst');
-                    // store previous inline styles
-                    const prev = {};
-                    if (overlayEl) {
-                        prev.overlayDisplay = overlayEl.style.display;
-                        prev.overlayOpacity = overlayEl.style.opacity;
-                        prev.overlayZ = overlayEl.style.zIndex;
-                        // Remove any visible state and force-hide the overlay immediately using !important
-                        overlayEl.classList.remove('show');
-                        overlayEl.style.setProperty('display', 'none', 'important');
-                        overlayEl.style.setProperty('opacity', '0', 'important');
-                        overlayEl.style.zIndex = '';
-                        overlayEl.setAttribute('aria-hidden', 'true');
-                    }
-                    if (bannerEl) { bannerEl.classList.remove('show'); }
-                    if (winnerBurst) { winnerBurst.classList.remove('show','big'); }
-                    // attach prev store on the card element so we can restore later
-                    cardEl._closeOverlayPrev = prev;
-                } catch (e) {}
+                const overlayEl = document.getElementById('closeBattleOverlay');
+                const bannerEl = document.getElementById('closeBanner');
+                const winnerBurst = document.getElementById('winnerBurst');
+                const prev = {};
+                
+                if (overlayEl) {
+                    prev.overlayDisplay = overlayEl.style.display;
+                    prev.overlayOpacity = overlayEl.style.opacity;
+                    prev.overlayZ = overlayEl.style.zIndex;
+                    overlayEl.classList.remove('show');
+                    overlayEl.style.setProperty('display', 'none', 'important');
+                    overlayEl.style.setProperty('opacity', '0', 'important');
+                    overlayEl.style.zIndex = '';
+                    overlayEl.setAttribute('aria-hidden', 'true');
+                }
+                if (bannerEl) bannerEl.classList.remove('show');
+                if (winnerBurst) winnerBurst.classList.remove('show','big');
+                cardEl._closeOverlayPrev = prev;
 
-                // apply in-place celebration class to scale and bring forward
                 cardEl.classList.add('celebrate-in-place');
 
-                // spawn confetti pieces around center of the card
                 const rect = cardEl.getBoundingClientRect();
                 const cx = rect.left + rect.width / 2;
                 const cy = rect.top + rect.height / 3;
@@ -3338,16 +3321,15 @@ const DOM = {};
                 const colors = ['#ff3f6e','#ffd86b','#6ee7b7','#7dd3fc','#c084fc','#ffc4d6','#ffb86b'];
                 const confettiCount = 36;
                 const confettiEls = [];
-                for (let i=0;i<confettiCount;i++){
+                
+                for (let i = 0; i < confettiCount; i++){
                     const c = document.createElement('div');
                     c.className = 'confetti-piece';
                     const size = 6 + Math.floor(Math.random()*12);
-                    c.style.width = size + 'px'; c.style.height = Math.floor(size*1.2) + 'px';
-                    // randomize start position near the card center
-                    const left = cx + (Math.random()*rect.width - rect.width/2);
-                    const top = cy + (Math.random()*rect.height/2 - rect.height/4);
-                    c.style.left = left + 'px';
-                    c.style.top = top + 'px';
+                    c.style.width = size + 'px';
+                    c.style.height = Math.floor(size*1.2) + 'px';
+                    c.style.left = (cx + (Math.random()*rect.width - rect.width/2)) + 'px';
+                    c.style.top = (cy + (Math.random()*rect.height/2 - rect.height/4)) + 'px';
                     c.style.background = colors[Math.floor(Math.random()*colors.length)];
                     c.style.transform = `translateY(-6px) rotate(${Math.random()*360}deg)`;
                     c.style.animationDuration = (900 + Math.floor(Math.random()*900)) + 'ms';
@@ -3355,36 +3337,35 @@ const DOM = {};
                     confettiEls.push(c);
                 }
 
-                // show winner burst briefly
-                const winnerBurst = document.getElementById('winnerBurst');
                 const winnerText = document.getElementById('winnerText');
                 if (winnerText) winnerText.textContent = `${winnerName} WINS!`;
                 if (winnerBurst) winnerBurst.classList.add('show','big');
 
-                const CELEBRATE_MS = 1400;
                 setTimeout(()=>{
-                    // cleanup
                     try{
                         if (winnerBurst) winnerBurst.classList.remove('show','big');
                         confettiEls.forEach(c => c.remove());
                         cardEl.classList.remove('celebrate-in-place');
-                        // restore overlay inline styles if we saved them
+                        
                         const prev = cardEl._closeOverlayPrev;
                         const overlayEl = document.getElementById('closeBattleOverlay');
                         if (prev && overlayEl) {
-                            // restore prior inline values if they existed, otherwise remove the inline property
-                            if (typeof prev.overlayDisplay !== 'undefined' && prev.overlayDisplay !== null && prev.overlayDisplay !== '') overlayEl.style.display = prev.overlayDisplay; else overlayEl.style.removeProperty('display');
-                            if (typeof prev.overlayOpacity !== 'undefined' && prev.overlayOpacity !== null && prev.overlayOpacity !== '') overlayEl.style.opacity = prev.overlayOpacity; else overlayEl.style.removeProperty('opacity');
-                            if (typeof prev.overlayZ !== 'undefined' && prev.overlayZ !== null && prev.overlayZ !== '') overlayEl.style.zIndex = prev.overlayZ; else overlayEl.style.removeProperty('z-index');
+                            if (prev.overlayDisplay) overlayEl.style.display = prev.overlayDisplay; 
+                            else overlayEl.style.removeProperty('display');
+                            if (prev.overlayOpacity) overlayEl.style.opacity = prev.overlayOpacity; 
+                            else overlayEl.style.removeProperty('opacity');
+                            if (prev.overlayZ) overlayEl.style.zIndex = prev.overlayZ; 
+                            else overlayEl.style.removeProperty('z-index');
                             overlayEl.removeAttribute('aria-hidden');
                             delete cardEl._closeOverlayPrev;
                         }
-                        // restore original VS divider if we hid it earlier
                         try { restoreVsDivider(); } catch(e) {}
                     }catch(e){}
                     resolve();
-                }, CELEBRATE_MS);
-            }catch(e){ resolve(); }
+                }, 1400);
+            } catch(e) { 
+                resolve(); 
+            }
         });
     }
 
@@ -3478,6 +3459,17 @@ const DOM = {};
     initCloseBattleSystem();
 
     async function displayBattle() {
+        // Reset resolving state and hide any overlays from previous battles
+        resolvingBattle = false;
+        try {
+            cancelCloseIntro();
+            const overlay = document.getElementById('closeBattleOverlay');
+            if (overlay) {
+                overlay.classList.remove('show');
+                overlay.style.display = 'none';
+            }
+        } catch (e) { /* ignore */ }
+        
         const vsEl = document.querySelector('.vs-divider');
         const battleContainerEl = DOM.battleContainer;
         // If no user selected, show hint and hide VS
@@ -3517,9 +3509,13 @@ const DOM = {};
         // Get current rankings for both coasters (cache sorted array)
         const statsArray = Object.values(coasterStats);
         const sortedByElo = [...statsArray].sort((a, b) => b.elo - a.elo);
-        const getRanking = (coasterName) => {
-            return sortedByElo.findIndex(c => c.name === coasterName) + 1;
-        };
+    function getRanking(coasterName) {
+        if (!sortedByElo) {
+            const statsArray = Object.values(coasterStats);
+            sortedByElo = [...statsArray].sort((a, b) => b.elo - a.elo);
+        }
+        return sortedByElo.findIndex(c => c.name === coasterName) + 1;
+    }
         
         const rank1 = getRanking(currentBattle[0].naam);
         const rank2 = getRanking(currentBattle[1].naam);
@@ -3794,6 +3790,10 @@ const DOM = {};
             recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam, { battleStats });
             saveData();
 
+            // Update daily quest and session stats
+            updateDailyQuest();
+            updateSessionStats(wasCloseMatchFlag);
+
             // Track for achievements
             const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) <= 3;
             const perfectMatch = (winner.park === loser.park) && 
@@ -4011,14 +4011,189 @@ const DOM = {};
         }
     });
 
+    // ============================================
+    // HOME TAB FUNCTIONALITY
+    // ============================================
+
+    // Daily quest tracking
+    let dailyQuestProgress = 0;
+    let lastQuestResetDate = null;
+
+    function loadDailyQuest() {
+        if (!currentUser) return;
+        
+        const today = new Date().toDateString();
+        const savedDate = localStorage.getItem(`dailyQuestDate_${currentUser}`);
+        const savedProgress = parseInt(localStorage.getItem(`dailyQuestProgress_${currentUser}`)) || 0;
+        
+        // Reset if it's a new day
+        if (savedDate !== today) {
+            dailyQuestProgress = 0;
+            localStorage.setItem(`dailyQuestDate_${currentUser}`, today);
+            localStorage.setItem(`dailyQuestProgress_${currentUser}`, '0');
+        } else {
+            dailyQuestProgress = savedProgress;
+        }
+        
+        lastQuestResetDate = today;
+    }
+
+    function updateDailyQuest() {
+        if (!currentUser) return;
+        
+        const today = new Date().toDateString();
+        
+        // Check if we need to reset for a new day
+        if (lastQuestResetDate !== today) {
+            loadDailyQuest();
+        }
+        
+        dailyQuestProgress = Math.min(dailyQuestProgress + 1, 25);
+        localStorage.setItem(`dailyQuestProgress_${currentUser}`, dailyQuestProgress.toString());
+        
+        // Update UI if on home tab
+        const questFill = document.getElementById('questProgressFill');
+        const questText = document.getElementById('questProgressText');
+        
+        if (questFill && questText) {
+            const percentage = (dailyQuestProgress / 25) * 100;
+            questFill.style.width = percentage + '%';
+            questText.textContent = `${dailyQuestProgress}/25 battles`;
+        }
+    }
+
+    // Session stats tracking
+    let sessionBattles = 0;
+    let sessionCloseFights = 0;
+
+    function resetSessionStats() {
+        sessionBattles = 0;
+        sessionCloseFights = 0;
+    }
+
+    function updateSessionStats(isCloseFight = false) {
+        sessionBattles++;
+        if (isCloseFight) sessionCloseFights++;
+        
+        // Update UI if on home tab
+        const sessionBattlesEl = document.getElementById('sessionBattles');
+        const sessionCloseFightsEl = document.getElementById('sessionCloseFights');
+        
+        if (sessionBattlesEl) sessionBattlesEl.textContent = sessionBattles;
+        if (sessionCloseFightsEl) sessionCloseFightsEl.textContent = sessionCloseFights;
+    }
+
+    function displayHome() {
+        if (!currentUser) {
+            // Show welcome state without user
+            const welcomeEl = document.getElementById('homeWelcome');
+            if (welcomeEl) welcomeEl.textContent = 'Welcome to Coaster Ranker!';
+            
+            // Show placeholder content
+            document.getElementById('homeTotalBattles').textContent = '0';
+            document.getElementById('homeTotalCoasters').textContent = '0';
+            document.getElementById('homeProgressMatchups').textContent = '0/0';
+            document.getElementById('homeProgressPercentage').textContent = '0%';
+            document.getElementById('questProgressFill').style.width = '0%';
+            document.getElementById('questProgressText').textContent = '0/25 battles';
+            document.getElementById('homeTop3').innerHTML = '<div class="no-battles">Select a user first! 👆</div>';
+            document.getElementById('homeAchievementCount').textContent = '0/0';
+            document.getElementById('homeRecentAchievements').innerHTML = '';
+            document.getElementById('sessionBattles').textContent = '0';
+            document.getElementById('sessionCloseFights').textContent = '0';
+            return;
+        }
+
+        // Update welcome message
+        const welcomeEl = document.getElementById('homeWelcome');
+        const userName = currentUser.charAt(0).toUpperCase() + currentUser.slice(1);
+        if (welcomeEl) welcomeEl.textContent = `Welcome, ${userName}!`;
+
+        // Update profile stats (moved from ranking tab)
+        const statsArray = Object.values(coasterStats);
+        const totalCoasters = statsArray.length;
+        const totalBattles = totalBattlesCount;
+        
+        const totalPossible = getTotalPossiblePairs();
+        const completed = completedPairs.size;
+        const progressPercentage = totalPossible > 0 ? ((completed / totalPossible) * 100).toFixed(1) : 0;
+        
+        document.getElementById('homeTotalBattles').textContent = totalBattles;
+        document.getElementById('homeTotalCoasters').textContent = totalCoasters;
+        document.getElementById('homeProgressMatchups').textContent = `${completed}/${totalPossible}`;
+        document.getElementById('homeProgressPercentage').textContent = `${progressPercentage}%`;
+
+        // Update daily quest
+        loadDailyQuest();
+        const questPercentage = (dailyQuestProgress / 25) * 100;
+        document.getElementById('questProgressFill').style.width = questPercentage + '%';
+        document.getElementById('questProgressText').textContent = `${dailyQuestProgress}/25 battles`;
+
+        // Update top 3 coasters
+        const top3Container = document.getElementById('homeTop3');
+        if (totalBattles === 0) {
+            top3Container.innerHTML = '<div class="no-battles">Start battling to see your favorites!</div>';
+        } else {
+            const sorted = [...statsArray].sort((a, b) => displayedElo(b) - displayedElo(a));
+            const top3 = sorted.slice(0, 3);
+            
+            const html = top3.map((coaster, index) => {
+                const rank = index + 1;
+                const rankClass = `rank-${rank}`;
+                const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
+                return `
+                    <div class="top-coaster-item">
+                        <div class="top-coaster-rank ${rankClass}">${medal}</div>
+                        <div class="top-coaster-info">
+                            <div class="top-coaster-name">${coaster.name}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            top3Container.innerHTML = html;
+        }
+
+        // Update achievements
+        try {
+            const totalAchievements = Object.keys(ACHIEVEMENTS).length;
+            const unlockedCount = achievementManager.getUnlockedCount();
+            document.getElementById('homeAchievementCount').textContent = `${unlockedCount}/${totalAchievements}`;
+            
+            // Show 3 most recent achievements
+            const recent = achievementManager.getRecentAchievements(3);
+            const recentHtml = recent.map(ach => 
+                `<div class="recent-achievement-icon" title="${ach.name}">${ach.icon}</div>`
+            ).join('');
+            document.getElementById('homeRecentAchievements').innerHTML = recentHtml || '<div style="text-align:center;color:#999;font-size:0.9em;">No achievements yet</div>';
+        } catch (e) {
+            document.getElementById('homeAchievementCount').textContent = '0/0';
+            document.getElementById('homeRecentAchievements').innerHTML = '';
+        }
+
+        // Update session stats
+        document.getElementById('sessionBattles').textContent = sessionBattles;
+        document.getElementById('sessionCloseFights').textContent = sessionCloseFights;
+    }
+
     function switchTab(tabName) {
+        // Always hide close battle overlay when switching tabs
+        try {
+            cancelCloseIntro();
+            const overlay = document.getElementById('closeBattleOverlay');
+            if (overlay) {
+                overlay.classList.remove('show');
+                overlay.style.display = 'none';
+            }
+        } catch (e) { /* ignore */ }
+        
         document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
         });
         
         // Find and activate the corresponding tab button
         const tabButtons = document.querySelectorAll('.tab');
-        const tabMap = ['battle', 'ranking', 'history', 'achievements'];
+        const tabMap = ['home', 'battle', 'ranking', 'history', 'achievements'];
         const tabIndex = tabMap.indexOf(tabName);
         if (tabIndex >= 0 && tabButtons[tabIndex]) {
             tabButtons[tabIndex].classList.add('active');
@@ -4040,7 +4215,9 @@ const DOM = {};
             try { setBattleVisibility(false); } catch (e) { try { if (vsEl) vsEl.style.display = 'none'; } catch (ee) {} }
         }
 
-        if (tabName === 'ranking') {
+        if (tabName === 'home') {
+            displayHome();
+        } else if (tabName === 'ranking') {
             updateRanking();
         } else if (tabName === 'history') {
             displayHistory();
@@ -4764,7 +4941,6 @@ const DOM = {};
         const totalBattles = totalBattlesCount;
         const avgBattles = totalBattles > 0 ? (totalBattles * 2 / totalCoasters).toFixed(1) : 0;
         
-        // Calculate progression
         const totalPossible = getTotalPossiblePairs();
         const completed = completedPairs.size;
         const progressPercentage = totalPossible > 0 ? ((completed / totalPossible) * 100).toFixed(1) : 0;

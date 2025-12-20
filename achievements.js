@@ -1,9 +1,4 @@
-// ============================================
-// ACHIEVEMENT SYSTEM
-// ============================================
-
 const ACHIEVEMENTS = {
-    // Battle achievements
     firstBlood: {
         id: 'firstBlood',
         name: 'First Blood',
@@ -414,6 +409,18 @@ class AchievementManager {
     // Get total count
     getTotalCount() {
         return Object.keys(ACHIEVEMENTS).length;
+    }
+    
+    // Get recent achievements (sorted by unlock date, most recent first)
+    getRecentAchievements(count = 3) {
+        const unlocked = Array.from(this.unlockedAchievements.entries())
+            .map(([id, data]) => ({
+                ...ACHIEVEMENTS[id],
+                unlockedDate: data.unlockedDate
+            }))
+            .sort((a, b) => new Date(b.unlockedDate) - new Date(a.unlockedDate))
+            .slice(0, count);
+        return unlocked;
     }
     
     // Record a battle outcome for achievement tracking

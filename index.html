@@ -3,7 +3,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coaster Ranker</title>
-    <!-- Favicon removed to avoid 404 error -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -48,7 +47,11 @@
         </div>
 
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('battle')">
+            <button class="tab active" onclick="switchTab('home')">
+                <span class="tab-icon"><img src="images/user.svg" alt="Profile" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Profile</span>
+            </button>
+            <button class="tab" onclick="switchTab('battle')">
                 <span class="tab-icon"><img src="images/sword.svg" alt="Battle" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">Battle</span>
             </button>
@@ -66,7 +69,91 @@
             </button>
         </div>
 
-        <div id="battle-tab" class="tab-content active">
+        <div id="home-tab" class="tab-content active">
+            <div class="home-welcome">
+                <h2 id="homeWelcome">Welcome to Coaster Ranker!</h2>
+            </div>
+
+            <!-- Profile Stats Card (Full Width) -->
+            <div class="home-card home-card-full">
+                <div class="stats-summary">
+                    <div class="stat-item">
+                        <div class="stat-value" id="homeTotalBattles">0</div>
+                        <div class="stat-label">Total Battles</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="homeTotalCoasters">0</div>
+                        <div class="stat-label">Coasters</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="homeProgressMatchups">0/0</div>
+                        <div class="stat-label">Matchups Completed</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="homeProgressPercentage">0%</div>
+                        <div class="stat-label">Progress</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Daily Quest + Session Stats -->
+            <div class="home-grid">
+                <div class="home-card">
+                    <h3 class="home-card-title">🎯 Daily Quest</h3>
+                    <div class="daily-quest">
+                        <p class="quest-description">Complete 25 battles today</p>
+                        <div class="quest-progress">
+                            <div class="quest-progress-bar">
+                                <div class="quest-progress-fill" id="questProgressFill" style="width: 0%"></div>
+                            </div>
+                            <p class="quest-text" id="questProgressText">0/25 battles</p>
+                        </div>
+                    </div>
+                    <button class="home-action-btn" onclick="switchTab('battle')" style="width: 100%; margin-top: 12px;">⚔️ Start Battle!</button>
+                </div>
+
+                <div class="home-card">
+                    <h3 class="home-card-title">⚡ Session Stats</h3>
+                    <div class="session-stats">
+                        <div class="session-stat">
+                            <span class="session-stat-value" id="sessionBattles">0</span>
+                            <span class="session-stat-label">Battles this session</span>
+                        </div>
+                        <div class="session-stat">
+                            <span class="session-stat-value" id="sessionCloseFights">0</span>
+                            <span class="session-stat-label">Close fights</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 3: Top 3 + Achievements -->
+            <div class="home-grid">
+                <div class="home-card">
+                    <h3 class="home-card-title"> Your Top 3</h3>
+                    <div class="top-coasters" id="homeTop3">
+                        <div class="no-battles">No rankings yet</div>
+                    </div>
+                    <button class="home-link-btn" onclick="switchTab('ranking')">View Full Ranking →</button>
+                </div>
+
+                <div class="home-card">
+                    <h3 class="home-card-title">🏅 Achievements</h3>
+                    <div class="achievement-summary">
+                        <div class="achievement-count">
+                            <span class="achievement-count-big" id="homeAchievementCount">0/0</span>
+                            <span class="achievement-count-label">Unlocked</span>
+                        </div>
+                        <div class="recent-achievements" id="homeRecentAchievements">
+                            <!-- Recent achievement icons will go here -->
+                        </div>
+                    </div>
+                    <button class="home-link-btn" onclick="switchTab('achievements')">View All →</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="battle-tab" class="tab-content">
             <div class="vs-divider">VS</div>
             <div class="battle-area">
             <div class="battle-container" id="battleContainer">
@@ -98,31 +185,6 @@
         </div>
 
         <div id="ranking-tab" class="tab-content">
-            <div class="ranking-controls">
-                <div class="stats-summary">
-                    <div class="stat-item">
-                        <div class="stat-value" id="totalBattles">0</div>
-                        <div class="stat-label">Total Battles</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="totalCoasters">0</div>
-                        <div class="stat-label">Coasters</div>
-                    </div>
-                    <div class="stat-item" style="display: none;">
-                        <div class="stat-value" id="avgBattlesPerCoaster">0</div>
-                        <div class="stat-label">Avg. Battles/Coaster</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="progressMatchups">0/0</div>
-                        <div class="stat-label">Matchups Completed</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="progressPercentage">0%</div>
-                        <div class="stat-label">Progress</div>
-                    </div>
-                </div>
-            </div>
-
             <div class="filter-container">
                 <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search coaster, park or manufacturer..." onkeyup="filterRanking()">
             </div>
@@ -273,7 +335,7 @@
     </div>
 
     <!-- Close-battle full-screen overlay (visuals only; pointer-events:none so UI stays clickable) -->
-    <div id="closeBattleOverlay" class="close-battle-overlay" aria-hidden="true">
+    <div id="closeBattleOverlay" class="close-battle-overlay" aria-hidden="true" style="display: none; opacity: 0;">
         <div class="arena-lights"></div>
         <div class="arena-center">
             <div class="coaster-side" id="cLeft">
