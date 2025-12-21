@@ -1720,14 +1720,14 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 @media (max-width: 768px) {
     #battle-tab {
         position: relative;
-        padding: 10px 5px !important;
+        padding: 8px !important;
     }
 
     .battle-area {
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 5px;
+        padding: 0;
         position: relative;
         width: 100%;
     }
@@ -1735,7 +1735,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     .battle-container {
         flex-direction: row;
         flex-wrap: nowrap;
-        gap: 8px;
+        gap: 6px;
         justify-content: center;
         align-items: stretch;
         width: 100%;
@@ -1756,8 +1756,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     .coaster-card {
         max-width: none;
         min-width: 0;
-        flex: 1 1 0;
-        width: 0;
+        flex: 1 1 calc(50% - 3px);
+        width: calc(50% - 3px);
         box-sizing: border-box;
         align-self: stretch;
         display: flex;
@@ -1774,7 +1774,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
     .coaster-content {
         position: static;
-        padding: 16px;
+        padding: 12px;
         min-height: auto;
     }
 
