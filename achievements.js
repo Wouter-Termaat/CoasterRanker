@@ -47,6 +47,15 @@ const ACHIEVEMENTS = {
         category: 'battles',
         condition: (stats) => stats.totalBattles >= 1000
     },
+    tenThousandClub: {
+        id: 'tenThousandClub',
+        name: 'Ten Thousand Club',
+        description: 'Complete 10000 battles',
+        icon: '💎',
+        rarity: 'legendary',
+        category: 'battles',
+        condition: (stats) => stats.totalBattles >= 10000
+    },
     speedDemon: {
         id: 'speedDemon',
         name: 'Speed Demon',
@@ -125,6 +134,24 @@ const ACHIEVEMENTS = {
         category: 'ranking',
         condition: (stats) => stats.allCoastersMinBattles >= 5
     },
+    fairArbitrator: {
+        id: 'fairArbitrator',
+        name: 'Fair Arbitrator',
+        description: 'Have all coasters with at least 10 battles',
+        icon: '⚗️',
+        rarity: 'rare',
+        category: 'ranking',
+        condition: (stats) => stats.allCoastersMinBattles >= 10
+    },
+    supremeJudicator: {
+        id: 'supremeJudicator',
+        name: 'Supreme Judicator',
+        description: 'Have all coasters with at least 25 battles',
+        icon: '👨‍⚖️',
+        rarity: 'epic',
+        category: 'ranking',
+        condition: (stats) => stats.allCoastersMinBattles >= 25
+    },
     
     // Patterns
     leftHanded: {
@@ -161,6 +188,24 @@ const ACHIEVEMENTS = {
         category: 'collection',
         condition: (stats) => stats.uniqueParks >= 10
     },
+    globeTrotter: {
+        id: 'globeTrotter',
+        name: 'Globe Trotter',
+        description: 'Have coasters from 25+ parks in battles',
+        icon: '🌏',
+        rarity: 'rare',
+        category: 'collection',
+        condition: (stats) => stats.uniqueParks >= 25
+    },
+    worldExplorer: {
+        id: 'worldExplorer',
+        name: 'World Explorer',
+        description: 'Have coasters from 50+ parks in battles',
+        icon: '🗺️',
+        rarity: 'epic',
+        category: 'collection',
+        condition: (stats) => stats.uniqueParks >= 50
+    },
     manufacturerExpert: {
         id: 'manufacturerExpert',
         name: 'Manufacturer Expert',
@@ -168,6 +213,24 @@ const ACHIEVEMENTS = {
         icon: '🏭',
         category: 'collection',
         condition: (stats) => stats.uniqueManufacturers >= 10
+    },
+    manufacturerConnoisseur: {
+        id: 'manufacturerConnoisseur',
+        name: 'Manufacturer Connoisseur',
+        description: 'Have coasters from 20+ manufacturers in battles',
+        icon: '⚙️',
+        rarity: 'rare',
+        category: 'collection',
+        condition: (stats) => stats.uniqueManufacturers >= 20
+    },
+    manufacturerMaster: {
+        id: 'manufacturerMaster',
+        name: 'Manufacturer Master',
+        description: 'Have coasters from 30+ manufacturers in battles',
+        icon: '🏗️',
+        rarity: 'epic',
+        category: 'collection',
+        condition: (stats) => stats.uniqueManufacturers >= 30
     },
     perfectMatch: {
         id: 'perfectMatch',
@@ -260,6 +323,24 @@ const ACHIEVEMENTS = {
         icon: '📅',
         category: 'special',
         condition: (stats) => stats.consecutiveDays >= 3
+    },
+    weekStreak: {
+        id: 'weekStreak',
+        name: 'Week Warrior',
+        description: 'Vote daily for 7 days in a row',
+        icon: '🗓️',
+        rarity: 'rare',
+        category: 'special',
+        condition: (stats) => stats.consecutiveDays >= 7
+    },
+    monthStreak: {
+        id: 'monthStreak',
+        name: 'Monthly Dedication',
+        description: 'Vote daily for 30 days in a row',
+        icon: '📆',
+        rarity: 'epic',
+        category: 'special',
+        condition: (stats) => stats.consecutiveDays >= 30
     }
 };
 

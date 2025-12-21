@@ -124,6 +124,18 @@
         
         // Now display the first battle (all images loaded)
         displayBattle();
+        
+        // Restore the last active tab
+        try {
+            const savedTab = localStorage.getItem('lastActiveTab');
+            const validTabs = ['home', 'battle', 'ranking', 'history', 'achievements'];
+            if (savedTab && validTabs.includes(savedTab)) {
+                switchTab(savedTab);
+            }
+        } catch (e) { /* ignore */ }
+        
+        // Match tab heights after initialization
+        setTimeout(() => matchTabHeights(), 100);
     }
 
     // Set header height CSS variable for sticky tabs positioning
@@ -697,7 +709,7 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
     
     if (infoDiv) {
         infoDiv.textContent = 'Searching...';
-        infoDiv.style.color = '#4CA1AF';
+        infoDiv.style.color = '#ffffff';
     }
     
     try {
@@ -735,12 +747,11 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             // Display verification result
             if (infoDiv) {
                 const icon = result.metadata.verified ? '✓✓' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '✓' : '⚠️');
-                const parkInfo = result.metadata.park ? `at ${result.metadata.park}` : '';
-                const mfgInfo = result.metadata.manufacturer ? `by ${result.metadata.manufacturer}` : '';
+                const parkInfo = parkName ? `in ${parkName}` : '';
                 const imageNum = allResults?.length > 1 ? ` [${currentAttempt + 1}/${allResults.length}]` : '';
                 
-                infoDiv.innerHTML = `${icon} ${result.metadata.name} ${parkInfo} ${mfgInfo}${imageNum}`;
-                infoDiv.style.color = result.metadata.verified ? '#10b981' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '#f59e0b' : '#ef4444');
+                infoDiv.innerHTML = `${icon} ${result.metadata.name} ${parkInfo}${imageNum}`;
+                infoDiv.style.color = result.metadata.verified ? '#10b981' : (result.metadata.parkMatch || result.metadata.mfgMatch ? '#ffffff' : '#ef4444');
                 
                 // Add warning for park mismatch only
                 if (!result.metadata.parkMatch && result.metadata.park) {
@@ -780,7 +791,7 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             if (infoDiv) {
                 const message = allResults?.length > 0 ? `All ${allResults.length} images tried` : 'No image found';
                 infoDiv.textContent = `🔄 ${message} - Using placeholder`;
-                infoDiv.style.color = '#6b7280';
+                infoDiv.style.color = '#ffffff';
             }
             if (button) {
                 button.textContent = '🔄 Try Again';
@@ -866,7 +877,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                     qualityLabel = 'PARK VERIFIED';
                     console.log(`    ✅ Park verified`);
                 } else if (mfgMatches) {
-                    score = 10;
+                    score = 1;
                     qualityLabel = 'MFG ONLY';
                     console.log(`    ⚠️ Manufacturer only`);
                 } else {
@@ -932,7 +943,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
                 score = 50;
                 console.log(`    ✅ Park verified`);
             } else if (mfgMatches) {
-                score = 10;
+                score = 1;
                 console.log(`    ⚠️ Manufacturer only`);
             }
             
@@ -2205,6 +2216,7 @@ const DOM = {};
         const battlesKey = `totalBattles_${currentUser}`;
         const historyKey = `coasterHistory_${currentUser}`;
         const pairsKey = `completedPairs_${currentUser}`;
+        const battleKey = `currentBattle_${currentUser}`;
 
         coasterStats = JSON.parse(localStorage.getItem(statsKey)) || initializeStats();
         totalBattlesCount = parseInt(localStorage.getItem(battlesKey)) || 0;
@@ -2213,6 +2225,16 @@ const DOM = {};
         // Load completed pairs
         const savedPairs = localStorage.getItem(pairsKey);
         completedPairs = savedPairs ? new Set(JSON.parse(savedPairs)) : new Set();
+        
+        // Load current battle if it exists
+        try {
+            const savedBattle = localStorage.getItem(battleKey);
+            if (savedBattle) {
+                currentBattle = JSON.parse(savedBattle);
+            }
+        } catch (e) {
+            currentBattle = null;
+        }
         
         // load pairing settings for this user (if any)
         loadPairingSettings();
@@ -2242,11 +2264,28 @@ const DOM = {};
         const battlesKey = `totalBattles_${currentUser}`;
         const historyKey = `coasterHistory_${currentUser}`;
         const pairsKey = `completedPairs_${currentUser}`;
+        const battleKey = `currentBattle_${currentUser}`;
 
-        localStorage.setItem(statsKey, JSON.stringify(coasterStats));
-        localStorage.setItem(battlesKey, totalBattlesCount.toString());
-        localStorage.setItem(historyKey, JSON.stringify(coasterHistory));
-        localStorage.setItem(pairsKey, JSON.stringify([...completedPairs]));
+        try {
+            localStorage.setItem(statsKey, JSON.stringify(coasterStats));
+            localStorage.setItem(battlesKey, totalBattlesCount.toString());
+            localStorage.setItem(historyKey, JSON.stringify(coasterHistory));
+            localStorage.setItem(pairsKey, JSON.stringify([...completedPairs]));
+            // Save current battle if it exists
+            if (currentBattle && currentBattle.length === 2) {
+                localStorage.setItem(battleKey, JSON.stringify(currentBattle));
+            } else {
+                localStorage.removeItem(battleKey);
+            }
+        } catch (error) {
+            // Handle localStorage quota exceeded
+            if (error.name === 'QuotaExceededError') {
+                console.error('LocalStorage quota exceeded. Consider clearing old data.');
+                showToast('Storage limit reached. Some data may not be saved.', 3000);
+            } else {
+                console.error('Error saving data:', error);
+            }
+        }
         
         // persist pairing settings per-user
         try {
@@ -3470,12 +3509,10 @@ const DOM = {};
             }
         } catch (e) { /* ignore */ }
         
-        const vsEl = document.querySelector('.vs-divider');
         const battleContainerEl = DOM.battleContainer;
-        // If no user selected, show hint and hide VS
+        // If no user selected, show hint
         if (!currentUser) {
             (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">Select a user above first! 👆</div>';
-            if (vsEl) vsEl.style.display = 'none';
             try { if (battleContainerEl) battleContainerEl.style.display = 'none'; } catch (e) {}
             currentBattle = null;
             return;
@@ -3484,26 +3521,26 @@ const DOM = {};
         // if there aren't enough active coasters, show a helpful message
         if (!coasters || coasters.length < 2) {
             (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">No active coasters found for this user. Check your CSV or the "operational" column.</div>';
-            if (vsEl) vsEl.style.display = 'none';
             currentBattle = null;
             return;
         }
 
         // If developer forced a close battle and `currentBattle` is already set, don't overwrite it.
-        if (!devForceCloseBattle || !currentBattle) {
+        // Also check if we have a saved battle from previous session/tab switch
+        if (!currentBattle || (!devForceCloseBattle && currentBattle.length !== 2)) {
             currentBattle = getRandomCoasters();
         }
         const battleContainer = DOM.battleContainer || $id('battleContainer');
         
+        // Save the battle for persistence
+        saveData();
+        
         // Check if no more pairs available
         if (!currentBattle || currentBattle.length === 0) {
             battleContainer.innerHTML = '<div class="no-battles">🎉 Congratulations!<br><br>You have completed all possible matchups!<br><br>Check the ranking tab to see your final list.</div>';
-            if (vsEl) vsEl.style.display = 'none';
             return;
         }
 
-        // show VS divider when an active battle is present
-        if (vsEl) vsEl.style.display = 'flex';
         try { if (battleContainerEl) battleContainerEl.style.display = ''; } catch (e) {}
         
         // Get current rankings for both coasters (cache sorted array)
@@ -3617,13 +3654,12 @@ const DOM = {};
         `;
         
         // Add click handlers AFTER rendering (gives better control over event propagation)
-        const cards = battleContainer.querySelectorAll('.coaster-card');
-        cards.forEach(card => {
+        const coasterCards = battleContainer.querySelectorAll('.coaster-card');
+        coasterCards.forEach(card => {
             card.addEventListener('click', (e) => {
                 // STRICT CHECK: Do NOT trigger if clicking inside dev-data overlay
                 const clickedOverlay = e.target.classList.contains('dev-data-overlay') || e.target.closest('.dev-data-overlay');
                 if (clickedOverlay) {
-                    console.log('Click blocked - inside dev-data overlay');
                     return; // Do nothing
                 }
                 
@@ -3669,14 +3705,12 @@ const DOM = {};
         setTimeout(syncSimInputWidth, 0);
     }
 
-    // Explicitly hide/show the battle UI (cards + VS badge). Use this from tab switching
+    // Explicitly hide/show the battle UI (cards). Use this from tab switching
     function setBattleVisibility(visible) {
         const battleContainerEl = DOM.battleContainer;
-        const vsEl = document.querySelector('.vs-divider');
         try {
             if (battleContainerEl) battleContainerEl.style.display = visible ? '' : 'none';
         } catch (e) {}
-        try { if (vsEl) vsEl.style.display = visible ? 'flex' : 'none'; } catch (e) {}
     }
 
     function chooseWinner(index) {
@@ -3857,14 +3891,17 @@ const DOM = {};
                 celebrateWinner(cardEl, winner.naam).then(()=>{
                     // Check achievements after celebration
                     checkAndShowAchievements();
+                    // Clear current battle before displaying next one
+                    currentBattle = null;
                     // small pause then continue
-                    setTimeout(()=>{ try{ restoreVsDivider(); }catch(e){} displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 150);
+                    setTimeout(()=>{ displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 150);
                 });
             } else {
                 // delay before next battle: celebrate longer if we triggered epic
                 const DELAY = triggered ? 1000 : 800;
+                // Clear current battle before displaying next one
+                currentBattle = null;
                 setTimeout(()=>{ 
-                    try{ restoreVsDivider(); }catch(e){} 
                     displayBattle(); 
                     isProcessingChoice = false; 
                     resolvingBattle = false;
@@ -4174,9 +4211,70 @@ const DOM = {};
         // Update session stats
         document.getElementById('sessionBattles').textContent = sessionBattles;
         document.getElementById('sessionCloseFights').textContent = sessionCloseFights;
+        
+        // Match tab heights after content is rendered
+        setTimeout(() => matchTabHeights(), 50);
+    }
+
+    function matchTabHeights() {
+        // Match all tabs to profile tab height
+        const profileTab = document.getElementById('home-tab');
+        const battleTab = document.getElementById('battle-tab');
+        const rankingTab = document.getElementById('ranking-tab');
+        const historyTab = document.getElementById('history-tab');
+        const achievementsTab = document.getElementById('achievements-tab');
+        
+        if (profileTab) {
+            // Temporarily make profile visible to measure it
+            const wasProfileActive = profileTab.classList.contains('active');
+            
+            // Make profile visible (but keep it off-screen if it wasn't active)
+            if (!wasProfileActive) {
+                profileTab.style.position = 'absolute';
+                profileTab.style.visibility = 'hidden';
+                profileTab.style.display = 'block';
+            }
+            
+            // Force a reflow to ensure measurement is accurate
+            profileTab.offsetHeight;
+            
+            // Get the actual computed height of the profile tab
+            const profileHeight = profileTab.scrollHeight;
+            
+            // Restore profile tab state
+            if (!wasProfileActive) {
+                profileTab.style.position = '';
+                profileTab.style.visibility = '';
+                profileTab.style.display = '';
+            }
+            
+            // Set all tabs to match (use height, not min-height, to force exact match)
+            // Enable overflow-y auto so content scrolls instead of the page
+            if (battleTab) {
+                battleTab.style.height = profileHeight + 'px';
+                battleTab.style.overflowY = 'hidden';
+            }
+            if (rankingTab) {
+                rankingTab.style.height = profileHeight + 'px';
+                rankingTab.style.overflowY = 'auto';
+            }
+            if (historyTab) {
+                historyTab.style.height = profileHeight + 'px';
+                historyTab.style.overflowY = 'auto';
+            }
+            if (achievementsTab) {
+                achievementsTab.style.height = profileHeight + 'px';
+                achievementsTab.style.overflowY = 'auto';
+            }
+        }
     }
 
     function switchTab(tabName) {
+        // Save the current tab to localStorage
+        try {
+            localStorage.setItem('lastActiveTab', tabName);
+        } catch (e) { /* ignore */ }
+        
         // Always hide close battle overlay when switching tabs
         try {
             cancelCloseIntro();
@@ -4203,16 +4301,15 @@ const DOM = {};
             content.classList.remove('active');
         });
         document.getElementById(tabName + '-tab').classList.add('active');
-        // Hide VS divider on non-battle tabs and refresh relevant tab content
-        const vsEl = $id('vsDivider') || document.querySelector('.vs-divider');
+        // Refresh relevant tab content
         if (tabName === 'battle') {
-            // Ensure battle view is up-to-date (displayBattle will show VS if appropriate)
+            // Ensure battle view is up-to-date
             try { displayBattle(); } catch (e) {}
             // show battle UI
             try { setBattleVisibility(true); } catch (e) {}
         } else {
-            // Hide the VS badge and battle cards when not on the battle tab
-            try { setBattleVisibility(false); } catch (e) { try { if (vsEl) vsEl.style.display = 'none'; } catch (ee) {} }
+            // Hide battle cards when not on the battle tab
+            try { setBattleVisibility(false); } catch (e) {}
         }
 
         if (tabName === 'home') {
@@ -4228,6 +4325,9 @@ const DOM = {};
             console.log('Achievements tab has active class:', achievementsTab ? achievementsTab.classList.contains('active') : 'element not found');
             updateAchievementsTab();
         }
+        
+        // Match tab heights after switching and content is rendered
+        setTimeout(() => matchTabHeights(), 50);
     }
 
     // Render the history in the history tab
@@ -4313,6 +4413,9 @@ const DOM = {};
         } else {
             container.innerHTML = rows;
         }
+        
+        // Match tab heights after content is rendered
+        setTimeout(() => matchTabHeights(), 50);
     }
 
     let selectedAutocompleteIndex = -1;
@@ -5081,6 +5184,9 @@ const DOM = {};
 
         tbody.innerHTML = rowsHtml.join('');
         rankingCardsContainer.innerHTML = cardsHtml.join('');
+        
+        // Match tab heights after content is rendered
+        setTimeout(() => matchTabHeights(), 50);
     }
 
     function filterRanking() {
@@ -5111,41 +5217,85 @@ const DOM = {};
         updateHistoryFilterUI();
     }
 
-    function resetRankings() {
+    function resetRankingOnly() {
         if (!currentUser) return;
         
-        if (confirm(`Are you sure you want to reset all data for ${currentUser === 'luca' ? 'Luca' : 'Wouter'}? This cannot be undone!`)) {
-            if (confirm('Last warning! All battles and rankings will be deleted. Continue?')) {
-                coasterStats = initializeStats();
-                totalBattlesCount = 0;
-                coasterHistory = [];
-                completedPairs = new Set();
-                
-                // Reset achievements
-                if (typeof achievementManager !== 'undefined') {
-                    achievementManager.unlockedAchievements.clear();
-                    achievementManager.leftStreak = 0;
-                    achievementManager.rightStreak = 0;
-                    achievementManager.perfectMatches = 0;
-                    achievementManager.closeFights = 0;
-                    achievementManager.sessionBattles = 0;
-                    achievementManager.lastBattleDate = null;
-                    achievementManager.consecutiveDays = 0;
-                    achievementManager.dailyBattleDates = new Set();
-                    achievementManager.save(currentUser);
-                    
-                    // Clear localStorage for achievements
-                    localStorage.removeItem(`achievements_${currentUser}`);
-                    localStorage.removeItem(`achievementStats_${currentUser}`);
-                }
-                
-                saveData();
-                displayBattle();
-                updateRanking();
-                updateAchievementsTab();
-                alert('Alle data is gereset! 🔄');
-            }
+        // Show custom modal for ranking reset
+        const modal = document.getElementById('resetRankingModal');
+        const userName = currentUser === 'luca' ? 'Luca' : 'Wouter';
+        document.getElementById('resetRankingUserName').textContent = userName;
+        modal.classList.add('show');
+    }
+
+    function closeResetRankingModal() {
+        const modal = document.getElementById('resetRankingModal');
+        modal.classList.remove('show');
+    }
+
+    function confirmResetRanking() {
+        closeResetRankingModal();
+        
+        // Reset only ranking and battle history, preserve achievements
+        coasterStats = initializeStats();
+        totalBattlesCount = 0;
+        coasterHistory = [];
+        completedPairs = new Set();
+        
+        // DO NOT reset achievements - they are preserved
+        
+        saveData();
+        displayBattle();
+        updateRanking();
+        alert('Ranking is gereset! Achievements zijn behouden. 🔄');
+    }
+
+    function resetAllData() {
+        if (!currentUser) return;
+        
+        // Show custom modal for full reset
+        const modal = document.getElementById('resetModal');
+        const userName = currentUser === 'luca' ? 'Luca' : 'Wouter';
+        document.getElementById('resetUserName').textContent = userName;
+        modal.classList.add('show');
+    }
+
+    function closeResetModal() {
+        const modal = document.getElementById('resetModal');
+        modal.classList.remove('show');
+    }
+
+    function confirmReset() {
+        closeResetModal();
+        
+        // Perform the full reset
+        coasterStats = initializeStats();
+        totalBattlesCount = 0;
+        coasterHistory = [];
+        completedPairs = new Set();
+        
+        // Reset achievements
+        if (typeof achievementManager !== 'undefined') {
+            achievementManager.unlockedAchievements.clear();
+            achievementManager.leftStreak = 0;
+            achievementManager.rightStreak = 0;
+            achievementManager.perfectMatches = 0;
+            achievementManager.closeFights = 0;
+            achievementManager.sessionBattles = 0;
+            achievementManager.lastBattleDate = null;
+            achievementManager.consecutiveDays = 0;
+            achievementManager.dailyBattleDates = new Set();
+            achievementManager.save(currentUser);
+            
+            // Clear localStorage for achievements
+            localStorage.removeItem(`achievements_${currentUser}`);
+            localStorage.removeItem(`achievementStats_${currentUser}`);
         }
+        
+        saveData();
+        displayBattle();
+        updateRanking();
+        updateAchievementsTab();
+        alert('Alle data is gereset! 🔄');
     }
 
     // Save user preference when switching (wrap original function)
@@ -5304,6 +5454,10 @@ function updateAchievementsTab() {
     if (progressBar) progressBar.style.width = `${percentage}%`;
     if (tabCounter) tabCounter.textContent = `${unlockedCount}/${totalCount}`;
     
+    // Update filter counter
+    const filterCounter = document.getElementById('achievementFilterCounter');
+    if (filterCounter) filterCounter.textContent = `${unlockedCount}/${totalCount} unlocked`;
+    
     // Render achievement cards
     grid.innerHTML = achievements.map(achievement => {
         const lockedClass = achievement.unlocked ? 'unlocked' : 'locked';
@@ -5359,4 +5513,7 @@ function filterAchievements(category) {
             card.style.display = hasCategory ? '' : 'none';
         }
     });
+    
+    // Match tab heights after filtering
+    setTimeout(() => matchTabHeights(), 50);
 }

@@ -151,11 +151,17 @@
                     <button class="home-link-btn" onclick="switchTab('achievements')">View All →</button>
                 </div>
             </div>
+
+            <!-- Reset Buttons -->
+            <div class="profile-reset-container">
+                <button class="profile-reset-btn profile-reset-ranking" onclick="resetRankingOnly()">🔄 Reset Ranking</button>
+                <button class="profile-reset-btn profile-reset-all" onclick="resetAllData()">⚠️ Reset All Data</button>
+            </div>
         </div>
 
         <div id="battle-tab" class="tab-content">
-            <div class="vs-divider">VS</div>
             <div class="battle-area">
+            <div class="vs-overlay">VS</div>
             <div class="battle-container" id="battleContainer">
                 <div class="no-battles">Select a user above first! 👆</div>
             </div>
@@ -185,8 +191,11 @@
         </div>
 
         <div id="ranking-tab" class="tab-content">
-            <div class="filter-container">
-                <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search coaster, park or manufacturer..." onkeyup="filterRanking()">
+            <div class="ranking-header">
+                <div class="filter-container">
+                    <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search coaster, park or manufacturer..." onkeyup="filterRanking()">
+                </div>
+                <button class="download-btn" onclick="downloadRankingCSV()">📥 Download Ranking</button>
             </div>
 
             <table class="ranking-table" id="rankingTable">
@@ -206,45 +215,38 @@
                     <tr><td colspan="8" class="no-battles">Select a user first! 🎢</td></tr>
                 </tbody>
             </table>
-
-            <div class="reset-panel">
-                <div class="reset-copy">Reset all rankings, battles and history for the current user.</div>
-                <button class="reset-btn" onclick="resetRankings()">🔄 Reset All</button>
-            </div>
-            <div style="text-align: center; margin-top: 20px;">
-                <button class="download-btn" onclick="downloadRankingCSV()" style="background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%); color: white; border: none; padding: 12px 24px; border-radius: 10px; font-size: 1em; font-weight: 700; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: 0 4px 15px rgba(76, 161, 175, 0.3);">
-                    📥 Download Ranking as CSV
-                </button>
-            </div>
         </div>
 
         <!-- Achievements Tab -->
         <div id="achievements-tab" class="tab-content">
             <div class="achievement-filters">
-                <button class="filter-tag active" data-category="all" onclick="filterAchievements('all')">
-                    All
-                </button>
-                <button class="filter-tag" data-category="battles" onclick="filterAchievements('battles')">
-                    ⚔️ Battles
-                </button>
-                <button class="filter-tag" data-category="close-fights" onclick="filterAchievements('close-fights')">
-                    💥 Close Fights
-                </button>
-                <button class="filter-tag" data-category="patterns" onclick="filterAchievements('patterns')">
-                    🔄 Patterns
-                </button>
-                <button class="filter-tag" data-category="collection" onclick="filterAchievements('collection')">
-                    🌍 Collection
-                </button>
-                <button class="filter-tag" data-category="siblings" onclick="filterAchievements('siblings')">
-                    👯 Siblings
-                </button>
-                <button class="filter-tag" data-category="ranking" onclick="filterAchievements('ranking')">
-                    📊 Ranking
-                </button>
-                <button class="filter-tag" data-category="special" onclick="filterAchievements('special')">
-                    ✨ Special
-                </button>
+                <div class="achievement-counter" id="achievementFilterCounter">0/31 unlocked</div>
+                <div class="filter-tags-container">
+                    <button class="filter-tag active" data-category="all" onclick="filterAchievements('all')">
+                        All
+                    </button>
+                    <button class="filter-tag" data-category="battles" onclick="filterAchievements('battles')">
+                        ⚔️ Battles
+                    </button>
+                    <button class="filter-tag" data-category="close-fights" onclick="filterAchievements('close-fights')">
+                        💥 Close Fights
+                    </button>
+                    <button class="filter-tag" data-category="patterns" onclick="filterAchievements('patterns')">
+                        🔄 Patterns
+                    </button>
+                    <button class="filter-tag" data-category="collection" onclick="filterAchievements('collection')">
+                        🌍 Collection
+                    </button>
+                    <button class="filter-tag" data-category="siblings" onclick="filterAchievements('siblings')">
+                        👯 Siblings
+                    </button>
+                    <button class="filter-tag" data-category="ranking" onclick="filterAchievements('ranking')">
+                        📊 Ranking
+                    </button>
+                    <button class="filter-tag" data-category="special" onclick="filterAchievements('special')">
+                        ✨ Special
+                    </button>
+                </div>
             </div>
             <div class="achievements-grid" id="achievementsGrid">
                 <!-- Achievement cards will be inserted here dynamically -->
@@ -350,6 +352,55 @@
             <div class="winner-text" id="winnerText">Winner!</div>
         </div>
         <div class="close-banner" id="closeBanner" aria-hidden="true">CLOSE FIGHT</div>
+    </div>
+
+    <!-- Reset All Data Modal -->
+    <div id="resetModal" class="custom-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚠️ Reset All Data</h2>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset <strong>all</strong> data for <span id="resetUserName"></span>?</p>
+                <p class="modal-warning">This will permanently delete:</p>
+                <ul class="modal-list">
+                    <li>All battle history</li>
+                    <li>All coaster rankings</li>
+                    <li>All achievements</li>
+                    <li>All progress and statistics</li>
+                </ul>
+                <p class="modal-warning-strong">This action cannot be undone!</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeResetModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm" onclick="confirmReset()">Reset Everything</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Ranking Only Modal -->
+    <div id="resetRankingModal" class="custom-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header modal-header-warning">
+                <h2>🔄 Reset Ranking</h2>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset the ranking for <span id="resetRankingUserName"></span>?</p>
+                <p class="modal-warning">This will permanently delete:</p>
+                <ul class="modal-list">
+                    <li>All battle history</li>
+                    <li>All coaster rankings</li>
+                </ul>
+                <p class="modal-info">Your achievements and daily progress will be preserved.</p>
+                <p class="modal-warning-strong">This action cannot be undone!</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeResetRankingModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm-warning" onclick="confirmResetRanking()">Reset Ranking</button>
+            </div>
+        </div>
     </div>
 
     <script src="achievements.js"></script>
