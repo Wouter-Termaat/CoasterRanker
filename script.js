@@ -4160,6 +4160,12 @@ const DOM = {};
         document.getElementById('homeProgressMatchups').textContent = `${completed}/${totalPossible}`;
         document.getElementById('homeProgressPercentage').textContent = `${progressPercentage}%`;
 
+    // Update ranking tab stats bar
+    const rankingTotalCoasters = document.getElementById('rankingTotalCoasters');
+    const rankingProgressMatchups = document.getElementById('rankingProgressMatchups');
+    if (rankingTotalCoasters) rankingTotalCoasters.textContent = totalCoasters;
+    if (rankingProgressMatchups) rankingProgressMatchups.textContent = `${completed}/${totalPossible}`;
+
         // Update daily quest
         loadDailyQuest();
         const questPercentage = (dailyQuestProgress / 25) * 100;
@@ -5112,14 +5118,14 @@ const DOM = {};
             const text = th.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
             th.textContent = text;
         });
-        
-        const activeHeader = Array.from(document.querySelectorAll('.ranking-table th'))
-            .find(th => th.textContent.toLowerCase().includes(currentSort.column) || 
-                        (currentSort.column === 'elo' && th.textContent.includes('ELO')));
-        
-        if (activeHeader) {
-            const text = activeHeader.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
-            activeHeader.textContent = text + (currentSort.ascending ? ' ⬆️' : ' ⬇️');
+        // Only add arrow for columns except 'elo'
+        if (currentSort.column !== 'elo') {
+            const activeHeader = Array.from(document.querySelectorAll('.ranking-table th'))
+                .find(th => th.textContent.toLowerCase().includes(currentSort.column));
+            if (activeHeader) {
+                const text = activeHeader.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
+                activeHeader.textContent = text + (currentSort.ascending ? ' ⬆️' : ' ⬇️');
+            }
         }
         
         const tbody = document.getElementById('rankingBody');

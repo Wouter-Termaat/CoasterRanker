@@ -191,9 +191,14 @@
         </div>
 
         <div id="ranking-tab" class="tab-content">
+
             <div class="ranking-header">
                 <div class="filter-container">
                     <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search coaster, park or manufacturer..." onkeyup="filterRanking()">
+                </div>
+                <div class="ranking-stats-minimal">
+                    <span class="ranking-info-box"><span id="rankingTotalCoasters">0</span> Coasters</span>
+                    <span class="ranking-info-box"><span id="rankingProgressMatchups">0/0</span> Matchups</span>
                 </div>
                 <button class="download-btn" onclick="downloadRankingCSV()">📥 Download Ranking</button>
             </div>
@@ -205,7 +210,7 @@
                         <th onclick="sortRanking('name')">Name</th>
                         <th onclick="sortRanking('park')">Park</th>
                         <th onclick="sortRanking('manufacturer')">Manufacturer</th>
-                        <th onclick="sortRanking('elo')">ELO ⬇️</th>
+                        <th onclick="sortRanking('elo')">ELO</th>
                         <th onclick="sortRanking('battles')">Battles</th>
                         <th onclick="sortRanking('wins')">Wins</th>
                         <th onclick="sortRanking('losses')">Losses</th>

@@ -1,3 +1,45 @@
+/* Make ranking table header compact */
+.ranking-table thead tr {
+    height: 36px;
+}
+.ranking-table th {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    font-size: 1em;
+    font-weight: 700;
+    background: #f5f7fa;
+    color: #2C3E50;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
+}
+/* Ranking stats bar (coaster count & matchups) */
+.ranking-stats-minimal {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 10px;
+    font-size: 1em;
+    white-space: nowrap;
+}
+.ranking-info-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 1.08em;
+    color: #2C3E50;
+    font-weight: 600;
+    background: #f5f7fa;
+    border-radius: 8px;
+    padding: 8px 18px;
+    min-height: 44px;
+    box-shadow: 0 2px 8px rgba(76,161,175,0.06);
+    border: 1px solid #e5e7eb;
+    transition: background 0.2s;
+}
+.ranking-info-box span {
+    font-weight: 700;
+    color: #4CA1AF;
+}
 * {
     margin: 0;
     padding: 0;
