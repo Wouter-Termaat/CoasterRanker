@@ -49,13 +49,13 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 48,Joris en de draak - Water,Efteling,GCI,1,1,1
 49,Joris en de draak - Vuur,Efteling,GCI,1,0,0
 50,Euro-Mir,Europa-Park,Mack Rides,1,0,0
-51,Uncharted,PortAventura,Intamin,1,0,0
+51,Uncharted: The Enigma of Penitence,PortAventura,Intamin,1,0,0
 52,Fury,Bobbejaanland,Gerstlauer,1,0,0
 53,Swiss Bob Run,Europa-Park,Mack Rides,1,0,0
 54,Tiki Waka,Walibi Belgium,Gerstlauer,1,0,0
 55,Speedy Bob,Bobbejaanland,Mack Rides,1,0,0
 56,Eurosat,Europa-Park,Mack Rides,0,0,0
-57,Matterhorn Blitz,Europa-Park,Mack Rides,1,0,0
+57,Matterhorn-Blitz,Europa-Park,Mack Rides,1,0,0
 58,Atlantica SuperSplash,Europa-Park,Mack Rides,1,0,0
 59,Colorado Adventure,Phantasialand,Vekoma,1,0,0
 60,Calamity Mine,Walibi Belgium,Vekoma,1,0,0
@@ -129,4 +129,4 @@ ax,Naam,Park,Fabrikant,Operatief,Punten P,Punten F
 128,Kleine Zar,Hansa-Park,Preston & Bareiri,1,0,0
 129,Volare,Prater,Zamperla,1,0,0
 130,Viking Rollercoaster,Energylandia,SBF Visa,1,0,0
-131,	Pegasus,Europa-Park,Mack Rides,1,0,0
+"131,	Pegasus,Europa-Park,Mack Rides,1,0,0"
