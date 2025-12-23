@@ -2146,7 +2146,7 @@ window.addEventListener('resize', onResize, { passive: true });
         }catch(e){}
     }
     let isProcessingChoice = false;
-    let currentSort = { column: 'elo', ascending: false };
+    let currentSort = { column: 'rank', ascending: false };
     // History: stores past battles for current user
     let coasterHistory = [];
     // Stack for undoing deletions (LIFO)
@@ -3613,7 +3613,7 @@ const DOM = {};
         // Check if this is a close fight (will be used for banner)
         const leftStatsForCheck = coasterStats[left.naam] || { battles: 0 };
         const rightStatsForCheck = coasterStats[right.naam] || { battles: 0 };
-        const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles >= 3) && (rightStatsForCheck.battles >= 3));
+        const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles > 2) && (rightStatsForCheck.battles > 2));
         
         // Render cards with images already loaded
         battleContainer.innerHTML = `
@@ -3678,7 +3678,7 @@ const DOM = {};
         const r2 = getRankingNum(right.naam);
         const leftStatsObj = coasterStats[left.naam] || { battles: 0 };
         const rightStatsObj = coasterStats[right.naam] || { battles: 0 };
-        const isCloseEligible = ((Math.abs(r1 - r2) <= 3) && (leftStatsObj.battles >= 3) && (rightStatsObj.battles >= 3));
+        const isCloseEligible = ((Math.abs(r1 - r2) <= 3) && (leftStatsObj.battles > 2) && (rightStatsObj.battles > 2));
         // Determine whether an epic intro will fire on the next battle (rare event)
         function willEpicTriggerOnNext(){
             try{
@@ -5068,7 +5068,12 @@ const DOM = {};
         
         const sorted = [...statsArray].sort((a, b) => {
             let aVal, bVal;
-            
+            if (currentSort.column === 'rank') {
+                // Always sort by ELO for rank, descending (1st to last) or ascending (last to 1st)
+                aVal = displayedElo(a);
+                bVal = displayedElo(b);
+                return currentSort.ascending ? aVal - bVal : bVal - aVal;
+            }
             switch(currentSort.column) {
                 case 'name':
                     aVal = a.name;
@@ -5106,7 +5111,6 @@ const DOM = {};
                     aVal = a.elo;
                     bVal = b.elo;
             }
-            
             if (typeof aVal === 'string') {
                 return currentSort.ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
             } else {
@@ -5118,14 +5122,19 @@ const DOM = {};
             const text = th.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
             th.textContent = text;
         });
-        // Only add arrow for columns except 'elo'
-        if (currentSort.column !== 'elo') {
-            const activeHeader = Array.from(document.querySelectorAll('.ranking-table th'))
-                .find(th => th.textContent.toLowerCase().includes(currentSort.column));
-            if (activeHeader) {
-                const text = activeHeader.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
-                activeHeader.textContent = text + (currentSort.ascending ? ' ⬆️' : ' ⬇️');
-            }
+        // Add arrow for the active sorted column, including 'elo'
+        // Always show arrow for the active sorted column
+        const ths = Array.from(document.querySelectorAll('.ranking-table th'));
+        let activeHeader = null;
+        if (currentSort.column === 'rank') {
+            // Find the header with text 'Rank'
+            activeHeader = ths.find(th => th.textContent.trim().startsWith('Rank'));
+        } else {
+            activeHeader = ths.find(th => th.textContent.toLowerCase().includes(currentSort.column));
+        }
+        if (activeHeader) {
+            const text = activeHeader.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
+            activeHeader.textContent = text + (currentSort.ascending ? ' ⬆️' : ' ⬇️');
         }
         
         const tbody = document.getElementById('rankingBody');
@@ -5152,25 +5161,30 @@ const DOM = {};
         const rowsHtml = [];
         const cardsHtml = [];
 
-        sorted.forEach((coaster, index) => {
-            const rank = index + 1;
+        // Compute ELO-based ranks for all coasters
+        const eloSorted = [...statsArray].sort((a, b) => displayedElo(b) - displayedElo(a));
+        const nameToRank = {};
+        eloSorted.forEach((c, idx) => { nameToRank[c.name] = idx + 1; });
+
+        sorted.forEach((coaster) => {
+            const rank = nameToRank[coaster.name] || '';
             const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
             const winrate = coaster.battles > 0 ? ((coaster.wins / coaster.battles) * 100).toFixed(1) : '0.0';
             const escapedName = coaster.name.replace(/'/g, "\\'");
 
-                const dataId = (coaster.name || '').replace(/"/g, '&quot;');
-                rowsHtml.push(`
-                    <tr data-id="${dataId}">
-                        <td><span class="rank-medal">${medal}</span>${rank}</td>
-                        <td><strong>${coaster.name}</strong></td>
-                        <td>${coaster.park}</td>
-                        <td>${coaster.manufacturer}</td>
-                        <td><span class="elo-score">${Math.round(displayedElo(coaster))}</span></td>
-                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
-                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
-                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
-                    </tr>
-                `);
+            const dataId = (coaster.name || '').replace(/"/g, '&quot;');
+            rowsHtml.push(`
+                <tr data-id="${dataId}">
+                    <td><span class="rank-medal">${medal}</span>${rank}</td>
+                    <td><strong>${coaster.name}</strong></td>
+                    <td>${coaster.park}</td>
+                    <td>${coaster.manufacturer}</td>
+                    <td><span class="elo-score">${Math.round(displayedElo(coaster))}</span></td>
+                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
+                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
+                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
+                </tr>
+            `);
 
             // Card for mobile
             const rankBadgeClass = rank <= 3 ? 'rank-badge top-3' : 'rank-badge';
@@ -5182,8 +5196,8 @@ const DOM = {};
                         <div class="meta">${coaster.park} • ${coaster.manufacturer} • <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}-${coaster.losses}</span></div>
                     </div>
                     <div class="ranking-right">
-                            <div class="elo">${Math.round(displayedElo(coaster))}</div>
-                        </div>
+                        <div class="elo">${Math.round(displayedElo(coaster))}</div>
+                    </div>
                 </div>
             `);
         });
