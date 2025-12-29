@@ -197,6 +197,9 @@
             updatePinsDisplay();
         }
         
+        // Populate credits grid with dynamic colors
+        populateCreditsGrid();
+        
         // Set header height for mobile sticky tabs
         setHeaderHeight();
         // Post-initialization UI adjustments
@@ -629,30 +632,74 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
               ?park rdfs:label ?parkLabel .
               FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
             }
-            LIMIT 10
+            LIMIT 15
         `;
         
         try {
             const results = await querySPARQLMultiple(looseNameQuery);
             if (results && results.length > 0) {
+                // Helper function to normalize strings for flexible matching
+                const normalizeForMatching = (str) => {
+                    return str.toLowerCase()
+                        .replace(/['`´]/g, '')  // Remove apostrophes
+                        .replace(/[-–—]/g, ' ')  // Replace hyphens with spaces
+                        .replace(/\s+/g, ' ')    // Normalize spaces
+                        .trim();
+                };
+                
+                // Get normalized version of search name
+                const normalizedSearchName = normalizeForMatching(coasterName);
+                // Also get base name (before dash/colon)
+                const baseSearchName = normalizeForMatching(
+                    coasterName.split(/\s*[-:]\s*/)[0]
+                );
+                
                 // Score each candidate by name similarity
                 let bestMatch = null;
                 let bestScore = 0;
                 
                 for (const candidate of results) {
                     const candidateName = candidate.itemLabel?.value || '';
-                    const similarity = getSimilarityScore(coasterName, candidateName);
+                    const normalizedCandidate = normalizeForMatching(candidateName);
                     
-                    // Accept if similarity is reasonable (40%+)
-                    if (similarity >= 40 && similarity > bestScore) {
-                        bestScore = similarity;
+                    let score = 0;
+                    
+                    // Strategy 1: Check if normalized names match exactly
+                    if (normalizedSearchName === normalizedCandidate) {
+                        score = 100;
+                    }
+                    // Strategy 2: Check if base name matches (e.g., "joris en de draak" matches "joris en de draak - vuur")
+                    else if (baseSearchName && normalizedCandidate.includes(baseSearchName)) {
+                        score = 85;
+                    }
+                    // Strategy 3: Check if candidate contains the search name (e.g., "euro mir" in "euro-mir")
+                    else if (normalizedCandidate.includes(normalizedSearchName)) {
+                        score = 75;
+                    }
+                    // Strategy 4: Check if search name contains candidate (e.g., "winjas" contains "winja")
+                    else if (normalizedSearchName.includes(normalizedCandidate)) {
+                        score = 70;
+                    }
+                    // Strategy 5: Use similarity score for partial matches
+                    else {
+                        const similarity = getSimilarityScore(coasterName, candidateName);
+                        if (similarity >= 40) {
+                            score = similarity;
+                        }
+                    }
+                    
+                    if (score > 0) {
+                        console.log(`    Found potential match: "${candidateName}" (score: ${score})`);
+                    }
+                    
+                    if (score > bestScore) {
+                        bestScore = score;
                         bestMatch = candidate.image?.value;
-                        console.log(`    Found potential match: "${candidateName}" (${similarity}% similar)`);
                     }
                 }
                 
-                if (bestMatch) {
-                    console.log(`✓ Found "${coasterName}" with loosened name matching (${bestScore}% similarity)`);
+                if (bestMatch && bestScore >= 40) {
+                    console.log(`✓ Found "${coasterName}" with loosened name matching (score: ${bestScore})`);
                     return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
                 }
             }
@@ -4704,8 +4751,16 @@ const DOM = {};
                 const badge = document.createElement('div');
                 badge.className = 'rank-change-badge';
                 badge.innerHTML = `<span class="arrow">↑</span><span>+${rankChange}</span>`;
-                if (cards[index]) { cards[index].style.position = 'relative'; cards[index].appendChild(badge); }
-                setTimeout(() => { if (badge.parentElement) badge.remove(); }, 2000);
+                // Append to the credit-card-image div (where rank badge is) for proper positioning at top
+                const winnerCard = cards[index];
+                if (winnerCard) {
+                    const imageContainer = winnerCard.querySelector('.credit-card-image');
+                    if (imageContainer) {
+                        imageContainer.style.position = 'relative';
+                        imageContainer.appendChild(badge);
+                    }
+                }
+                setTimeout(() => { if (badge.parentElement) badge.remove(); }, 800);
             }
 
             // refresh ranking table and animate swap if the relative ordering changed between these two
@@ -6561,18 +6616,21 @@ function openCreditCard(coasterId) {
     
     container.innerHTML = `
         <div class="credit-card-outer" style="border: 6px solid ${bgColor};">
+            <!-- Rank Badge positioned relative to outer wrapper (on top of everything) -->
+            <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
+            
             <div class="credit-card" style="background-color: ${bgColor}; border: 9px solid ${borderColor};">
-                <!-- Image Area -->
-                <div class="credit-card-image" style="border-color: ${borderColor};">
-                ${coaster.image ? `<img src="${coaster.image}" alt="${coaster.name}" class="credit-card-img" />` : `
-                    <div class="credit-card-placeholder">
-                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M40 10L45 30H65L50 42L55 62L40 50L25 62L30 42L15 30H35L40 10Z" fill="#D1D5DB" opacity="0.3"/>
-                        </svg>
+                <!-- Image Area with Rank Badge Wrapper -->
+                <div class="credit-card-image-wrapper">
+                    <div class="credit-card-image" style="border-color: ${borderColor};">
+                    ${coaster.image ? `<img src="${coaster.image}" alt="${coaster.name}" class="credit-card-img" />` : `
+                        <div class="credit-card-placeholder">
+                            <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M40 10L45 30H65L50 42L55 62L40 50L25 62L30 42L15 30H35L40 10Z" fill="#D1D5DB" opacity="0.3"/>
+                            </svg>
+                        </div>
+                    `}
                     </div>
-                `}
-                    <!-- Rank Badge -->
-                    <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
                 </div>
                 
                 <!-- Text Information -->
@@ -6620,4 +6678,44 @@ function closeCreditCard(event) {
     const overlay = document.getElementById('creditCardOverlay');
     overlay.classList.remove('show');
     setTimeout(() => overlay.style.display = 'none', 300);
+}
+
+// Populate credits grid with dynamic colors
+function populateCreditsGrid() {
+    const creditsGrid = document.querySelector('.credits-grid');
+    if (!creditsGrid) return;
+    
+    // Get border colors (same as in openCreditCard)
+    const borderColors = {
+        'B&M': '#D0D1D2',
+        'Bolliger & Mabillard': '#D0D1D2',
+        'Intamin': '#E35B5B',
+        'Vekoma': '#F2994A',
+        'Mack Rides': '#5B8EDB',
+        'Gerstlauer': '#6FAE75',
+        'RMC': '#A47148',
+        'Rocky Mountain Construction': '#A47148',
+        'GCI': '#F2C94C',
+        'Great Coasters International': '#F2C94C',
+        'Maurer Rides': '#9B6CCF',
+        'S&S': '#D6C7A1',
+        'Zamperla': '#E38EB5',
+        'Zierer': '#5EC4C4',
+        'Schwarzkopf': '#C7C4BF',
+        'Other': '#B0ABA6',
+        'Unknown': '#B0ABA6'
+    };
+    
+    // Generate HTML for each coaster in the database
+    creditsGrid.innerHTML = Object.keys(coasterDatabase).map(coasterId => {
+        const coaster = coasterDatabase[coasterId];
+        const bgColor = manufacturerColors[coaster.manufacturer] || manufacturerColors['Unknown'];
+        const borderColor = borderColors[coaster.manufacturer] || borderColors['Unknown'];
+        
+        return `
+            <div class="coaster-card" onclick="openCreditCard('${coasterId}')" style="--card-bg: ${bgColor}; --card-border: ${borderColor};">
+                <div class="coaster-name">${coaster.name}</div>
+            </div>
+        `;
+    }).join('');
 }

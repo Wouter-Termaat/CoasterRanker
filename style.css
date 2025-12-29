@@ -1249,9 +1249,8 @@ body.dark-mode .home-link-btn:hover {
 /* Rank climb animation */
 .rank-change-badge {
     position: absolute;
-    top: -12px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: -18px;
+    right: 32px;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
     padding: 6px 10px;
@@ -1261,7 +1260,7 @@ body.dark-mode .home-link-btn:hover {
     display: flex;
     align-items: center;
     gap: 4px;
-    animation: badgePopIn 0.25s ease-out, badgeFadeOut 0.4s ease-in 1.5s forwards;
+    animation: badgeSimpleIn 0.15s ease-out, badgeFadeOut 0.3s ease-in 0.5s forwards;
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
     z-index: 1050; /* Below dev-data overlay but above card content */
     white-space: nowrap;
@@ -1271,7 +1270,6 @@ body.dark-mode .home-link-btn:hover {
 
 .rank-change-badge .arrow {
     font-size: 1.3em;
-    animation: arrowBounce 0.6s ease-in-out infinite;
 }
 
 .rank-change-badge .confetti {
@@ -1282,30 +1280,21 @@ body.dark-mode .home-link-btn:hover {
     animation: confettiPop 0.6s ease-out;
 }
 
-@keyframes badgePopIn {
-    0% { 
-        transform: scale(0) rotate(-180deg);
+@keyframes badgeSimpleIn {
+    from { 
         opacity: 0;
+        transform: translateX(-50%) translateY(-5px);
+    }Y(-5px);
     }
-    60% {
-        transform: scale(1.2) rotate(10deg);
-    }
-    100% { 
-        transform: scale(1) rotate(0deg);
+    to { 
         opacity: 1;
-    }
+        transform:
 }
 
 @keyframes badgeFadeOut {
     to { 
         opacity: 0;
-        transform: translateY(-20px) scale(0.8);
     }
-}
-
-@keyframes arrowBounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-5px); }
 }
 
 @keyframes confettiPop {
@@ -2116,11 +2105,11 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     .battle-area {
         display: flex !important;
         justify-content: center !important;
-        align-items: center !important;
-        padding: 4px !important;
+        align-items: flex-start !important;
+        padding: 8px 4px !important;
         position: relative;
         width: 100vw !important;
-        min-height: calc(100vh - 250px) !important;
+        min-height: auto !important;
         height: auto;
         box-sizing: border-box;
     }
@@ -2184,7 +2173,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     .credit-card-image {
         position: relative !important;
         width: 100% !important;
-        aspect-ratio: 1 !important;
+        aspect-ratio: 4 / 3 !important;
         height: auto !important;
         border-radius: 8px 8px 0 0 !important;
         overflow: hidden !important;
@@ -2642,11 +2631,13 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 /* Credits grid with narrower cards */
 .credits-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 16px;
     padding: 0 20px 20px 20px;
     max-width: 900px;
     margin: 0 auto;
+    justify-items: center;
+    align-items: start;
 }
 
 @media (max-width: 600px) {
@@ -2789,7 +2780,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 /* Coaster Credit Cards */
 .credits-grid .coaster-card {
-    background: white;
+    background: var(--card-bg, white);
     border-radius: 14px;
     padding: 16px;
     text-align: center;
@@ -2805,6 +2796,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     aspect-ratio: 1 / 1;
     width: 100%;
     min-height: 0;
+    border: 3px solid var(--card-border, rgba(0, 0, 0, 0.1));
 }
 
 .credits-grid .coaster-card .coaster-name {
@@ -3904,29 +3896,39 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     z-index: 2;
 }
 
+/* Image Area Wrapper - allows rank badge to overflow */
+.credit-card-image-wrapper {
+    position: relative;
+    margin: 16px 16px 0 16px;
+    flex-shrink: 0;
+    overflow: visible;
+}
+
 /* Image Area (~45% height) */
 .credit-card-image {
-    height: 297px;
+    width: calc(100% - 20px);
+    aspect-ratio: 4 / 3;
+    height: auto;
     position: relative;
     background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    margin: 10px;
     border-radius: 8px;
-    overflow: visible;
-    border: 4px solid;
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    flex-shrink: 0;
+    margin: 10px 10px 0 10px;
 }
 
 .credit-card-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center;
     display: block;
-    box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.08);
     border-radius: 8px;
-    transform: scale(1.05);
+    border: 4px solid rgba(0, 0, 0, 0.25);
+    box-sizing: border-box;
 }
 
 .credit-card-placeholder {
@@ -3948,8 +3950,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 .credit-rank-badge {
     position: absolute;
-    top: -22px;
-    right: -22px;
+    top: 4px;
+    right: 4px;
     width: 44px;
     height: 44px;
     border-radius: 50%;
@@ -3962,7 +3964,9 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     color: white;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3);
     border: 4px solid white;
-    z-index: 1000;
+    z-index: 99999;
+    pointer-events: none;
+}
 }
 
 .credit-rank-badge.rank-gold {
@@ -3995,15 +3999,17 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     padding: 0;
     margin: 0;
     box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .credit-card-name {
     font-size: 26px;
     font-weight: 700;
-    margin: 20px 10px 10px 30px;
+    margin: 16px 10px 8px 30px;
     padding: 0;
     color: #111;
     line-height: 1.2;
+    height: 32px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -4012,8 +4018,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .credit-card-divider {
     width: calc(100% - 60px);
     height: 2px;
-    background: rgba(0, 0, 0, 0.15);
-    margin: 12px 10px 12px 30px;
+    background: rgba(0, 0, 0, 0.25);
+    margin: 10px 10px 10px 30px;
 }
 
 .credit-card-location {
@@ -4023,6 +4029,10 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     color: #111;
     font-weight: 500;
     line-height: 1.3;
+    height: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .credit-card-meta {
@@ -4032,6 +4042,10 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     color: #111;
     font-weight: 500;
     line-height: 1.4;
+    height: 17px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Stats Grid - Using thin dividers only, no filled boxes */
@@ -4040,12 +4054,13 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
     flex: 1;
-    margin: 8px 10px 24px 10px;
+    margin: 10px 10px 24px 10px;
     padding: 0;
     box-sizing: border-box;
     position: relative;
     gap: 0;
-    max-height: 160px;
+    height: 160px;
+    flex-shrink: 0;
 }
 
 /* Thin divider lines */
@@ -4053,7 +4068,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .credit-card-stats::after {
     content: '';
     position: absolute;
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.25);
 }
 
 /* Vertical divider */
