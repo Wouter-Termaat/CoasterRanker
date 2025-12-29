@@ -859,7 +859,8 @@ body.dark-mode .home-link-btn:hover {
 .user-menu {
     position: absolute;
     right: 0;
-    top: 40px;
+    top: 100%;
+    margin-top: 8px;
     background: white;
     color: #333;
     border-radius: 10px;
@@ -2121,29 +2122,28 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
         align-items: center;
         width: 100%;
         max-width: 100%;
-        max-height: calc(100vh - 300px);
-        padding: 0;
+        padding: 0 8px;
         box-sizing: border-box;
         overflow: visible;
     }
 
     .vs-overlay {
-        width: 63px;
-        height: 63px;
-        font-size: 1.5em;
-        box-shadow: 0 5px 18px rgba(0, 0, 0, 0.4), 0 0 0 5px rgba(255, 255, 255, 0.95);
-        letter-spacing: 2px;
+        width: 50px;
+        height: 50px;
+        font-size: 1.2em;
+        box-shadow: 0 5px 18px rgba(0, 0, 0, 0.4), 0 0 0 4px rgba(255, 255, 255, 0.95);
+        letter-spacing: 1px;
     }
 
     .coaster-card {
-        max-width: none;
+        max-width: calc(50% - 25px);
         min-width: 0;
-        flex: 1 1 calc(50% - 3px);
-        width: calc(50% - 3px);
+        flex: 1 1 calc(50% - 25px);
+        width: calc(50% - 25px) !important;
         box-sizing: border-box;
-        align-self: stretch;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
     }
 
     .coaster-image {
@@ -2581,10 +2581,11 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 /* Credits grid with narrower cards */
 .credits-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 20px;
     padding: 0 20px 20px 20px;
-    max-width: 800px;
+    max-width: 900px;
+    margin: 0 auto;
 }
 
 @media (max-width: 600px) {
@@ -2595,8 +2596,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     }
     
     .credits-grid {
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        gap: 12px;
         padding: 14px;
         max-width: 100%;
     }
@@ -2726,7 +2727,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 /* Coaster Credit Cards */
-.coaster-card {
+.credits-grid .coaster-card {
     background: white;
     border-radius: 14px;
     padding: 12px;
@@ -2740,8 +2741,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100px;
-    max-width: 180px;
+    aspect-ratio: 1;
+    width: 100%;
 }
 
 .coaster-card:hover {
@@ -3515,7 +3516,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 /* Pins Overlay Styles */
 .pins-overlay {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     right: 0;
@@ -3539,8 +3540,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     position: sticky;
     top: 0;
     background: white;
-    padding-bottom: 10px;
-    z-index: 10;
+    padding: 10px 0;
+    z-index: 101;
 }
 
 .pins-back-btn {
@@ -3714,6 +3715,10 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     display: flex;
     justify-content: center;
     align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .credit-card-close {
@@ -3787,6 +3792,10 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
     will-change: transform;
     transform: translateZ(0);
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 /* Subtle paper texture */
