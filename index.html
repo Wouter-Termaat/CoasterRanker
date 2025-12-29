@@ -37,10 +37,11 @@
                 </div>
 
                 <div class="header-right">
-                    <button id="userMenuToggle" class="hamburger-btn" aria-haspopup="true" aria-expanded="false" title="Choose user" onclick="toggleUserMenu()">☰</button>
+                    <button id="userMenuToggle" class="hamburger-btn" aria-haspopup="true" aria-expanded="false" title="Menu" onclick="toggleUserMenu()">☰</button>
                     <div id="userMenu" class="user-menu" aria-hidden="true">
-                        <button class="user-btn" onclick="switchUser('luca')" id="btn-luca">👤 Luca</button>
-                        <button class="user-btn" onclick="switchUser('wouter')" id="btn-wouter">👤 Wouter</button>
+                        <button class="user-btn" onclick="openSettings()" id="btn-settings">Settings</button>
+                        <button class="user-btn" onclick="toggleDarkMode()" id="btn-darkmode">Dark Mode</button>
+                        <button class="user-btn" onclick="logoutUser()" id="btn-logout">Log Out</button>
                     </div>
                 </div>
             </div>
@@ -50,6 +51,10 @@
             <button class="tab active" onclick="switchTab('home')">
                 <span class="tab-icon"><img src="images/user.svg" alt="Profile" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">Profile</span>
+            </button>
+            <button class="tab" onclick="switchTab('credits')">
+                <span class="tab-icon">🎢</span>
+                <span class="tab-text">Credits</span>
             </button>
             <button class="tab" onclick="switchTab('battle')">
                 <span class="tab-icon"><img src="images/sword.svg" alt="Battle" style="width: 1em; height: 1em;"></span>
@@ -63,13 +68,29 @@
                 <span class="tab-icon"><img src="images/scroll.svg" alt="History" style="width: 1em; height: 1em;"></span>
                 <span class="tab-text">History</span>
             </button>
-            <button class="tab" onclick="switchTab('achievements')">
-                <span class="tab-icon"><img src="images/trophy.svg" alt="Achievements" style="width: 1em; height: 1em;"></span>
-                <span class="tab-text">Achievements</span>
-            </button>
         </div>
 
         <div id="home-tab" class="tab-content active">
+            <!-- User Selection Screen (shown when not logged in) -->
+            <div id="userSelectionScreen" class="user-selection-screen" style="display: flex;">
+                <div class="user-selection-content">
+                    <h1 class="user-selection-title">Welcome to Coaster Ranker!</h1>
+                    <p class="user-selection-subtitle">Choose your profile to get started</p>
+                    <div class="user-selection-cards">
+                        <div class="user-card" onclick="selectUser('luca')">
+                            <div class="user-card-icon">👤</div>
+                            <div class="user-card-name">Luca</div>
+                        </div>
+                        <div class="user-card" onclick="selectUser('wouter')">
+                            <div class="user-card-icon">👤</div>
+                            <div class="user-card-name">Wouter</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Normal Profile Content (shown when logged in) -->
+            <div id="profileContent" class="profile-content" style="display: none;">
             <div class="home-welcome">
                 <h2 id="homeWelcome">Welcome to Coaster Ranker!</h2>
             </div>
@@ -138,7 +159,7 @@
                 </div>
 
                 <div class="home-card">
-                    <h3 class="home-card-title">🏅 Achievements</h3>
+                    <h3 class="home-card-title">🏅 Pin Collection</h3>
                     <div class="achievement-summary">
                         <div class="achievement-count">
                             <span class="achievement-count-big" id="homeAchievementCount">0/0</span>
@@ -148,7 +169,7 @@
                             <!-- Recent achievement icons will go here -->
                         </div>
                     </div>
-                    <button class="home-link-btn" onclick="switchTab('achievements')">View All →</button>
+                    <button class="home-link-btn" onclick="showPinsOverlay()">View All Pins →</button>
                 </div>
             </div>
 
@@ -156,6 +177,47 @@
             <div class="profile-reset-container">
                 <button class="profile-reset-btn profile-reset-ranking" onclick="resetRankingOnly()">🔄 Reset Ranking</button>
                 <button class="profile-reset-btn profile-reset-all" onclick="resetAllData()">⚠️ Reset All Data</button>
+            </div>
+            </div>
+
+            <!-- Pins Collection Overlay -->
+            <div id="pinsOverlay" class="pins-overlay" style="display: none;">
+                <div class="pins-overlay-header">
+                    <button class="pins-back-btn" onclick="hidePinsOverlay()">← Back to Profile</button>
+                    <h2 class="pins-overlay-title">Pin Collection</h2>
+                </div>
+                <div class="achievement-filters">
+                    <div class="achievement-counter" id="achievementFilterCounter">0/31 unlocked</div>
+                    <div class="filter-tags-container">
+                        <button class="filter-tag active" data-category="all" onclick="filterPins('all')">
+                            All
+                        </button>
+                        <button class="filter-tag" data-category="battles" onclick="filterPins('battles')">
+                            ⚔️ Battles
+                        </button>
+                        <button class="filter-tag" data-category="close-fights" onclick="filterPins('close-fights')">
+                            💥 Close Fights
+                        </button>
+                        <button class="filter-tag" data-category="patterns" onclick="filterPins('patterns')">
+                            🔄 Patterns
+                        </button>
+                        <button class="filter-tag" data-category="collection" onclick="filterPins('collection')">
+                            🌍 Collection
+                        </button>
+                        <button class="filter-tag" data-category="siblings" onclick="filterPins('siblings')">
+                            👯 Siblings
+                        </button>
+                        <button class="filter-tag" data-category="ranking" onclick="filterPins('ranking')">
+                            📊 Ranking
+                        </button>
+                        <button class="filter-tag" data-category="special" onclick="filterPins('special')">
+                            ✨ Special
+                        </button>
+                    </div>
+                </div>
+                <div class="achievements-grid" id="pinsGrid">
+                    <!-- Pin cards will be inserted here dynamically -->
+                </div>
             </div>
         </div>
 
@@ -190,6 +252,22 @@
             </div>
         </div>
 
+        <div id="credits-tab" class="tab-content">
+            <h2 style="padding: 20px 20px 10px 20px; margin: 0; color: #111827; font-size: 1.5em;">Coaster Credits</h2>
+            <p style="padding: 0 20px 10px 20px; margin: 0; color: #6b7280; font-size: 0.95em;">Your collection of ridden coasters</p>
+            <div class="credits-grid">
+                <div class="coaster-card" onclick="openCreditCard('steelvengeance')">
+                    <div class="coaster-name">Steel Vengeance</div>
+                </div>
+                <div class="coaster-card" onclick="openCreditCard('bluefire')">
+                    <div class="coaster-name">Blue Fire Megacoaster</div>
+                </div>
+                <div class="coaster-card" onclick="openCreditCard('thesmiler')">
+                    <div class="coaster-name">The Smiler</div>
+                </div>
+            </div>
+        </div>
+
         <div id="ranking-tab" class="tab-content">
 
             <div class="ranking-header">
@@ -210,7 +288,7 @@
                         <th onclick="sortRanking('name')">Name</th>
                         <th onclick="sortRanking('park')">Park</th>
                         <th onclick="sortRanking('manufacturer')">Manufacturer</th>
-                        <th onclick="sortRanking('elo')">ELO</th>
+                        <th onclick="sortRanking('rating')">Rating</th>
                         <th onclick="sortRanking('battles')">Battles</th>
                         <th onclick="sortRanking('wins')">Wins</th>
                         <th onclick="sortRanking('losses')">Losses</th>
@@ -222,41 +300,7 @@
             </table>
         </div>
 
-        <!-- Achievements Tab -->
-        <div id="achievements-tab" class="tab-content">
-            <div class="achievement-filters">
-                <div class="achievement-counter" id="achievementFilterCounter">0/31 unlocked</div>
-                <div class="filter-tags-container">
-                    <button class="filter-tag active" data-category="all" onclick="filterAchievements('all')">
-                        All
-                    </button>
-                    <button class="filter-tag" data-category="battles" onclick="filterAchievements('battles')">
-                        ⚔️ Battles
-                    </button>
-                    <button class="filter-tag" data-category="close-fights" onclick="filterAchievements('close-fights')">
-                        💥 Close Fights
-                    </button>
-                    <button class="filter-tag" data-category="patterns" onclick="filterAchievements('patterns')">
-                        🔄 Patterns
-                    </button>
-                    <button class="filter-tag" data-category="collection" onclick="filterAchievements('collection')">
-                        🌍 Collection
-                    </button>
-                    <button class="filter-tag" data-category="siblings" onclick="filterAchievements('siblings')">
-                        👯 Siblings
-                    </button>
-                    <button class="filter-tag" data-category="ranking" onclick="filterAchievements('ranking')">
-                        📊 Ranking
-                    </button>
-                    <button class="filter-tag" data-category="special" onclick="filterAchievements('special')">
-                        ✨ Special
-                    </button>
-                </div>
-            </div>
-            <div class="achievements-grid" id="achievementsGrid">
-                <!-- Achievement cards will be inserted here dynamically -->
-            </div>
-        </div>
+
     </div>
 
     <!-- Developer button (bottom-left) -->
@@ -312,16 +356,16 @@
 
                 <div>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                        <label style="font-size:0.85em;color:#666;">ELO Proximity Power</label>
+                        <label style="font-size:0.85em;color:#666;">Rating Proximity Power</label>
                         <span id="eloProximityValue" style="min-width:36px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.9em;">0.1</span>
                     </div>
                     <input id="eloProximityRange" type="range" min="0" max="4" step="0.1" value="0.1" oninput="setEloProximityPower(this.value)" style="width:100%;">
-                    <div style="font-size:0.75em;color:#888;margin-top:2px;">Higher = prefer opponents with similar ELO</div>
+                    <div style="font-size:0.75em;color:#888;margin-top:2px;">Higher = prefer opponents with similar rating</div>
                 </div>
             </div>
 
             <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
-                <button id="rankingWizardBtn" class="dev-btn" onclick="runRankingWizard()" title="Recalculate all battles with current K-factors">Ranking Wizard</button>
+                <button id="rankingWizardBtn" class="dev-btn" onclick="runRankingWizard()" title="Recalculate all battles with current Glicko-2 settings">Ranking Wizard</button>
                 <div id="rankingWizardProgress" class="dev-progress" style="display:none;margin-top:8px;font-size:0.9em;color:#4CA1AF;"></div>
             </div>
 
@@ -372,7 +416,7 @@
                 <ul class="modal-list">
                     <li>All battle history</li>
                     <li>All coaster rankings</li>
-                    <li>All achievements</li>
+                    <li>All pins</li>
                     <li>All progress and statistics</li>
                 </ul>
                 <p class="modal-warning-strong">This action cannot be undone!</p>
@@ -398,12 +442,22 @@
                     <li>All battle history</li>
                     <li>All coaster rankings</li>
                 </ul>
-                <p class="modal-info">Your achievements and daily progress will be preserved.</p>
+                <p class="modal-info">Your pins and daily progress will be preserved.</p>
                 <p class="modal-warning-strong">This action cannot be undone!</p>
             </div>
             <div class="modal-footer">
                 <button class="modal-btn modal-btn-cancel" onclick="closeResetRankingModal()">Cancel</button>
                 <button class="modal-btn modal-btn-confirm-warning" onclick="confirmResetRanking()">Reset Ranking</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credit Card Popup Overlay -->
+    <div id="creditCardOverlay" class="credit-card-overlay" onclick="closeCreditCard(event)">
+        <div class="credit-card-popup" onclick="event.stopPropagation()">
+            <button class="credit-card-close" onclick="closeCreditCard()">✕</button>
+            <div id="creditCardContainer" class="credit-card-template">
+                <!-- Card content will be populated by JavaScript -->
             </div>
         </div>
     </div>

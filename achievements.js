@@ -608,7 +608,7 @@ function showAchievementToast(achievement) {
     toast.innerHTML = `
         <div class="achievement-icon">${achievement.icon}</div>
         <div class="achievement-content">
-            <div class="achievement-header">🎉 Achievement Unlocked!</div>
+            <div class="achievement-header">🎉 Pin Unlocked!</div>
             <div class="achievement-name">${achievement.name}</div>
             <div class="achievement-desc">${achievement.description}</div>
         </div>

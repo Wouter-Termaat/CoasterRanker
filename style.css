@@ -55,6 +55,332 @@ body {
     background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
     min-height: 100vh;
     padding: 20px;
+    transition: background 0.3s ease;
+}
+
+/* Dark Mode Styles */
+body.dark-mode {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+}
+
+body.dark-mode .container {
+    background: #1e1e1e;
+    color: #e0e0e0;
+}
+
+body.dark-mode .header {
+    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+}
+
+body.dark-mode .tabs {
+    background: #2a2a2a;
+    border-bottom: 2px solid #444;
+}
+
+body.dark-mode .tab {
+    color: #b0b0b0;
+    background: transparent;
+}
+
+body.dark-mode .tab.active {
+    color: #4CA1AF;
+    background: rgba(76, 161, 175, 0.1);
+}
+
+body.dark-mode .tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .home-card,
+body.dark-mode .battle-card,
+body.dark-mode .ranking-card,
+body.dark-mode .history-card {
+    background: #2a2a2a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .stat-value {
+    color: #4CA1AF;
+}
+
+body.dark-mode .stat-label {
+    color: #b0b0b0;
+}
+
+body.dark-mode .ranking-table {
+    background: #2a2a2a;
+}
+
+body.dark-mode .ranking-table th {
+    background: #333;
+    color: #e0e0e0;
+    border-bottom: 1px solid #444;
+}
+
+body.dark-mode .ranking-table td {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border-bottom: 1px solid #333;
+}
+
+body.dark-mode .ranking-table tbody tr:hover {
+    background: #333;
+}
+
+body.dark-mode .ranking-info-box {
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #444;
+}
+
+body.dark-mode .ranking-info-box span {
+    color: #4CA1AF;
+}
+
+body.dark-mode .achievement-card {
+    background: #2a2a2a;
+    border: 2px solid #333;
+}
+
+body.dark-mode .achievement-card.unlocked {
+    background: #333;
+    border-color: #4CA1AF;
+}
+
+body.dark-mode .achievement-card h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .achievement-card p {
+    color: #b0b0b0;
+}
+
+body.dark-mode .history-item {
+    background: #2a2a2a;
+    border-left: 4px solid #4CA1AF;
+}
+
+body.dark-mode .history-meta {
+    color: #888;
+}
+
+body.dark-mode .user-selection-screen {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .user-selection-content {
+    background: #2a2a2a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .user-selection-title {
+    color: #e0e0e0;
+}
+
+body.dark-mode .user-selection-subtitle {
+    color: #b0b0b0;
+}
+
+body.dark-mode .user-card {
+    background: #333;
+    border: 2px solid #444;
+}
+
+body.dark-mode .user-card:hover {
+    background: #3a3a3a;
+    border-color: #4CA1AF;
+}
+
+body.dark-mode .user-menu {
+    background: #2a2a2a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .user-menu .user-btn {
+    color: #e0e0e0;
+}
+
+body.dark-mode .user-menu .user-btn:hover {
+    background: #333;
+}
+
+body.dark-mode .user-menu .user-btn.active {
+    background: #4CA1AF;
+    color: white;
+}
+
+body.dark-mode .coaster-name {
+    color: #e0e0e0;
+}
+
+body.dark-mode .coaster-info {
+    color: #b0b0b0;
+}
+
+body.dark-mode h2,
+body.dark-mode h3 {
+    color: #e0e0e0;
+}
+
+body.dark-mode .progress-bar {
+    background: #333;
+}
+
+body.dark-mode .toast {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+}
+
+body.dark-mode .train-car {
+    background: #4CA1AF;
+}
+
+body.dark-mode .coaster-card {
+    background: #2a2a2a;
+}
+
+body.dark-mode .coaster-name {
+    color: #e0e0e0;
+}
+
+body.dark-mode .coaster-subtitle {
+    color: #b0b0b0;
+}
+
+body.dark-mode .coaster-rank-badge {
+    background: rgba(42, 42, 42, 0.95);
+    color: #4CA1AF;
+}
+
+body.dark-mode .vs-overlay {
+    box-shadow: 0 7px 27px rgba(0, 0, 0, 0.6), 0 0 0 7px rgba(42, 42, 42, 0.95);
+}
+
+body.dark-mode .stat-item {
+    background: #333;
+    color: #e0e0e0;
+}
+
+body.dark-mode .stats-summary {
+    background: #2a2a2a;
+}
+
+body.dark-mode .reset-panel {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+body.dark-mode .reset-panel .reset-copy {
+    color: #b0b0b0;
+}
+
+body.dark-mode .dev-toggle,
+body.dark-mode .dev-menu {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+body.dark-mode .dev-menu::after {
+    background: #2a2a2a;
+}
+
+body.dark-mode .dev-menu-header {
+    color: #e0e0e0;
+}
+
+body.dark-mode .dev-btn {
+    background: #333;
+    color: #e0e0e0;
+    border-color: #444;
+}
+
+body.dark-mode .dev-btn:hover {
+    background: #3a3a3a;
+}
+
+body.dark-mode .sim-input {
+    background: #333;
+    color: #e0e0e0;
+    border-color: #444;
+}
+
+body.dark-mode .autocomplete-dropdown {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+body.dark-mode .autocomplete-item {
+    border-bottom-color: #333;
+}
+
+body.dark-mode .autocomplete-item:hover {
+    background: #333;
+}
+
+body.dark-mode .autocomplete-item.selected {
+    background: rgba(76, 161, 175, 0.2);
+}
+
+body.dark-mode .ranking-card {
+    background: #2a2a2a;
+}
+
+body.dark-mode .ranking-card:hover {
+    background: #333;
+}
+
+body.dark-mode .ranking-card .rank-badge {
+    background: #333;
+    color: #4CA1AF;
+}
+
+body.dark-mode .ranking-card .name {
+    color: #e0e0e0;
+}
+
+body.dark-mode .ranking-card .meta {
+    color: #888;
+}
+
+body.dark-mode .ranking-right {
+    background: #333;
+}
+
+body.dark-mode .history-filters {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+body.dark-mode .history-filters .filter-btn {
+    background: transparent;
+    color: #e0e0e0;
+    border-color: #444;
+}
+
+body.dark-mode .history-filters .filter-btn:hover {
+    background: #333;
+}
+
+body.dark-mode .dev-toggle-data.active {
+    background: #4CA1AF;
+    color: white;
+}
+
+body.dark-mode .close-fight-banner {
+    background: #ffd86b;
+    color: #2C3E50;
+}
+
+body.dark-mode .home-link-btn {
+    background: #2a2a2a;
+    border-color: #4CA1AF;
+    color: #4CA1AF;
+}
+
+body.dark-mode .home-link-btn:hover {
+    background: #4CA1AF;
+    color: white;
 }
 
 /* Loading Overlay */
@@ -335,7 +661,7 @@ body {
     font-size: 0.75em;
     line-height: 1.4;
     pointer-events: auto; /* CHANGED: Allow clicks on overlay (especially for retry button) */
-    z-index: 100; /* High z-index to be above image */
+    z-index: 1100; /* Very high z-index to be above everything including rank badge */
     border-radius: 6px;
     max-width: 140px;
     backdrop-filter: blur(4px);
@@ -557,6 +883,7 @@ body {
     font-weight: 700;
     cursor: pointer;
     text-align: left;
+    white-space: nowrap;
 }
 
 .user-menu .user-btn:hover { background: #f1f1f1; }
@@ -806,6 +1133,7 @@ body {
 }
 
 /* Show VS overlay when battle has cards */
+.battle-area:has(.battle-card) .vs-overlay,
 .battle-area:has(.coaster-card) .vs-overlay {
     display: flex;
 }
@@ -826,25 +1154,35 @@ body {
     border-radius: 20px;
     padding: 0;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
     box-shadow: 0 4px 40px rgba(0,0,0,0.15);
     display: flex;
     flex-direction: column;
     position: relative;
     overflow: hidden;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 .coaster-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    transform: translateY(-8px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+    transition: all 0.2s ease-out;
 }
 
-.coaster-card.winner {
+/* Battle cards use outer wrapper for hover - don't apply transform to inner card */
+.battle-card:hover {
+    /* No transform - let credit-card-outer handle it */
+}
+
+.coaster-card.winner,
+.battle-card.winner {
     animation: winShine 0.8s ease-out, winBounce 0.8s ease-out;
     box-shadow: 0 12px 32px rgba(16, 185, 129, 0.3);
 }
 
-.coaster-card.loser {
+.coaster-card.loser,
+.battle-card.loser {
     transform: scale(0.95);
     opacity: 0.6;
     transition: all 0.25s ease;
@@ -921,7 +1259,7 @@ body {
     gap: 5px;
     animation: badgePopIn 0.25s ease-out, badgeFadeOut 0.4s ease-in 1.5s forwards;
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-    z-index: 10;
+    z-index: 1050; /* Below dev-data overlay but above card content */
 }
 
 .rank-change-badge .arrow {
@@ -1938,12 +2276,38 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 /* highlight cards when entering close fight */
-.coaster-card.close-highlight{ box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 2px 14px rgba(255,220,140,0.06); transform: translateY(-6px) scale(1.02); border-color: rgba(255,220,120,0.14); }
+.coaster-card.close-highlight,
+.battle-card.close-highlight,
+.credit-card-outer.close-highlight { 
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 2px 14px rgba(255,220,140,0.06); 
+    transform: translateY(-6px) scale(1.02); 
+    border-color: rgba(255,220,120,0.14); 
+}
 
 /* hidden state before reveal */
-.coaster-card.close-hidden{ opacity:0; transform: translateY(18px) scale(0.98); pointer-events:none; transition: opacity 420ms ease, transform 420ms cubic-bezier(.2,.9,.3,1); }
-.coaster-card.revealed{ opacity:1; transform: translateY(0) scale(1); transition: opacity 420ms ease, transform 420ms cubic-bezier(.2,.9,.3,1); }
-.coaster-card.pop{ transform: translateY(0) scale(1.06); transition: transform 420ms cubic-bezier(.2,.9,.3,1); }
+.coaster-card.close-hidden,
+.battle-card.close-hidden,
+.credit-card-outer.close-hidden { 
+    opacity:0; 
+    transform: translateY(18px) scale(0.98); 
+    pointer-events:none; 
+    transition: opacity 420ms ease, transform 420ms cubic-bezier(.2,.9,.3,1); 
+}
+
+.coaster-card.revealed,
+.battle-card.revealed,
+.credit-card-outer.revealed { 
+    opacity:1; 
+    transform: translateY(0) scale(1); 
+    transition: opacity 420ms ease, transform 420ms cubic-bezier(.2,.9,.3,1); 
+}
+
+.coaster-card.pop,
+.battle-card.pop,
+.credit-card-outer.pop { 
+    transform: translateY(0) scale(1.06); 
+    transition: transform 420ms cubic-bezier(.2,.9,.3,1); 
+}
 
 .coaster-card.close-subtle{ box-shadow: 0 18px 46px rgba(0,0,0,0.45); transform: translateY(-3px) scale(1.01); }
 
@@ -2214,11 +2578,27 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     padding: 0 20px 20px 20px;
 }
 
+/* Credits grid with narrower cards */
+.credits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 16px;
+    padding: 0 20px 20px 20px;
+    max-width: 800px;
+}
+
 @media (max-width: 600px) {
     .achievements-grid {
         grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
         gap: 10px;
         padding: 14px;
+    }
+    
+    .credits-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+        padding: 14px;
+        max-width: 100%;
     }
 }
 
@@ -2343,6 +2723,40 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     background: linear-gradient(90deg, #f59e0b, #d97706);
     height: 6px;
     box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4);
+}
+
+/* Coaster Credit Cards */
+.coaster-card {
+    background: white;
+    border-radius: 14px;
+    padding: 12px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px;
+    max-width: 180px;
+}
+
+.coaster-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.12);
+}
+
+.coaster-name {
+    font-weight: 800;
+    font-size: 0.9em;
+    color: #111827;
+    margin: 0;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 @keyframes achievementUnlock {
@@ -3097,4 +3511,595 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .modal-btn-confirm-warning:active {
     transform: translateY(0);
     box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+/* Pins Overlay Styles */
+.pins-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: white;
+    z-index: 100;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Ensure home-tab is positioned relative for the overlay */
+#home-tab {
+    position: relative;
+}
+
+.pins-overlay-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    position: sticky;
+    top: 0;
+    background: white;
+    padding-bottom: 10px;
+    z-index: 10;
+}
+
+.pins-back-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 8px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.pins-back-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.pins-back-btn:active {
+    transform: translateY(0);
+}
+
+.pins-overlay-title {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #2c3e50;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .pins-overlay {
+        padding: 12px;
+    }
+    
+    .pins-overlay-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .pins-back-btn {
+        width: 100%;
+    }
+}
+
+/* User Selection Screen Styles */
+.user-selection-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    padding: 40px 20px;
+}
+
+.user-selection-content {
+    text-align: center;
+    max-width: 600px;
+    width: 100%;
+}
+
+.user-selection-title {
+    font-size: 2.5em;
+    font-weight: 700;
+    color: #2C3E50;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.user-selection-subtitle {
+    font-size: 1.2em;
+    color: #666;
+    margin-bottom: 40px;
+}
+
+.user-selection-cards {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.user-card {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    min-width: 200px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    border: 3px solid transparent;
+}
+
+.user-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 8px 30px rgba(76, 161, 175, 0.3);
+    border-color: #4CA1AF;
+}
+
+.user-card:active {
+    transform: translateY(-4px);
+}
+
+.user-card-icon {
+    font-size: 5em;
+    margin-bottom: 16px;
+}
+
+.user-card-name {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #2C3E50;
+}
+
+@media (max-width: 768px) {
+    .user-selection-title {
+        font-size: 2em;
+    }
+    
+    .user-selection-subtitle {
+        font-size: 1em;
+    }
+    
+    .user-selection-cards {
+        gap: 20px;
+    }
+    
+    .user-card {
+        min-width: 150px;
+        padding: 30px;
+    }
+    
+    .user-card-icon {
+        font-size: 4em;
+    }
+    
+    .user-card-name {
+        font-size: 1.3em;
+    }
+}
+
+/* ===== CREDIT CARD POPUP ===== */
+
+.credit-card-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 10000;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.credit-card-overlay.show {
+    opacity: 1;
+}
+
+.credit-card-popup {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.credit-card-close {
+    position: absolute;
+    top: -60px;
+    right: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 28px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.credit-card-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.credit-card-template {
+    width: 100%;
+    height: 100%;
+}
+
+/* Outer wrapper for lighter border */
+.credit-card-outer {
+    border-radius: 20px;
+    display: inline-block;
+    overflow: visible;
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+    will-change: transform;
+    transform: translateZ(0);
+    position: relative; /* Ensure positioning context for absolutely positioned children */
+}
+
+.credit-card-outer:hover {
+    transform: translateY(-8px) translateZ(0);
+}
+
+.credit-card-outer.winner {
+    animation: winShine 0.8s ease-out, winBounce 0.8s ease-out;
+    box-shadow: 0 12px 32px rgba(16, 185, 129, 0.3);
+}
+
+.credit-card-outer.loser {
+    transform: scale(0.95) translateZ(0);
+    opacity: 0.6;
+    transition: all 0.25s ease;
+    animation: loserRecover 0.2s ease 0.7s forwards;
+}
+
+/* Credit Card Layout */
+.credit-card {
+    width: 400px;
+    height: 600px; /* 2:3 aspect ratio */
+    background: white;
+    border-radius: 16px;
+    overflow: visible;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    position: relative;
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+/* Subtle paper texture */
+.credit-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url('data:image/svg+xml,%3Csvg width="200" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noise"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /%3E%3C/filter%3E%3Crect width="200" height="200" filter="url(%23noise)" opacity="0.08"/%3E%3C/svg%3E');
+    pointer-events: none;
+    z-index: 1;
+}
+
+.credit-card > * {
+    position: relative;
+    z-index: 2;
+}
+
+/* Image Area (~45% height) */
+.credit-card-image {
+    height: 297px;
+    position: relative;
+    background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 10px;
+    border-radius: 8px;
+    overflow: visible;
+    border: 4px solid;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.06);
+}
+
+.credit-card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+}
+
+.credit-card-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Overlay Icons */
+.credit-card-overlays {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    flex-direction: column;
+}
+
+.credit-rank-badge {
+    position: absolute;
+    top: -22px;
+    right: -22px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 19px;
+    background: #9ca3af;
+    color: white;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.3);
+    border: 4px solid white;
+    z-index: 1000;
+}
+
+.credit-rank-badge.rank-gold {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    border: 4px solid #FFE55C;
+    box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.credit-rank-badge.rank-silver {
+    background: linear-gradient(135deg, #C0C0C0 0%, #A8A8A8 100%);
+    border: 4px solid #D8D8D8;
+    box-shadow: 0 6px 20px rgba(192, 192, 192, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.credit-rank-badge.rank-bronze {
+    background: linear-gradient(135deg, #CD7F32 0%, #B8860B 100%);
+    border: 4px solid #E89A4D;
+    box-shadow: 0 6px 20px rgba(205, 127, 50, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.credit-type-icon,
+.credit-model-icons {
+    display: none;
+}
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Text Information Section */
+.credit-card-info {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.credit-card-name {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 20px 10px 10px 30px;
+    padding: 0;
+    color: #111;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.credit-card-divider {
+    width: calc(100% - 60px);
+    height: 2px;
+    background: rgba(0, 0, 0, 0.15);
+    margin: 12px 10px 12px 30px;
+}
+
+.credit-card-location {
+    font-size: 12px;
+    margin: 0 10px 6px 30px;
+    padding: 0;
+    color: #111;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.credit-card-meta {
+    font-size: 12px;
+    margin: 0 10px 0 30px;
+    padding: 0;
+    color: #111;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+/* Stats Grid - Using thin dividers only, no filled boxes */
+.credit-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    flex: 1;
+    margin: 8px 10px 24px 10px;
+    padding: 0;
+    box-sizing: border-box;
+    position: relative;
+    gap: 0;
+    max-height: 160px;
+}
+
+/* Thin divider lines */
+.credit-card-stats::before,
+.credit-card-stats::after {
+    content: '';
+    position: absolute;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* Vertical divider */
+.credit-card-stats::before {
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    transform: translateX(-0.5px);
+}
+
+/* Horizontal divider */
+.credit-card-stats::after {
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    transform: translateY(-0.5px);
+}
+
+.credit-stat {
+    background: transparent;
+    padding: 10px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 2px;
+}
+
+.credit-stat-label {
+    font-size: 10px;
+    color: #888;
+    font-weight: 500;
+    text-transform: lowercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+}
+
+.credit-stat-value {
+    font-size: 21px;
+    font-weight: 700;
+    color: #000;
+    line-height: 1;
+}
+
+/* Remove separate unit styling since unit is now part of value */
+
+/* Metallic Shine Effect - More subtle and realistic */
+.metallic-shine {
+    background: linear-gradient(
+        110deg,
+        #A0A0A0 0%,
+        #E8E8E8 20%,
+        #FFFFFF 40%,
+        #E8E8E8 60%,
+        #C0C0C0 80%,
+        #A0A0A0 100%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%, 100% {
+        background-position: 0% 0%;
+    }
+    50% {
+        background-position: 100% 
+/* Metallic Shine Effect */
+.metallic-shine {
+    background: linear-gradient(
+        135deg,
+        #B8B8B8 0%,
+        #FFFFFF 25%,
+        #D8D8D8 50%,
+        #FFFFFF 75%,
+        #B8B8B8 100%
+    );
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0%, 100% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .credit-card {
+        width: 320px;
+        height: -outer {
+        border-width: 4px;
+    }
+    
+    .credit-card {
+        width: 320px;
+        height: 480px;
+    }
+    
+    .credit-card-image {
+        height: 216px;
+        margin: 8px;
+    }
+    
+    .credit-card-name {
+        font-size: 20px;
+    }
+    
+    .credit-stat-value {
+        font-size: 22px;
+    }
+    
+    .credit-stat {
+        padding: 10px 8px;
+    }
+    
+    .credit-card-info {
+        padding: 14px 24px 12px 24px;
+    }
+    
+    .credit-card-stats {
+        margin: 8px 24px 24px 24px;
+        max-height: 140px;
+    }
+}
+
+/* Dark Mode Support */
+body.dark-mode .credit-card-close {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+body.dark-mode .credit-card-close:hover {
+    background: rgba(255, 255, 255, 0.25);
 }

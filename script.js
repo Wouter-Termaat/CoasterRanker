@@ -27,6 +27,54 @@
     }
 
     async function loadCoasterData() {
+        // FIRST: Check if user is logged in
+        const savedUser = localStorage.getItem('lastUser');
+        const hasValidUser = savedUser === 'luca' || savedUser === 'wouter';
+        
+        // If no user is logged in, hide loading overlay immediately and show login screen
+        if (!hasValidUser) {
+            const overlay = document.getElementById('imageLoadingOverlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, 300);
+            }
+            
+            // Show user selection screen
+            const selectionScreen = document.getElementById('userSelectionScreen');
+            const profileContent = document.getElementById('profileContent');
+            if (selectionScreen) selectionScreen.style.display = 'flex';
+            if (profileContent) profileContent.style.display = 'none';
+            
+            // Disable tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach((tab, index) => {
+                if (index !== 0) {
+                    tab.style.opacity = '0.5';
+                    tab.style.pointerEvents = 'none';
+                    tab.style.cursor = 'not-allowed';
+                }
+            });
+            
+            // Update badge
+            const badge = document.getElementById('currentUserBadge');
+            if (badge) badge.textContent = 'Select a user';
+            
+            // Set header height (if function exists)
+            if (typeof setHeaderHeight === 'function') {
+                try {
+                    setHeaderHeight();
+                } catch (e) {
+                    console.warn('setHeaderHeight failed:', e);
+                }
+            }
+            
+            // Don't proceed with data loading - wait for user to select
+            return;
+        }
+        
+        // User is logged in - proceed with normal loading
         try {
             const [lucaResponse, wouterResponse] = await Promise.all([
                 fetch('Top List Coasters v Luca - List of Coaster.csv'),
@@ -106,12 +154,46 @@
         }
     }
 
-    // Initialize app after data is loaded
+    // Initialize app after data is loaded (only called when user IS logged in)
     async function initializeApp() {
-        // Check if there's a saved user preference
+        // Get the saved user (we know it exists because loadCoasterData checked)
         const savedUser = localStorage.getItem('lastUser');
-        if (savedUser && (savedUser === 'luca' || savedUser === 'wouter')) {
-            switchUser(savedUser);
+        
+        // Set current user
+        currentUser = savedUser;
+        
+        // Hide user selection screen, show profile content
+        const selectionScreen = document.getElementById('userSelectionScreen');
+        const profileContent = document.getElementById('profileContent');
+        if (selectionScreen) selectionScreen.style.display = 'none';
+        if (profileContent) profileContent.style.display = 'block';
+        
+        // Enable tabs
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.style.opacity = '1';
+            tab.style.pointerEvents = 'auto';
+            tab.style.cursor = 'pointer';
+        });
+        
+        // Update badge
+        const badge = document.getElementById('currentUserBadge');
+        if (badge) badge.textContent = `Logged in as: ${savedUser === 'luca' ? 'Luca' : 'Wouter'}`;
+        
+        // Load user-specific data
+        if (savedUser === 'luca') {
+            coasters = coastersDataLuca.filter(c => c.operatief === 1);
+        } else {
+            coasters = coastersDataWouter.filter(c => c.operatief === 1);
+        }
+        
+        // Load user data
+        loadUserData();
+        
+        // Load achievements
+        if (typeof achievementManager !== 'undefined') {
+            achievementManager.load(savedUser);
+            updatePinsDisplay();
         }
         
         // Set header height for mobile sticky tabs
@@ -124,11 +206,13 @@
         
         // Now display the first battle (all images loaded)
         displayBattle();
+        updateRanking();
+        displayHome();
         
         // Restore the last active tab
         try {
             const savedTab = localStorage.getItem('lastActiveTab');
-            const validTabs = ['home', 'battle', 'ranking', 'history', 'achievements'];
+            const validTabs = ['profile', 'home', 'battle', 'ranking', 'history', 'achievements'];
             if (savedTab && validTabs.includes(savedTab)) {
                 switchTab(savedTab);
             }
@@ -2146,7 +2230,7 @@ window.addEventListener('resize', onResize, { passive: true });
         }catch(e){}
     }
     let isProcessingChoice = false;
-    let currentSort = { column: 'rank', ascending: false };
+    let currentSort = { column: 'rating', ascending: false };
     // History: stores past battles for current user
     let coasterHistory = [];
     // Stack for undoing deletions (LIFO)
@@ -2155,15 +2239,17 @@ window.addEventListener('resize', onResize, { passive: true });
     const MAX_HISTORY_KEEP = 10000; // Maximum history entries to keep
     // Exploration boost: favor coasters with few battles
     let EXPLORATION_POWER = 2; // higher => stronger preference for low-battles
-    // Automatic ELO tuning parameters (internal, no UI required)
-    const ELO_BASE = 1500;
-    const K0 = 64;           // initial K scale
-    const K_DECAY_C = 10;    // decay constant (larger -> slower decay)
-    const K_MIN = 8;         // minimum K to keep movement
-    const PRIOR_WEIGHT = 6;  // pseudo-battles pulling displayed ELO toward mean
-    // ELO-proximity: prefer opponents whose ELO is similar (more informative matches)
-    let ELO_PROXIMITY_POWER = 0.1; // higher => stronger preference for similar ELO
-    const ELO_DIFF_SCALE = 400; // scale (in ELO points) used to normalize differences
+    // Glicko-2 rating system parameters
+    const GLICKO2_RATING_BASE = 1500;     // Initial rating (same scale as ELO for compatibility)
+    const GLICKO2_RD_INITIAL = 350;       // Initial rating deviation (high uncertainty)
+    const GLICKO2_VOLATILITY_INITIAL = 0.06; // Initial volatility
+    const GLICKO2_TAU = 0.5;              // System constant (constrains volatility change, 0.3-1.2)
+    const GLICKO2_EPSILON = 0.000001;     // Convergence tolerance
+    const GLICKO2_SCALE_FACTOR = 173.7178; // Conversion factor from Glicko to Glicko-2 scale
+    const PRIOR_WEIGHT = 6;  // pseudo-battles pulling displayed rating toward mean (for display only)
+    // Rating-proximity: prefer opponents whose rating is similar (more informative matches)
+    let RATING_PROXIMITY_POWER = 0.1; // higher => stronger preference for similar rating
+    const RATING_DIFF_SCALE = 400; // scale (in rating points) used to normalize differences
     // Pairing strategy: hybrid — picks one under-sampled coaster
     // then picks a second that is ELO-similar while still favoring under-sampled ones.
     let pairingControlsHidden = true;
@@ -2175,13 +2261,94 @@ window.addEventListener('resize', onResize, { passive: true });
 
 // Lightweight DOM cache for frequently used elements (populated on DOMContentLoaded)
 const DOM = {};
-    function switchUser(user) {
+
+    // Show user selection screen (on first load or after logout)
+    function showUserSelectionScreen() {
+        const selectionScreen = document.getElementById('userSelectionScreen');
+        const profileContent = document.getElementById('profileContent');
+        
+        if (selectionScreen) {
+            selectionScreen.style.display = 'flex';
+        }
+        if (profileContent) {
+            profileContent.style.display = 'none';
+        }
+        
+        // Make sure we're on the profile/home tab
+        switchTab('home');
+        
+        // Update current user badge
+        const badge = document.getElementById('currentUserBadge');
+        if (badge) badge.textContent = 'Select a user';
+    }
+    
+    // Hide user selection screen, show profile content
+    function hideUserSelectionScreen() {
+        const selectionScreen = document.getElementById('userSelectionScreen');
+        const profileContent = document.getElementById('profileContent');
+        
+        if (selectionScreen) {
+            selectionScreen.style.display = 'none';
+        }
+        if (profileContent) {
+            profileContent.style.display = 'block';
+        }
+    }
+    
+    // Hide the loading overlay
+    function hideLoadingOverlay() {
+        const overlay = document.getElementById('imageLoadingOverlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 300);
+        }
+    }
+    
+    // Disable tabs (except profile) when no user is logged in
+    function disableTabs() {
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach((tab, index) => {
+            if (index !== 0) { // Don't disable the first tab (profile)
+                tab.style.opacity = '0.5';
+                tab.style.pointerEvents = 'none';
+                tab.style.cursor = 'not-allowed';
+            }
+        });
+    }
+    
+    // Enable all tabs when user is logged in
+    function enableTabs() {
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.style.opacity = '1';
+            tab.style.pointerEvents = 'auto';
+            tab.style.cursor = 'pointer';
+        });
+    }
+    
+    // User selection from the selection screen - save user and reload
+    function selectUser(user) {
+        if (!user || (user !== 'luca' && user !== 'wouter')) return;
+        
+        // Save the selected user
+        localStorage.setItem('lastUser', user);
+        
+        // Reload the page to initialize with the selected user
+        window.location.reload();
+    }
+    
+    // Modified switchUser function to optionally trigger image loading
+    async function switchUser(user, triggerImageLoad = true) {
         currentUser = user;
         
+        // Save user preference
+        localStorage.setItem('lastUser', user);
+        
         // Update UI
-        document.querySelectorAll('.user-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById('btn-' + user).classList.add('active');
-        document.getElementById('currentUserBadge').textContent = `Logged in as: ${user === 'luca' ? 'Luca' : 'Wouter'}`;
+        const badge = document.getElementById('currentUserBadge');
+        if (badge) badge.textContent = `Logged in as: ${user === 'luca' ? 'Luca' : 'Wouter'}`;
         
         // Load user-specific data
         if (user === 'luca') {
@@ -2196,19 +2363,96 @@ const DOM = {};
         // Load achievements
         if (typeof achievementManager !== 'undefined') {
             achievementManager.load(user);
-            updateAchievementsTab();
+            updatePinsDisplay();
         }
         
         // Reset session stats when switching users
         resetSessionStats();
         
-        // Refresh displays
-        displayBattle();
-        updateRanking();
-        displayHome(); // Update home tab with new user data
+        // Hide user selection screen, show profile
+        hideUserSelectionScreen();
         
-        // close menu after selection (if open)
+        // Enable tabs now that user is logged in
+        enableTabs();
+        
+        // If triggered from user selection, load all images with loading screen
+        if (triggerImageLoad) {
+            // Show loading overlay
+            const overlay = document.getElementById('imageLoadingOverlay');
+            if (overlay) {
+                overlay.style.display = 'flex';
+                overlay.classList.remove('hidden');
+            }
+            
+            // Set header height for mobile sticky tabs
+            setHeaderHeight();
+            // Post-initialization UI adjustments
+            postInitUISetup();
+            
+            // Load ALL images during loading screen
+            await preloadAllCoasterImages();
+            
+            // Now display the first battle and refresh displays
+            displayBattle();
+            updateRanking();
+            displayHome();
+        } else {
+            // Just refresh displays without loading images
+            displayBattle();
+            updateRanking();
+            displayHome();
+        }
+    }
+    
+    // Logout function - clear user and reload
+    function logoutUser() {
+        // Clear user preference
+        localStorage.removeItem('lastUser');
+        
+        // Close menu
         try { closeUserMenu(); } catch (e) {}
+        
+        // Reload page to reset to login screen
+        window.location.reload();
+    }
+    
+    // Placeholder functions for settings and dark mode
+    function openSettings() {
+        showToast('⚙️ Settings coming soon!');
+        closeUserMenu();
+    }
+    
+    function toggleDarkMode() {
+        const body = document.body;
+        const btn = document.getElementById('btn-darkmode');
+        
+        if (body.classList.contains('dark-mode')) {
+            // Switch to light mode
+            body.classList.remove('dark-mode');
+            if (btn) btn.textContent = 'Dark Mode';
+            localStorage.setItem('darkMode', 'false');
+            showToast('☀️ Light mode activated');
+        } else {
+            // Switch to dark mode
+            body.classList.add('dark-mode');
+            if (btn) btn.textContent = 'Light Mode';
+            localStorage.setItem('darkMode', 'true');
+            showToast('🌙 Dark mode activated');
+        }
+        
+        closeUserMenu();
+    }
+    
+    // Load dark mode preference on page load
+    function loadDarkModePreference() {
+        const darkMode = localStorage.getItem('darkMode');
+        const body = document.body;
+        const btn = document.getElementById('btn-darkmode');
+        
+        if (darkMode === 'true') {
+            body.classList.add('dark-mode');
+            if (btn) btn.textContent = 'Light Mode';
+        }
     }
 
     function loadUserData() {
@@ -2219,6 +2463,22 @@ const DOM = {};
         const battleKey = `currentBattle_${currentUser}`;
 
         coasterStats = JSON.parse(localStorage.getItem(statsKey)) || initializeStats();
+        
+        // Migrate from ELO to Glicko-2 if necessary
+        Object.values(coasterStats).forEach(stats => {
+            if (stats.elo !== undefined && stats.rating === undefined) {
+                // Migrate old ELO data to Glicko-2
+                stats.rating = stats.elo;
+                stats.rd = GLICKO2_RD_INITIAL;
+                stats.volatility = GLICKO2_VOLATILITY_INITIAL;
+                delete stats.elo;
+            }
+            // Ensure all Glicko-2 fields exist
+            if (stats.rating === undefined) stats.rating = GLICKO2_RATING_BASE;
+            if (stats.rd === undefined) stats.rd = GLICKO2_RD_INITIAL;
+            if (stats.volatility === undefined) stats.volatility = GLICKO2_VOLATILITY_INITIAL;
+        });
+        
         totalBattlesCount = parseInt(localStorage.getItem(battlesKey)) || 0;
         coasterHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
         
@@ -2249,7 +2509,9 @@ const DOM = {};
                 name: coaster.naam,
                 park: coaster.park,
                 manufacturer: coaster.fabrikant,
-                elo: 1500,
+                rating: GLICKO2_RATING_BASE,
+                rd: GLICKO2_RD_INITIAL,
+                volatility: GLICKO2_VOLATILITY_INITIAL,
                 battles: 0,
                 wins: 0,
                 losses: 0
@@ -2290,7 +2552,7 @@ const DOM = {};
         // persist pairing settings per-user
         try {
             const settingsKey = `pairingSettings_${currentUser}`;
-            const settings = { explorationPower: EXPLORATION_POWER, eloProximityPower: ELO_PROXIMITY_POWER, pairingControlsHidden: pairingControlsHidden };
+            const settings = { explorationPower: EXPLORATION_POWER, eloProximityPower: RATING_PROXIMITY_POWER, pairingControlsHidden: pairingControlsHidden };
             localStorage.setItem(settingsKey, JSON.stringify(settings));
         } catch (e) {
             // ignore
@@ -2306,7 +2568,7 @@ const DOM = {};
             if (!raw) return applySettingsToUI();
             const s = JSON.parse(raw);
             if (s && typeof s.explorationPower === 'number') EXPLORATION_POWER = s.explorationPower;
-            if (s && typeof s.eloProximityPower === 'number') ELO_PROXIMITY_POWER = s.eloProximityPower;
+            if (s && typeof s.eloProximityPower === 'number') RATING_PROXIMITY_POWER = s.eloProximityPower;
             if (s && typeof s.pairingControlsHidden === 'boolean') pairingControlsHidden = s.pairingControlsHidden;
         } catch (e) {
             // ignore
@@ -2317,7 +2579,7 @@ const DOM = {};
     function setEloProximityPower(val) {
         const num = Number(val);
         if (isNaN(num)) return;
-        ELO_PROXIMITY_POWER = num;
+        RATING_PROXIMITY_POWER = num;
         const el = document.getElementById('eloProximityValue');
         if (el) el.textContent = num.toFixed(1);
         saveData();
@@ -2342,8 +2604,8 @@ const DOM = {};
         // update range and label for elo proximity
         const range = document.getElementById('eloProximityRange');
         const val = document.getElementById('eloProximityValue');
-        if (range) range.value = ELO_PROXIMITY_POWER;
-        if (val) val.textContent = (Number(ELO_PROXIMITY_POWER) || 0).toFixed(1);
+        if (range) range.value = RATING_PROXIMITY_POWER;
+        if (val) val.textContent = (Number(RATING_PROXIMITY_POWER) || 0).toFixed(1);
         // apply pairing controls hidden state
         const pairingDiv = document.getElementById('pairingControls');
         const toggleBtn = document.getElementById('pairingControlsToggle');
@@ -2433,7 +2695,7 @@ const DOM = {};
                     completedPairs: [...completedPairs],
                     pairingSettings: {
                         explorationPower: EXPLORATION_POWER,
-                        eloProximityPower: ELO_PROXIMITY_POWER,
+                        eloProximityPower: RATING_PROXIMITY_POWER,
                         pairingControlsHidden: pairingControlsHidden
                     },
                     closeBattleCounters: {
@@ -2532,7 +2794,7 @@ const DOM = {};
                 // Restore settings
                 if (data.pairingSettings) {
                     if (typeof data.pairingSettings.explorationPower === 'number') EXPLORATION_POWER = data.pairingSettings.explorationPower;
-                    if (typeof data.pairingSettings.eloProximityPower === 'number') ELO_PROXIMITY_POWER = data.pairingSettings.eloProximityPower;
+                    if (typeof data.pairingSettings.eloProximityPower === 'number') RATING_PROXIMITY_POWER = data.pairingSettings.eloProximityPower;
                     if (typeof data.pairingSettings.pairingControlsHidden === 'boolean') pairingControlsHidden = data.pairingSettings.pairingControlsHidden;
                 }
 
@@ -2573,7 +2835,7 @@ const DOM = {};
                 displayHistory();
                 displayBattle();
                 applySettingsToUI();
-                updateAchievementsTab();
+                updatePinsDisplay();
                 
                 showToast(`✅ Data imported successfully for ${importUser}`);
             } catch (error) {
@@ -2710,13 +2972,17 @@ const DOM = {};
                         return simulated;
                     }
 
-                    // pick winner probabilistically according to current ELOs
+                    // pick winner probabilistically according to current ratings (using Glicko-2)
                     const a = pair[0], b = pair[1];
                     // ensure stats exist for both coasters
                     const aStats = ensureCoasterStats(a);
                     const bStats = ensureCoasterStats(b);
-                    const aE = aStats.elo, bE = bStats.elo;
-                    const probA = 1 / (1 + Math.pow(10, (bE - aE) / 400));
+                    // Calculate win probability using Glicko-2 expected score
+                    const mu_a = glicko2Scale(aStats.rating);
+                    const phi_a = glicko2ScaleRD(aStats.rd);
+                    const mu_b = glicko2Scale(bStats.rating);
+                    const phi_b = glicko2ScaleRD(bStats.rd);
+                    const probA = glicko2_E(mu_a, mu_b, phi_b);
                     const rnd = (typeof rng === 'function') ? rng() : Math.random();
                     const winnerIdx = (rnd < probA) ? 0 : 1;
                     const winner = pair[winnerIdx], loser = pair[1 - winnerIdx];
@@ -2726,27 +2992,37 @@ const DOM = {};
                     const loserStats = ensureCoasterStats(loser);
                     
                     // Capture data before battle
-                    const winnerEloBefore = winnerStats.elo;
-                    const loserEloBefore = loserStats.elo;
+                    const winnerRatingBefore = winnerStats.rating;
+                    const loserRatingBefore = loserStats.rating;
+                    const winnerRDBefore = winnerStats.rd;
+                    const loserRDBefore = loserStats.rd;
+                    const winnerVolatilityBefore = winnerStats.volatility;
+                    const loserVolatilityBefore = loserStats.volatility;
                     const winnerRankBefore = getCoasterRank(winner.naam);
                     const loserRankBefore = getCoasterRank(loser.naam);
                     const winnerBattlesBefore = winnerStats.battles;
                     const loserBattlesBefore = loserStats.battles;
                     
-                    const eloOutcome = calculateEloAdaptiveFromStats(winnerStats, loserStats);
-                    const { newWinnerElo, newLoserElo, K } = eloOutcome;
+                    const glickoOutcome = calculateGlicko2(winnerStats, loserStats);
+                    const { newWinnerRating, newWinnerRD, newWinnerVolatility, newLoserRating, newLoserRD, newLoserVolatility } = glickoOutcome;
                     
                     // Calculate expected probabilities and potential changes
-                    const expectedWinnerProb = 1 / (1 + Math.pow(10, (loserEloBefore - winnerEloBefore) / 400));
+                    const mu_w = glicko2Scale(winnerRatingBefore);
+                    const phi_w = glicko2ScaleRD(winnerRDBefore);
+                    const mu_l = glicko2Scale(loserRatingBefore);
+                    const phi_l = glicko2ScaleRD(loserRDBefore);
+                    const expectedWinnerProb = glicko2_E(mu_w, mu_l, phi_l);
                     const expectedLoserProb = 1 - expectedWinnerProb;
-                    const winnerPotentialGain = newWinnerElo - winnerEloBefore;
-                    const loserPotentialLoss = newLoserElo - loserEloBefore;
-                    const loserIfWinOutcome = calculateEloAdaptiveFromStats(loserStats, winnerStats);
-                    const loserPotentialGain = loserIfWinOutcome.newWinnerElo - loserEloBefore;
-                    const winnerPotentialLoss = loserIfWinOutcome.newLoserElo - winnerEloBefore;
+                    const winnerPotentialGain = newWinnerRating - winnerRatingBefore;
+                    const loserPotentialLoss = newLoserRating - loserRatingBefore;
+                    const loserIfWinOutcome = calculateGlicko2(loserStats, winnerStats);
+                    const loserPotentialGain = loserIfWinOutcome.newWinnerRating - loserRatingBefore;
+                    const winnerPotentialLoss = loserIfWinOutcome.newLoserRating - winnerRatingBefore;
                     
-                    winnerStats.elo = newWinnerElo; winnerStats.battles++; winnerStats.wins++;
-                    loserStats.elo = newLoserElo; loserStats.battles++; loserStats.losses++;
+                    winnerStats.rating = newWinnerRating; winnerStats.rd = newWinnerRD; winnerStats.volatility = newWinnerVolatility;
+                    winnerStats.battles++; winnerStats.wins++;
+                    loserStats.rating = newLoserRating; loserStats.rd = newLoserRD; loserStats.volatility = newLoserVolatility;
+                    loserStats.battles++; loserStats.losses++;
                     totalBattlesCount++;
                     
                     // Get ranks after battle
@@ -2757,9 +3033,12 @@ const DOM = {};
                     // Build comprehensive battle stats
                     const battleStats = {
                         statsA: {
-                            eloBefore: (pair[0].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
-                            eloAfter: (pair[0].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
-                            kFactor: K,
+                            ratingBefore: (pair[0].naam === winner.naam) ? winnerRatingBefore : loserRatingBefore,
+                            ratingAfter: (pair[0].naam === winner.naam) ? winnerStats.rating : loserStats.rating,
+                            rdBefore: (pair[0].naam === winner.naam) ? winnerRDBefore : loserRDBefore,
+                            rdAfter: (pair[0].naam === winner.naam) ? winnerStats.rd : loserStats.rd,
+                            volatilityBefore: (pair[0].naam === winner.naam) ? winnerVolatilityBefore : loserVolatilityBefore,
+                            volatilityAfter: (pair[0].naam === winner.naam) ? winnerStats.volatility : loserStats.volatility,
                             potentialGain: (pair[0].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
                             potentialLoss: (pair[0].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
                             rankBefore: (pair[0].naam === winner.naam) ? winnerRankBefore : loserRankBefore,
@@ -2768,9 +3047,12 @@ const DOM = {};
                             totalBattlesBefore: (pair[0].naam === winner.naam) ? winnerBattlesBefore : loserBattlesBefore
                         },
                         statsB: {
-                            eloBefore: (pair[1].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
-                            eloAfter: (pair[1].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
-                            kFactor: K,
+                            ratingBefore: (pair[1].naam === winner.naam) ? winnerRatingBefore : loserRatingBefore,
+                            ratingAfter: (pair[1].naam === winner.naam) ? winnerStats.rating : loserStats.rating,
+                            rdBefore: (pair[1].naam === winner.naam) ? winnerRDBefore : loserRDBefore,
+                            rdAfter: (pair[1].naam === winner.naam) ? winnerStats.rd : loserStats.rd,
+                            volatilityBefore: (pair[1].naam === winner.naam) ? winnerVolatilityBefore : loserVolatilityBefore,
+                            volatilityAfter: (pair[1].naam === winner.naam) ? winnerStats.volatility : loserStats.volatility,
                             potentialGain: (pair[1].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
                             potentialLoss: (pair[1].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
                             rankBefore: (pair[1].naam === winner.naam) ? winnerRankBefore : loserRankBefore,
@@ -2809,25 +3091,24 @@ const DOM = {};
 
         // compute the same dev-html used when battle is first rendered
         const left = currentBattle[0], right = currentBattle[1];
-        const leftStats = coasterStats[left.naam] || { elo:1500, battles:0, wins:0, losses:0 };
-        const rightStats = coasterStats[right.naam] || { elo:1500, battles:0, wins:0, losses:0 };
-        // compute ELO scenarios once
-        const leftIfWin = calculateEloAdaptiveFromStats(leftStats, rightStats);
-        const leftIfLose = calculateEloAdaptiveFromStats(rightStats, leftStats);
-        const rightIfWin = calculateEloAdaptiveFromStats(rightStats, leftStats);
-        const rightIfLose = calculateEloAdaptiveFromStats(leftStats, rightStats);
-        const leftGainWin = Math.round(leftIfWin.newWinnerElo - leftStats.elo);
-        const leftLoseIfLose = Math.round(leftIfLose.newLoserElo - leftStats.elo);
-        const rightGainWin = Math.round(rightIfWin.newWinnerElo - rightStats.elo);
-        const rightLoseIfLose = Math.round(rightIfLose.newLoserElo - rightStats.elo);
+        const leftStats = coasterStats[left.naam] || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
+        const rightStats = coasterStats[right.naam] || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
+        // compute Glicko-2 scenarios once
+        const leftIfWin = calculateGlicko2(leftStats, rightStats);
+        const leftIfLose = calculateGlicko2(rightStats, leftStats);
+        const leftGainWin = Math.round(leftIfWin.newWinnerRating - leftStats.rating);
+        const leftLoseIfLose = Math.round(leftIfLose.newLoserRating - leftStats.rating);
+        const rightGainWin = Math.round(leftIfLose.newWinnerRating - rightStats.rating);
+        const rightLoseIfLose = Math.round(leftIfWin.newLoserRating - rightStats.rating);
         const fmt = (n) => (n >= 0 ? '+' + n : n.toString());
 
-        const rank1 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.elo - a.elo); return sorted.findIndex(c => c.name === left.naam) + 1; })();
-        const rank2 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.elo - a.elo); return sorted.findIndex(c => c.name === right.naam) + 1; })();
+        const rank1 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.rating - a.rating); return sorted.findIndex(c => c.name === left.naam) + 1; })();
+        const rank2 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.rating - a.rating); return sorted.findIndex(c => c.name === right.naam) + 1; })();
 
         const devLeftHtml = `
             <div><strong>Rank:</strong> ${rank1}</div>
-            <div><strong>ELO:</strong> ${Math.round(leftStats.elo)}</div>
+            <div><strong>Rating:</strong> ${Math.round(leftStats.rating)} ± ${Math.round(leftStats.rd)}</div>
+            <div><strong>σ:</strong> ${leftStats.volatility.toFixed(4)}</div>
             <div><strong>Δ (win):</strong> ${fmt(leftGainWin)}</div>
             <div><strong>Δ (lose):</strong> ${fmt(leftLoseIfLose)}</div>
             <div><strong>Battles:</strong> ${leftStats.battles}</div>
@@ -2840,7 +3121,8 @@ const DOM = {};
         `;
         const devRightHtml = `
             <div><strong>Rank:</strong> ${rank2}</div>
-            <div><strong>ELO:</strong> ${Math.round(rightStats.elo)}</div>
+            <div><strong>Rating:</strong> ${Math.round(rightStats.rating)} ± ${Math.round(rightStats.rd)}</div>
+            <div><strong>σ:</strong> ${rightStats.volatility.toFixed(4)}</div>
             <div><strong>Δ (win):</strong> ${fmt(rightGainWin)}</div>
             <div><strong>Δ (lose):</strong> ${fmt(rightLoseIfLose)}</div>
             <div><strong>Battles:</strong> ${rightStats.battles}</div>
@@ -2853,7 +3135,7 @@ const DOM = {};
         `;
 
         // Place overlay inside coaster cards, over the images
-        const cards = battleContainer.querySelectorAll('.coaster-card');
+        const cards = battleContainer.querySelectorAll('.coaster-card, .battle-card');
         if (cards[0]) {
             const leftOverlay = document.createElement('div');
             leftOverlay.className = 'dev-data-overlay';
@@ -2913,7 +3195,7 @@ const DOM = {};
         if (!coasterName || !coasterStats[coasterName]) return null;
         
         const statsArray = Object.values(coasterStats);
-        const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+        const sorted = [...statsArray].sort((a, b) => b.rating - a.rating);
         
         return sorted.findIndex(c => c.name === coasterName) + 1;
     }
@@ -3008,20 +3290,20 @@ const DOM = {};
                     return arr.length - 1;
                 };
 
-                // Hybrid strategy: pick one under-sampled coaster first, then a second biased by ELO-proximity
+                // Hybrid strategy: pick one under-sampled coaster first, then a second biased by rating-proximity
                 // (still favors under-sampled ones via base weights)
                 const indexFromExploration = () => sampleIndexFromWeights(weights, randomFn);
                 for (let t = 0; t < attempts; t++) {
                     const i = indexFromExploration();
-                    // use displayedElo (regularized) for pairing proximity calculations
-                    const eloI = (coasterStats && coasterStats[coasters[i].naam]) ? displayedElo(coasterStats[coasters[i].naam]) : ELO_BASE;
+                    // use displayedRating (regularized) for pairing proximity calculations
+                    const ratingI = (coasterStats && coasterStats[coasters[i].naam]) ? displayedRating(coasterStats[coasters[i].naam]) : GLICKO2_RATING_BASE;
                     const condWeights = new Array(length);
                     for (let k = 0; k < length; k++) {
                         if (k === i) { condWeights[k] = 0; continue; }
                         const nameK = coasters[k].naam;
-                        const eloK = (coasterStats && coasterStats[nameK]) ? displayedElo(coasterStats[nameK]) : ELO_BASE;
-                        const diff = Math.abs(eloI - eloK) / ELO_DIFF_SCALE; // normalized diff (using displayed ELO)
-                        const proximityFactor = 1 / Math.pow(1 + diff, ELO_PROXIMITY_POWER);
+                        const ratingK = (coasterStats && coasterStats[nameK]) ? displayedRating(coasterStats[nameK]) : GLICKO2_RATING_BASE;
+                        const diff = Math.abs(ratingI - ratingK) / RATING_DIFF_SCALE; // normalized diff (using displayed rating)
+                        const proximityFactor = 1 / Math.pow(1 + diff, RATING_PROXIMITY_POWER);
                         const base = isFinite(weights[k]) && weights[k] > 0 ? weights[k] : 1;
                         condWeights[k] = base * proximityFactor;
                     }
@@ -3058,49 +3340,179 @@ const DOM = {};
         return getPairAvoidingDuplicates();
     }
 
-    function calculateElo(winnerElo, loserElo, K = 32) {
-        const eloDiff = (loserElo - winnerElo) / 400;
-        const expectedWinner = 1 / (1 + Math.pow(10, eloDiff));
-        const expectedLoser = 1 - expectedWinner;
+    // ========================================
+    // GLICKO-2 RATING SYSTEM IMPLEMENTATION
+    // ========================================
+
+    // Convert rating to Glicko-2 scale (μ)
+    function glicko2Scale(rating) {
+        return (rating - GLICKO2_RATING_BASE) / GLICKO2_SCALE_FACTOR;
+    }
+
+    // Convert Glicko-2 scale back to rating
+    function glicko2Unscale(mu) {
+        return mu * GLICKO2_SCALE_FACTOR + GLICKO2_RATING_BASE;
+    }
+
+    // Convert RD to Glicko-2 scale (φ)
+    function glicko2ScaleRD(rd) {
+        return rd / GLICKO2_SCALE_FACTOR;
+    }
+
+    // Convert Glicko-2 scale back to RD
+    function glicko2UnscaleRD(phi) {
+        return phi * GLICKO2_SCALE_FACTOR;
+    }
+
+    // g(φ) function - measures impact of opponent's RD
+    function glicko2_g(phi) {
+        return 1 / Math.sqrt(1 + 3 * phi * phi / (Math.PI * Math.PI));
+    }
+
+    // E(μ, μ_j, φ_j) - expected score against opponent
+    function glicko2_E(mu, mu_j, phi_j) {
+        return 1 / (1 + Math.exp(-glicko2_g(phi_j) * (mu - mu_j)));
+    }
+
+    // Calculate new Glicko-2 ratings after a match
+    // Returns: { newWinnerRating, newWinnerRD, newWinnerVolatility, newLoserRating, newLoserRD, newLoserVolatility }
+    function calculateGlicko2(winnerStats, loserStats) {
+        // Extract current values
+        const r1 = winnerStats.rating || GLICKO2_RATING_BASE;
+        const rd1 = winnerStats.rd || GLICKO2_RD_INITIAL;
+        const vol1 = winnerStats.volatility || GLICKO2_VOLATILITY_INITIAL;
         
+        const r2 = loserStats.rating || GLICKO2_RATING_BASE;
+        const rd2 = loserStats.rd || GLICKO2_RD_INITIAL;
+        const vol2 = loserStats.volatility || GLICKO2_VOLATILITY_INITIAL;
+
+        // Convert to Glicko-2 scale
+        const mu1 = glicko2Scale(r1);
+        const phi1 = glicko2ScaleRD(rd1);
+        const mu2 = glicko2Scale(r2);
+        const phi2 = glicko2ScaleRD(rd2);
+
+        // Calculate winner's new rating (won against loser)
+        const result1 = calculateGlicko2Single(mu1, phi1, vol1, [{ mu: mu2, phi: phi2, score: 1 }]);
+        
+        // Calculate loser's new rating (lost against winner)
+        const result2 = calculateGlicko2Single(mu2, phi2, vol2, [{ mu: mu1, phi: phi1, score: 0 }]);
+
         return {
-            newWinnerElo: winnerElo + K * (1 - expectedWinner),
-            newLoserElo: loserElo + K * (0 - expectedLoser)
+            newWinnerRating: glicko2Unscale(result1.mu),
+            newWinnerRD: glicko2UnscaleRD(result1.phi),
+            newWinnerVolatility: result1.sigma,
+            newLoserRating: glicko2Unscale(result2.mu),
+            newLoserRD: glicko2UnscaleRD(result2.phi),
+            newLoserVolatility: result2.sigma
         };
     }
 
-    // Compute adaptive K based on number of battles (automatic, internal)
-    function computeAdaptiveK(battles) {
-        return Math.max(K_MIN, K0 / (1 + (battles || 0) / K_DECAY_C));
+    // Core Glicko-2 calculation for a single player against opponents
+    function calculateGlicko2Single(mu, phi, sigma, opponents) {
+        // Step 1: Calculate v (estimated variance)
+        let v = 0;
+        for (const opp of opponents) {
+            const g_phi_j = glicko2_g(opp.phi);
+            const E_val = glicko2_E(mu, opp.mu, opp.phi);
+            v += g_phi_j * g_phi_j * E_val * (1 - E_val);
+        }
+        v = 1 / v;
+
+        // Step 2: Calculate Δ (estimated improvement in rating)
+        let delta = 0;
+        for (const opp of opponents) {
+            const g_phi_j = glicko2_g(opp.phi);
+            const E_val = glicko2_E(mu, opp.mu, opp.phi);
+            delta += g_phi_j * (opp.score - E_val);
+        }
+        delta *= v;
+
+        // Step 3: Determine new volatility (σ')
+        const sigma_new = calculateVolatility(sigma, phi, v, delta, GLICKO2_TAU);
+
+        // Step 4: Update rating deviation to new pre-rating period value
+        const phi_star = Math.sqrt(phi * phi + sigma_new * sigma_new);
+
+        // Step 5: Update rating and RD
+        const phi_new = 1 / Math.sqrt(1 / (phi_star * phi_star) + 1 / v);
+        
+        let mu_new = mu;
+        for (const opp of opponents) {
+            const g_phi_j = glicko2_g(opp.phi);
+            const E_val = glicko2_E(mu, opp.mu, opp.phi);
+            mu_new += phi_new * phi_new * g_phi_j * (opp.score - E_val);
+        }
+
+        return {
+            mu: mu_new,
+            phi: phi_new,
+            sigma: sigma_new
+        };
     }
 
-    // Displayed ELO with Bayesian-like shrinkage towards population mean
-    function displayedElo(stats) {
-        if (!stats) return ELO_BASE;
+    // Illinois algorithm to determine new volatility
+    function calculateVolatility(sigma, phi, v, delta, tau) {
+        const a = Math.log(sigma * sigma);
+        const delta_sq = delta * delta;
+        const phi_sq = phi * phi;
+        
+        // Define f(x)
+        const f = (x) => {
+            const ex = Math.exp(x);
+            const phi_sq_ex = phi_sq + v + ex;
+            const term1 = ex * (delta_sq - phi_sq - v - ex) / (2 * phi_sq_ex * phi_sq_ex);
+            const term2 = (x - a) / (tau * tau);
+            return term1 - term2;
+        };
+
+        // Initial values
+        let A = a;
+        let B;
+        
+        if (delta_sq > phi_sq + v) {
+            B = Math.log(delta_sq - phi_sq - v);
+        } else {
+            let k = 1;
+            while (f(a - k * tau) < 0) {
+                k++;
+            }
+            B = a - k * tau;
+        }
+
+        let fA = f(A);
+        let fB = f(B);
+
+        // Iterate using Illinois algorithm
+        while (Math.abs(B - A) > GLICKO2_EPSILON) {
+            const C = A + (A - B) * fA / (fB - fA);
+            const fC = f(C);
+
+            if (fC * fB < 0) {
+                A = B;
+                fA = fB;
+            } else {
+                fA = fA / 2;
+            }
+
+            B = C;
+            fB = fC;
+        }
+
+        return Math.exp(A / 2);
+    }
+
+    // Displayed rating with Bayesian-like shrinkage towards population mean (for ranking display)
+    function displayedRating(stats) {
+        if (!stats) return GLICKO2_RATING_BASE;
         const n = stats.battles || 0;
-        if (n === 0) return ELO_BASE;
-        return (stats.elo * n + ELO_BASE * PRIOR_WEIGHT) / (n + PRIOR_WEIGHT);
+        if (n === 0) return GLICKO2_RATING_BASE;
+        return (stats.rating * n + GLICKO2_RATING_BASE * PRIOR_WEIGHT) / (n + PRIOR_WEIGHT);
     }
 
-    // Adaptive ELO calculation using each coaster's battle count to pick K
-    function calculateEloAdaptiveFromStats(winnerStats, loserStats) {
-        const wElo = (winnerStats && typeof winnerStats.elo === 'number') ? winnerStats.elo : ELO_BASE;
-        const lElo = (loserStats && typeof loserStats.elo === 'number') ? loserStats.elo : ELO_BASE;
-        const wBattles = (winnerStats && typeof winnerStats.battles === 'number') ? winnerStats.battles : 0;
-        const lBattles = (loserStats && typeof loserStats.battles === 'number') ? loserStats.battles : 0;
-
-        const Kw = computeAdaptiveK(wBattles);
-        const Kl = computeAdaptiveK(lBattles);
-        const K = Math.max(Kw, Kl);
-
-        const expectedWinner = 1 / (1 + Math.pow(10, (lElo - wElo) / 400));
-        const expectedLoser = 1 - expectedWinner;
-
-        const newWinnerElo = wElo + K * (1 - expectedWinner);
-        const newLoserElo = lElo + K * (0 - expectedLoser);
-
-        return { newWinnerElo, newLoserElo, K };
-    }
+    // ========================================
+    // END GLICKO-2 RATING SYSTEM
+    // ========================================
 
     // Ensure a coaster has an entry in `coasterStats`. Returns the stats object.
     function ensureCoasterStats(coaster) {
@@ -3111,7 +3523,9 @@ const DOM = {};
                 name: name,
                 park: coaster.park || (coaster.park === undefined ? '' : coaster.park),
                 manufacturer: coaster.fabrikant || coaster.manufacturer || '',
-                elo: 1500,
+                rating: GLICKO2_RATING_BASE,
+                rd: GLICKO2_RD_INITIAL,
+                volatility: GLICKO2_VOLATILITY_INITIAL,
                 battles: 0,
                 wins: 0,
                 losses: 0
@@ -3140,8 +3554,8 @@ const DOM = {};
     function findCloseMatchup() {
         const statsArray = Object.values(coasterStats || {});
         if (!statsArray || statsArray.length < 2) return null;
-        // compute sorted ranks by displayedElo
-        const sorted = [...statsArray].sort((a,b) => displayedElo(b) - displayedElo(a));
+        // compute sorted ranks by displayedRating
+        const sorted = [...statsArray].sort((a,b) => displayedRating(b) - displayedRating(a));
         const nameToRank = {};
         sorted.forEach((s, idx) => { nameToRank[s.name] = idx + 1; });
 
@@ -3247,7 +3661,7 @@ const DOM = {};
 
                 const overlay = document.getElementById('closeBattleOverlay');
                 const banner = document.getElementById('closeBanner');
-                const cards = document.querySelectorAll('.coaster-card');
+                const cards = document.querySelectorAll('.coaster-card, .battle-card, .credit-card-outer');
                 const battleContainerEl = DOM.battleContainer || document.getElementById('battleContainer');
                 // bring cards above overlay during intro
                 const prevZ = battleContainerEl && battleContainerEl.style ? battleContainerEl.style.zIndex : null;
@@ -3545,13 +3959,13 @@ const DOM = {};
         
         // Get current rankings for both coasters (cache sorted array)
         const statsArray = Object.values(coasterStats);
-        const sortedByElo = [...statsArray].sort((a, b) => b.elo - a.elo);
+        const sortedByRating = [...statsArray].sort((a, b) => b.rating - a.rating);
     function getRanking(coasterName) {
-        if (!sortedByElo) {
+        if (!sortedByRating) {
             const statsArray = Object.values(coasterStats);
-            sortedByElo = [...statsArray].sort((a, b) => b.elo - a.elo);
+            sortedByRating = [...statsArray].sort((a, b) => b.rating - a.rating);
         }
-        return sortedByElo.findIndex(c => c.name === coasterName) + 1;
+        return sortedByRating.findIndex(c => c.name === coasterName) + 1;
     }
         
         const rank1 = getRanking(currentBattle[0].naam);
@@ -3559,22 +3973,20 @@ const DOM = {};
         
         // dev data calculations
         const left = currentBattle[0], right = currentBattle[1];
-        const leftStats = coasterStats[left.naam] || { elo:1500, battles:0, wins:0, losses:0 };
-        const rightStats = coasterStats[right.naam] || { elo:1500, battles:0, wins:0, losses:0 };
-        // compute ELO scenarios once
-        const leftIfWin = calculateEloAdaptiveFromStats(leftStats, rightStats);
-        const leftIfLose = calculateEloAdaptiveFromStats(rightStats, leftStats);
-        const rightIfWin = calculateEloAdaptiveFromStats(rightStats, leftStats);
-        const rightIfLose = calculateEloAdaptiveFromStats(leftStats, rightStats);
-        const leftGainWin = Math.round(leftIfWin.newWinnerElo - leftStats.elo);
-        const leftLoseIfLose = Math.round(leftIfLose.newLoserElo - leftStats.elo);
-        const rightGainWin = Math.round(rightIfWin.newWinnerElo - rightStats.elo);
-        const rightLoseIfLose = Math.round(rightIfLose.newLoserElo - rightStats.elo);
+        const leftStats = coasterStats[left.naam] || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
+        const rightStats = coasterStats[right.naam] || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
+        // compute Glicko-2 scenarios once
+        const leftIfWin = calculateGlicko2(leftStats, rightStats);
+        const leftIfLose = calculateGlicko2(rightStats, leftStats);
+        const leftGainWin = Math.round(leftIfWin.newWinnerRating - leftStats.rating);
+        const leftLoseIfLose = Math.round(leftIfLose.newLoserRating - leftStats.rating);
+        const rightGainWin = Math.round(leftIfLose.newWinnerRating - rightStats.rating);
+        const rightLoseIfLose = Math.round(leftIfWin.newLoserRating - rightStats.rating);
         const fmt = (n) => (n >= 0 ? '+' + n : n.toString());
         
         const devLeftHtml = `
             <div><strong>Rank:</strong> ${rank1}</div>
-            <div><strong>ELO:</strong> ${Math.round(leftStats.elo)}</div>
+            <div><strong>Rating:</strong> ${Math.round(leftStats.rating)} ± ${Math.round(leftStats.rd)}</div>
             <div><strong>Δ (win):</strong> ${fmt(leftGainWin)}</div>
             <div><strong>Δ (lose):</strong> ${fmt(leftLoseIfLose)}</div>
             <div><strong>Battles:</strong> ${leftStats.battles}</div>
@@ -3583,7 +3995,7 @@ const DOM = {};
         `;
         const devRightHtml = `
             <div><strong>Rank:</strong> ${rank2}</div>
-            <div><strong>ELO:</strong> ${Math.round(rightStats.elo)}</div>
+            <div><strong>Rating:</strong> ${Math.round(rightStats.rating)} ± ${Math.round(rightStats.rd)}</div>
             <div><strong>Δ (win):</strong> ${fmt(rightGainWin)}</div>
             <div><strong>Δ (lose):</strong> ${fmt(rightLoseIfLose)}</div>
             <div><strong>Battles:</strong> ${rightStats.battles}</div>
@@ -3607,54 +4019,95 @@ const DOM = {};
             preloadImage(rightImageUrl)
         ]);
         
-        // Start background preloading for next battles
-        setTimeout(() => preloadNextBattles(), 50);
+        // Start background preloading for next battles immediately (no delay)
+        preloadNextBattles();
         
         // Check if this is a close fight (will be used for banner)
         const leftStatsForCheck = coasterStats[left.naam] || { battles: 0 };
         const rightStatsForCheck = coasterStats[right.naam] || { battles: 0 };
-        const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles > 2) && (rightStatsForCheck.battles > 2));
+        const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles >= 3) && (rightStatsForCheck.battles >= 3));
+        
+        // Helper function to generate credit card for battle
+        const generateBattleCard = (coaster, imageUrl, rank, choice) => {
+            const bgColor = manufacturerColors[coaster.fabrikant] || manufacturerColors['Unknown'];
+            const borderColors = {
+                'B&M': '#D0D1D2', 'Bolliger & Mabillard': '#D0D1D2',
+                'Intamin': '#E35B5B', 'Vekoma': '#F2994A', 'Mack Rides': '#5B8EDB',
+                'Gerstlauer': '#6FAE75', 'RMC': '#A47148', 'Rocky Mountain Construction': '#A47148',
+                'GCI': '#F2C94C', 'Great Coasters International': '#F2C94C',
+                'Maurer Rides': '#9B6CCF', 'S&S': '#D6C7A1', 'Zamperla': '#E38EB5',
+                'Zierer': '#5EC4C4', 'Schwarzkopf': '#C7C4BF', 'Other': '#B0ABA6', 'Unknown': '#B0ABA6'
+            };
+            const borderColor = borderColors[coaster.fabrikant] || borderColors['Unknown'];
+            
+            let rankClass = 'rank-other';
+            if (rank === 1) rankClass = 'rank-gold';
+            else if (rank === 2) rankClass = 'rank-silver';
+            else if (rank === 3) rankClass = 'rank-bronze';
+            
+            const displaySpeed = coaster.max_speed_kmh || '-';
+            const displayHeight = coaster.track_height_m || '-';
+            const displayLength = coaster.track_length_m || '-';
+            const displayInversions = (coaster.inversions !== undefined && coaster.inversions !== null) ? coaster.inversions : '-';
+            
+            let locationLine = coaster.park || '';
+            if (coaster.country) locationLine += (locationLine ? ' - ' : '') + coaster.country;
+            if (coaster.opening_date) locationLine += (locationLine ? ' - ' : '') + coaster.opening_date;
+            
+            let manuLine = coaster.fabrikant || '';
+            if (coaster.coaster_build) manuLine += (manuLine ? ' - ' : '') + coaster.coaster_build;
+            if (coaster.coaster_model) manuLine += (manuLine ? ' - ' : '') + coaster.coaster_model;
+            
+            return `
+                <div class="credit-card-outer" style="border: 6px solid ${bgColor};">
+                    <div class="credit-card battle-card" style="background-color: ${bgColor}; border: 9px solid ${borderColor};" data-choice="${choice}">
+                        <div class="credit-card-image" style="border-color: ${borderColor};">
+                            <img src="${imageUrl}" alt="${escapeHtml(coaster.naam)}" class="credit-card-img" />
+                            <div class="credit-rank-badge ${rankClass}">${rank}</div>
+                        </div>
+                        <div class="credit-card-info">
+                            <h1 class="credit-card-name">${escapeHtml(coaster.naam)}</h1>
+                            <div class="credit-card-divider"></div>
+                            <p class="credit-card-location">${escapeHtml(locationLine)}</p>
+                            <p class="credit-card-meta">${escapeHtml(manuLine)}</p>
+                            <div class="credit-card-divider"></div>
+                        </div>
+                        <div class="credit-card-stats">
+                            <div class="credit-stat">
+                                <div class="credit-stat-label">speed</div>
+                                <div class="credit-stat-value">${displaySpeed}${displaySpeed !== '-' ? 'km/h' : ''}</div>
+                            </div>
+                            <div class="credit-stat">
+                                <div class="credit-stat-label">height</div>
+                                <div class="credit-stat-value">${displayHeight}${displayHeight !== '-' ? 'm' : ''}</div>
+                            </div>
+                            <div class="credit-stat">
+                                <div class="credit-stat-label">length</div>
+                                <div class="credit-stat-value">${displayLength}${displayLength !== '-' ? 'm' : ''}</div>
+                            </div>
+                            <div class="credit-stat">
+                                <div class="credit-stat-label">inversions</div>
+                                <div class="credit-stat-value">${displayInversions}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
         
         // Render cards with images already loaded
         battleContainer.innerHTML = `
             ${isCloseFightMatch ? '<div class="close-fight-banner">⚔️ CLOSE FIGHT ⚔️</div>' : ''}
             <div class="coaster-item">
-                <div class="coaster-card left-card" data-choice="0">
-                    <div class="coaster-image">
-                        <img class="coaster-img" src="${leftImageUrl}" alt="${escapeHtml(left.naam)}" />
-                    </div>
-                    <div class="coaster-rank-badge">${rank1}</div>
-                    <div class="coaster-content">
-                        <div class="coaster-name">${left.naam}</div>
-                        <div class="coaster-subtitle">
-                            <span class="${parkClass}">${left.park}</span>
-                            <span class="separator">•</span>
-                            <span class="${fabrikantClass}">${left.fabrikant}</span>
-                        </div>
-                    </div>
-                </div>
+                ${generateBattleCard(left, leftImageUrl, rank1, 0)}
             </div>
-            
             <div class="coaster-item">
-                <div class="coaster-card right-card" data-choice="1">
-                    <div class="coaster-image">
-                        <img class="coaster-img" src="${rightImageUrl}" alt="${escapeHtml(right.naam)}" />
-                    </div>
-                    <div class="coaster-rank-badge">${rank2}</div>
-                    <div class="coaster-content">
-                        <div class="coaster-name">${right.naam}</div>
-                        <div class="coaster-subtitle">
-                            <span class="${parkClass}">${right.park}</span>
-                            <span class="separator">•</span>
-                            <span class="${fabrikantClass}">${right.fabrikant}</span>
-                        </div>
-                    </div>
-                </div>
+                ${generateBattleCard(right, rightImageUrl, rank2, 1)}
             </div>
         `;
         
         // Add click handlers AFTER rendering (gives better control over event propagation)
-        const coasterCards = battleContainer.querySelectorAll('.coaster-card');
+        const coasterCards = battleContainer.querySelectorAll('.battle-card');
         coasterCards.forEach(card => {
             card.addEventListener('click', (e) => {
                 // STRICT CHECK: Do NOT trigger if clicking inside dev-data overlay
@@ -3671,14 +4124,14 @@ const DOM = {};
         // If this matchup qualifies as a close fight, play the intro animation
         const getRankingNum = (coasterName) => {
             const statsArray = Object.values(coasterStats);
-            const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+            const sorted = [...statsArray].sort((a, b) => b.rating - a.rating);
             return sorted.findIndex(c => c.name === coasterName) + 1;
         };
         const r1 = getRankingNum(left.naam);
         const r2 = getRankingNum(right.naam);
         const leftStatsObj = coasterStats[left.naam] || { battles: 0 };
         const rightStatsObj = coasterStats[right.naam] || { battles: 0 };
-        const isCloseEligible = ((Math.abs(r1 - r2) <= 3) && (leftStatsObj.battles > 2) && (rightStatsObj.battles > 2));
+        const isCloseEligible = ((Math.abs(r1 - r2) <= 3) && (leftStatsObj.battles >= 3) && (rightStatsObj.battles >= 3));
         // Determine whether an epic intro will fire on the next battle (rare event)
         function willEpicTriggerOnNext(){
             try{
@@ -3727,7 +4180,7 @@ const DOM = {};
 
         // ranking helper (cache sorted array for efficiency)
         const statsArray = Object.values(coasterStats);
-        const sortedStats = [...statsArray].sort((a, b) => b.elo - a.elo);
+        const sortedStats = [...statsArray].sort((a, b) => b.rating - a.rating);
         const getRanking = (coasterName) => {
             return sortedStats.findIndex(c => c.name === coasterName) + 1;
         };
@@ -3736,29 +4189,37 @@ const DOM = {};
         const oldLoserRank = getRanking(loser.naam);
 
         // ensure stats exist
-        const winnerStats = ensureCoasterStats(winner) || { elo:1500, battles:0, wins:0, losses:0 };
-        const loserStats = ensureCoasterStats(loser) || { elo:1500, battles:0, wins:0, losses:0 };
+        const winnerStats = ensureCoasterStats(winner) || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
+        const loserStats = ensureCoasterStats(loser) || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
 
-        // Capture ELO values BEFORE battle
-        const winnerEloBefore = winnerStats.elo;
-        const loserEloBefore = loserStats.elo;
+        // Capture rating values BEFORE battle
+        const winnerRatingBefore = winnerStats.rating;
+        const loserRatingBefore = loserStats.rating;
+        const winnerRDBefore = winnerStats.rd;
+        const loserRDBefore = loserStats.rd;
+        const winnerVolatilityBefore = winnerStats.volatility;
+        const loserVolatilityBefore = loserStats.volatility;
 
-        // compute ELO outcome and potential changes
-        const eloOutcome = calculateEloAdaptiveFromStats(winnerStats, loserStats);
-        const { newWinnerElo, newLoserElo, K } = eloOutcome;
+        // compute Glicko-2 outcome
+        const glickoOutcome = calculateGlicko2(winnerStats, loserStats);
+        const { newWinnerRating, newWinnerRD, newWinnerVolatility, newLoserRating, newLoserRD, newLoserVolatility } = glickoOutcome;
         
-        // Calculate expected win probabilities
-        const expectedWinnerProb = 1 / (1 + Math.pow(10, (loserEloBefore - winnerEloBefore) / 400));
+        // Calculate expected win probabilities (using Glicko-2 scale)
+        const mu1 = glicko2Scale(winnerRatingBefore);
+        const phi1 = glicko2ScaleRD(winnerRDBefore);
+        const mu2 = glicko2Scale(loserRatingBefore);
+        const phi2 = glicko2ScaleRD(loserRDBefore);
+        const expectedWinnerProb = glicko2_E(mu1, mu2, phi2);
         const expectedLoserProb = 1 - expectedWinnerProb;
         
         // Calculate potential gains/losses for both outcomes
-        const winnerPotentialGain = newWinnerElo - winnerEloBefore;
-        const loserPotentialLoss = newLoserElo - loserEloBefore;
+        const winnerPotentialGain = newWinnerRating - winnerRatingBefore;
+        const loserPotentialLoss = newLoserRating - loserRatingBefore;
         
         // Calculate what would happen if loser won instead
-        const loserIfWinOutcome = calculateEloAdaptiveFromStats(loserStats, winnerStats);
-        const loserPotentialGain = loserIfWinOutcome.newWinnerElo - loserEloBefore;
-        const winnerPotentialLoss = loserIfWinOutcome.newLoserElo - winnerEloBefore;
+        const loserIfWinOutcome = calculateGlicko2(loserStats, winnerStats);
+        const loserPotentialGain = loserIfWinOutcome.newWinnerRating - loserRatingBefore;
+        const winnerPotentialLoss = loserIfWinOutcome.newLoserRating - winnerRatingBefore;
 
         const winnerId = getCoasterId(winner);
 
@@ -3766,29 +4227,41 @@ const DOM = {};
         triggerCloseBattleIfNeeded(winner, loser, oldWinnerRank, oldLoserRank, winnerId).then(({triggered, forcedSwap}) => {
             // apply ranking changes
             if (forcedSwap) {
-                // Check if normal ELO calculation would already cause a position swap
-                if (newWinnerElo > newLoserElo) {
-                    // Normal ELO already results in winner being above loser - use it to maintain consistency
-                    winnerStats.elo = newWinnerElo;
-                    loserStats.elo = newLoserElo;
+                // Check if normal Glicko-2 calculation would already cause a position swap
+                if (newWinnerRating > newLoserRating) {
+                    // Normal calculation already results in winner being above loser - use it to maintain consistency
+                    winnerStats.rating = newWinnerRating;
+                    winnerStats.rd = newWinnerRD;
+                    winnerStats.volatility = newWinnerVolatility;
+                    loserStats.rating = newLoserRating;
+                    loserStats.rd = newLoserRD;
+                    loserStats.volatility = newLoserVolatility;
                 } else {
                     // Force winner to be above loser (only when necessary)
-                    const baseLoserElo = (loserStats && typeof loserStats.elo === 'number') ? loserStats.elo : ELO_BASE;
-                    winnerStats.elo = baseLoserElo + 2;
-                    loserStats.elo = baseLoserElo - 1;
+                    const baseLoserRating = (loserStats && typeof loserStats.rating === 'number') ? loserStats.rating : GLICKO2_RATING_BASE;
+                    winnerStats.rating = baseLoserRating + 2;
+                    winnerStats.rd = newWinnerRD;
+                    winnerStats.volatility = newWinnerVolatility;
+                    loserStats.rating = baseLoserRating - 1;
+                    loserStats.rd = newLoserRD;
+                    loserStats.volatility = newLoserVolatility;
                 }
             } else {
-                winnerStats.elo = newWinnerElo;
-                loserStats.elo = newLoserElo;
+                winnerStats.rating = newWinnerRating;
+                winnerStats.rd = newWinnerRD;
+                winnerStats.volatility = newWinnerVolatility;
+                loserStats.rating = newLoserRating;
+                loserStats.rd = newLoserRD;
+                loserStats.volatility = newLoserVolatility;
             }
 
             winnerStats.battles++; winnerStats.wins++;
             loserStats.battles++; loserStats.losses++;
             totalBattlesCount++;
 
-            // Get ranks after ELO changes
-            const newWinnerRank = getRanking(winner.naam);
-            const newLoserRank = getRanking(loser.naam);
+            // Get ranks after rating changes
+            const newWinnerRank = getCoasterRank(winner.naam);
+            const newLoserRank = getCoasterRank(loser.naam);
             
             // Determine if this was a close fight
             const wasCloseMatchFlag = Math.abs(oldWinnerRank - oldLoserRank) < 3;
@@ -3796,9 +4269,12 @@ const DOM = {};
             // Build comprehensive battle stats for storage
             const battleStats = {
                 statsA: {
-                    eloBefore: (currentBattle[0].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
-                    eloAfter: (currentBattle[0].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
-                    kFactor: K,
+                    ratingBefore: (currentBattle[0].naam === winner.naam) ? winnerRatingBefore : loserRatingBefore,
+                    ratingAfter: (currentBattle[0].naam === winner.naam) ? winnerStats.rating : loserStats.rating,
+                    rdBefore: (currentBattle[0].naam === winner.naam) ? winnerRDBefore : loserRDBefore,
+                    rdAfter: (currentBattle[0].naam === winner.naam) ? winnerStats.rd : loserStats.rd,
+                    volatilityBefore: (currentBattle[0].naam === winner.naam) ? winnerVolatilityBefore : loserVolatilityBefore,
+                    volatilityAfter: (currentBattle[0].naam === winner.naam) ? winnerStats.volatility : loserStats.volatility,
                     potentialGain: (currentBattle[0].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
                     potentialLoss: (currentBattle[0].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
                     rankBefore: (currentBattle[0].naam === winner.naam) ? oldWinnerRank : oldLoserRank,
@@ -3807,9 +4283,12 @@ const DOM = {};
                     totalBattlesBefore: (currentBattle[0].naam === winner.naam) ? winnerStats.battles - 1 : loserStats.battles - 1
                 },
                 statsB: {
-                    eloBefore: (currentBattle[1].naam === winner.naam) ? winnerEloBefore : loserEloBefore,
-                    eloAfter: (currentBattle[1].naam === winner.naam) ? winnerStats.elo : loserStats.elo,
-                    kFactor: K,
+                    ratingBefore: (currentBattle[1].naam === winner.naam) ? winnerRatingBefore : loserRatingBefore,
+                    ratingAfter: (currentBattle[1].naam === winner.naam) ? winnerStats.rating : loserStats.rating,
+                    rdBefore: (currentBattle[1].naam === winner.naam) ? winnerRDBefore : loserRDBefore,
+                    rdAfter: (currentBattle[1].naam === winner.naam) ? winnerStats.rd : loserStats.rd,
+                    volatilityBefore: (currentBattle[1].naam === winner.naam) ? winnerVolatilityBefore : loserVolatilityBefore,
+                    volatilityAfter: (currentBattle[1].naam === winner.naam) ? winnerStats.volatility : loserStats.volatility,
                     potentialGain: (currentBattle[1].naam === winner.naam) ? winnerPotentialGain : loserPotentialGain,
                     potentialLoss: (currentBattle[1].naam === winner.naam) ? winnerPotentialLoss : loserPotentialLoss,
                     rankBefore: (currentBattle[1].naam === winner.naam) ? oldWinnerRank : oldLoserRank,
@@ -3841,8 +4320,15 @@ const DOM = {};
                 achievementManager.recordBattle(index, perfectMatch, wasCloseFight, currentBattle[0].naam, currentBattle[1].naam, underdogWon);
             }
 
-            // Visual feedback on cards
-            const cards = document.querySelectorAll('.coaster-card');
+            // Visual feedback on cards (apply to outer wrapper for proper animation)
+            const outerWrappers = document.querySelectorAll('.credit-card-outer');
+            const cards = document.querySelectorAll('.coaster-card, .battle-card');
+            
+            // Apply animation classes to outer wrapper
+            if (outerWrappers[index]) outerWrappers[index].classList.add('winner');
+            if (outerWrappers[1 - index]) outerWrappers[1 - index].classList.add('loser');
+            
+            // Also apply to inner card for backwards compatibility
             if (cards[index]) cards[index].classList.add('winner');
             if (cards[1 - index]) cards[1 - index].classList.add('loser');
 
@@ -3887,14 +4373,14 @@ const DOM = {};
                     }
                 } catch (e) { /* ignore */ }
 
-                const cardEl = (document.querySelectorAll('.coaster-card') || [])[index];
+                const cardEl = (document.querySelectorAll('.coaster-card, .battle-card') || [])[index];
                 celebrateWinner(cardEl, winner.naam).then(()=>{
                     // Check achievements after celebration
                     checkAndShowAchievements();
                     // Clear current battle before displaying next one
                     currentBattle = null;
                     // small pause then continue
-                    setTimeout(()=>{ displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 150);
+                    setTimeout(()=>{ displayBattle(); isProcessingChoice = false; resolvingBattle = false; }, 50);
                 });
             } else {
                 // delay before next battle: celebrate longer if we triggered epic
@@ -3912,7 +4398,9 @@ const DOM = {};
         }).catch((e)=>{
             console.error('close-battle flow error', e);
             // fallback apply normally (without comprehensive stats since this is error recovery)
-            winnerStats.elo = newWinnerElo; loserStats.elo = newLoserElo;
+            winnerStats.rating = newWinnerRating; loserStats.rating = newLoserRating;
+            winnerStats.rd = newWinnerRd; loserStats.rd = newLoserRd;
+            winnerStats.volatility = newWinnerVolatility; loserStats.volatility = newLoserVolatility;
             winnerStats.battles++; winnerStats.wins++; loserStats.battles++; loserStats.losses++; totalBattlesCount++;
             recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam); // Basic record without stats
             saveData(); updateRanking(); displayBattle(); isProcessingChoice = false;
@@ -3925,13 +4413,14 @@ const DOM = {};
         if (!currentUser) return;
         
         // Number key navigation (1-4 for tabs)
-        if (['1', '2', '3', '4'].includes(event.key)) {
+        if (['1', '2', '3', '4', '5'].includes(event.key)) {
             event.preventDefault();
             const tabMap = {
-                '1': 'battle',
-                '2': 'ranking',
-                '3': 'history',
-                '4': 'achievements'
+                '1': 'home',
+                '2': 'battle',
+                '3': 'ranking',
+                '4': 'history',
+                '5': 'achievements'
             };
             achievementManager.usedNumberKeys = 1;
             switchTab(tabMap[event.key]);
@@ -3975,6 +4464,9 @@ const DOM = {};
 
     // Check if hint was previously dismissed and sync simulate input width on load
     window.addEventListener('DOMContentLoaded', () => {
+        // Load dark mode preference
+        loadDarkModePreference();
+        
         const dismissed = localStorage.getItem('keyboardHintDismissed');
         if (dismissed === 'true') {
             const hint = document.getElementById('keyboardHint');
@@ -3996,12 +4488,12 @@ const DOM = {};
             try { displayBattle(); } catch (ee) {}
         }
 
-        // Initialize achievements display if a user was previously selected
+        // Initialize pins display if a user was previously selected
         const lastUser = localStorage.getItem('lastUser');
         if (lastUser && typeof achievementManager !== 'undefined') {
             setTimeout(() => {
                 if (currentUser) {
-                    updateAchievementsTab();
+                    updatePinsDisplay();
                 }
             }, 100);
         }
@@ -4177,7 +4669,7 @@ const DOM = {};
         if (totalBattles === 0) {
             top3Container.innerHTML = '<div class="no-battles">Start battling to see your favorites!</div>';
         } else {
-            const sorted = [...statsArray].sort((a, b) => displayedElo(b) - displayedElo(a));
+            const sorted = [...statsArray].sort((a, b) => displayedRating(b) - displayedRating(a));
             const top3 = sorted.slice(0, 3);
             
             const html = top3.map((coaster, index) => {
@@ -4197,18 +4689,18 @@ const DOM = {};
             top3Container.innerHTML = html;
         }
 
-        // Update achievements
+        // Update pins
         try {
-            const totalAchievements = Object.keys(ACHIEVEMENTS).length;
+            const totalPins = Object.keys(ACHIEVEMENTS).length;
             const unlockedCount = achievementManager.getUnlockedCount();
-            document.getElementById('homeAchievementCount').textContent = `${unlockedCount}/${totalAchievements}`;
+            document.getElementById('homeAchievementCount').textContent = `${unlockedCount}/${totalPins}`;
             
-            // Show 3 most recent achievements
+            // Show 3 most recent pins
             const recent = achievementManager.getRecentAchievements(3);
             const recentHtml = recent.map(ach => 
                 `<div class="recent-achievement-icon" title="${ach.name}">${ach.icon}</div>`
             ).join('');
-            document.getElementById('homeRecentAchievements').innerHTML = recentHtml || '<div style="text-align:center;color:#999;font-size:0.9em;">No achievements yet</div>';
+            document.getElementById('homeRecentAchievements').innerHTML = recentHtml || '<div style="text-align:center;color:#999;font-size:0.9em;">No pins yet</div>';
         } catch (e) {
             document.getElementById('homeAchievementCount').textContent = '0/0';
             document.getElementById('homeRecentAchievements').innerHTML = '';
@@ -4228,7 +4720,6 @@ const DOM = {};
         const battleTab = document.getElementById('battle-tab');
         const rankingTab = document.getElementById('ranking-tab');
         const historyTab = document.getElementById('history-tab');
-        const achievementsTab = document.getElementById('achievements-tab');
         
         if (profileTab) {
             // Temporarily make profile visible to measure it
@@ -4268,10 +4759,6 @@ const DOM = {};
                 historyTab.style.height = profileHeight + 'px';
                 historyTab.style.overflowY = 'auto';
             }
-            if (achievementsTab) {
-                achievementsTab.style.height = profileHeight + 'px';
-                achievementsTab.style.overflowY = 'auto';
-            }
         }
     }
 
@@ -4279,6 +4766,11 @@ const DOM = {};
         // Save the current tab to localStorage
         try {
             localStorage.setItem('lastActiveTab', tabName);
+        } catch (e) { /* ignore */ }
+        
+        // Hide pins overlay when switching tabs (especially when clicking profile tab)
+        try {
+            hidePinsOverlay();
         } catch (e) { /* ignore */ }
         
         // Always hide close battle overlay when switching tabs
@@ -4297,7 +4789,7 @@ const DOM = {};
         
         // Find and activate the corresponding tab button
         const tabButtons = document.querySelectorAll('.tab');
-        const tabMap = ['home', 'battle', 'ranking', 'history', 'achievements'];
+        const tabMap = ['home', 'credits', 'battle', 'ranking', 'history'];
         const tabIndex = tabMap.indexOf(tabName);
         if (tabIndex >= 0 && tabButtons[tabIndex]) {
             tabButtons[tabIndex].classList.add('active');
@@ -4324,12 +4816,8 @@ const DOM = {};
             updateRanking();
         } else if (tabName === 'history') {
             displayHistory();
-        } else if (tabName === 'achievements') {
-            console.log('Switching to achievements tab');
-            const achievementsTab = document.getElementById('achievements-tab');
-            console.log('Achievements tab element:', achievementsTab);
-            console.log('Achievements tab has active class:', achievementsTab ? achievementsTab.classList.contains('active') : 'element not found');
-            updateAchievementsTab();
+        } else if (tabName === 'credits') {
+            // Credits tab - placeholder for future functionality
         }
         
         // Match tab heights after switching and content is rendered
@@ -4621,27 +5109,32 @@ const DOM = {};
         entry.winner = newWinner;
         entry.loser = oldWinner;
         
-        // Update ELO ratings by reversing the previous outcome
+        // Update ratings by reversing the previous outcome
         const winnerStats = coasterStats[oldWinner];
         const loserStats = coasterStats[newWinner];
         
         if (winnerStats && loserStats && entry.statsA && entry.statsB) {
-            console.log('Current ELO before restoration:', {
-                [oldWinner]: winnerStats.elo,
-                [newWinner]: loserStats.elo
+            console.log('Current rating before restoration:', {
+                [oldWinner]: winnerStats.rating,
+                [newWinner]: loserStats.rating
             });
             
-            // Restore ELO to BEFORE this battle happened (to avoid compounding errors)
+            // Restore rating to BEFORE this battle happened (to avoid compounding errors)
             const aStats = coasterStats[entry.a];
             const bStats = coasterStats[entry.b];
             
             if (aStats && bStats) {
-                aStats.elo = entry.statsA.eloBefore;
-                bStats.elo = entry.statsB.eloBefore;
+                // Restore from stored battle stats (support both old ELO and new Glicko-2)
+                aStats.rating = entry.statsA.ratingBefore || entry.statsA.eloBefore || aStats.rating;
+                aStats.rd = entry.statsA.rdBefore || GLICKO2_RD_INITIAL;
+                aStats.volatility = entry.statsA.volatilityBefore || GLICKO2_VOLATILITY_INITIAL;
+                bStats.rating = entry.statsB.ratingBefore || entry.statsB.eloBefore || bStats.rating;
+                bStats.rd = entry.statsB.rdBefore || GLICKO2_RD_INITIAL;
+                bStats.volatility = entry.statsB.volatilityBefore || GLICKO2_VOLATILITY_INITIAL;
                 
-                console.log('Restored ELO to pre-battle state:', {
-                    [entry.a]: aStats.elo,
-                    [entry.b]: bStats.elo
+                console.log('Restored rating to pre-battle state:', {
+                    [entry.a]: aStats.rating,
+                    [entry.b]: bStats.rating
                 });
             }
             
@@ -4663,21 +5156,24 @@ const DOM = {};
                 [newWinner]: { wins: loserStats.wins, losses: loserStats.losses }
             });
             
-            // Now recalculate ELO from the original before-battle state with new winner
+            // Now recalculate rating from the original before-battle state with new winner
             const newWinnerStats = coasterStats[newWinner];
             const oldWinnerStats = coasterStats[oldWinner];
             
-            const eloOutcome = calculateEloAdaptiveFromStats(newWinnerStats, oldWinnerStats);
-            const { newWinnerElo, newLoserElo, K } = eloOutcome;
+            const glickoOutcome = calculateGlicko2(newWinnerStats, oldWinnerStats);
+            const { newWinnerRating, newWinnerRD, newWinnerVolatility, newLoserRating, newLoserRD, newLoserVolatility } = glickoOutcome;
             
-            console.log('Recalculated ELO:', {
-                kFactor: K,
-                [newWinner]: `${newWinnerStats.elo} → ${newWinnerElo}`,
-                [oldWinner]: `${oldWinnerStats.elo} → ${newLoserElo}`
+            console.log('Recalculated rating:', {
+                [newWinner]: `${newWinnerStats.rating} → ${newWinnerRating}`,
+                [oldWinner]: `${oldWinnerStats.rating} → ${newLoserRating}`
             });
             
-            newWinnerStats.elo = newWinnerElo;
-            oldWinnerStats.elo = newLoserElo;
+            newWinnerStats.rating = newWinnerRating;
+            newWinnerStats.rd = newWinnerRD;
+            newWinnerStats.volatility = newWinnerVolatility;
+            oldWinnerStats.rating = newLoserRating;
+            oldWinnerStats.rd = newLoserRD;
+            oldWinnerStats.volatility = newLoserVolatility;
             
             // Update comprehensive battle stats if they exist
             if (entry.statsA && entry.statsB) {
@@ -4700,26 +5196,34 @@ const DOM = {};
                 
                 if (isAtheNewWinner) {
                     // A is now winner, B is now loser - update their after-battle values
-                    entry.statsA.eloAfter = newWinnerStats.elo;
+                    entry.statsA.ratingAfter = newWinnerStats.rating;
+                    entry.statsA.rdAfter = newWinnerStats.rd;
+                    entry.statsA.volatilityAfter = newWinnerStats.volatility;
                     entry.statsA.rankAfter = newWinnerRankAfter;
                     // Swap: A's new potentialGain/Loss comes from B's old values
                     entry.statsA.potentialGain = origStatsB.potentialGain;
                     entry.statsA.potentialLoss = origStatsB.potentialLoss;
                     
-                    entry.statsB.eloAfter = oldWinnerStats.elo;
+                    entry.statsB.ratingAfter = oldWinnerStats.rating;
+                    entry.statsB.rdAfter = oldWinnerStats.rd;
+                    entry.statsB.volatilityAfter = oldWinnerStats.volatility;
                     entry.statsB.rankAfter = oldWinnerRankAfter;
                     // Swap: B's new potentialGain/Loss comes from A's old values
                     entry.statsB.potentialGain = origStatsA.potentialGain;
                     entry.statsB.potentialLoss = origStatsA.potentialLoss;
                 } else {
                     // B is now winner, A is now loser
-                    entry.statsB.eloAfter = newWinnerStats.elo;
+                    entry.statsB.ratingAfter = newWinnerStats.rating;
+                    entry.statsB.rdAfter = newWinnerStats.rd;
+                    entry.statsB.volatilityAfter = newWinnerStats.volatility;
                     entry.statsB.rankAfter = newWinnerRankAfter;
                     // Swap: B's new potentialGain/Loss comes from A's old values
                     entry.statsB.potentialGain = origStatsA.potentialGain;
                     entry.statsB.potentialLoss = origStatsA.potentialLoss;
                     
-                    entry.statsA.eloAfter = oldWinnerStats.elo;
+                    entry.statsA.ratingAfter = oldWinnerStats.rating;
+                    entry.statsA.rdAfter = oldWinnerStats.rd;
+                    entry.statsA.volatilityAfter = oldWinnerStats.volatility;
                     entry.statsA.rankAfter = oldWinnerRankAfter;
                     // Swap: A's new potentialGain/Loss comes from B's old values
                     entry.statsA.potentialGain = origStatsB.potentialGain;
@@ -4729,14 +5233,14 @@ const DOM = {};
                 console.log('Updated battle stats:', {
                     statsA: {
                         name: entry.a,
-                        eloAfter: entry.statsA.eloAfter,
+                        ratingAfter: entry.statsA.ratingAfter,
                         rankAfter: entry.statsA.rankAfter,
                         potentialGain: entry.statsA.potentialGain,
                         potentialLoss: entry.statsA.potentialLoss
                     },
                     statsB: {
                         name: entry.b,
-                        eloAfter: entry.statsB.eloAfter,
+                        ratingAfter: entry.statsB.ratingAfter,
                         rankAfter: entry.statsB.rankAfter,
                         potentialGain: entry.statsB.potentialGain,
                         potentialLoss: entry.statsB.potentialLoss
@@ -4880,74 +5384,90 @@ const DOM = {};
                     continue;
                 }
                 
-                // Step A: Restore ELO to BEFORE this battle by reversing the old outcome
-                // Get the old potential gains/losses from stored stats
-                const winnerOldPotentialGain = entry.statsA && entry.a === winner ? entry.statsA.potentialGain : 
-                                              entry.statsB && entry.b === winner ? entry.statsB.potentialGain : 0;
-                const loserOldPotentialLoss = entry.statsA && entry.a === loser ? entry.statsA.potentialLoss : 
-                                              entry.statsB && entry.b === loser ? entry.statsB.potentialLoss : 0;
+                // Step A: Restore rating/RD/volatility to BEFORE this battle by using stored values
+                // Support backward compatibility: check both old (eloBefore) and new (ratingBefore) fields
+                const winnerRatingBefore = entry.statsA && entry.a === winner ? 
+                                          (entry.statsA.ratingBefore !== undefined ? entry.statsA.ratingBefore : entry.statsA.eloBefore) :
+                                          entry.statsB && entry.b === winner ?
+                                          (entry.statsB.ratingBefore !== undefined ? entry.statsB.ratingBefore : entry.statsB.eloBefore) :
+                                          winnerStats.rating;
+                const loserRatingBefore = entry.statsA && entry.a === loser ?
+                                         (entry.statsA.ratingBefore !== undefined ? entry.statsA.ratingBefore : entry.statsA.eloBefore) :
+                                         entry.statsB && entry.b === loser ?
+                                         (entry.statsB.ratingBefore !== undefined ? entry.statsB.ratingBefore : entry.statsB.eloBefore) :
+                                         loserStats.rating;
                 
-                // Reverse the old ELO changes to get eloBefore
-                const winnerEloBefore = winnerStats.elo - winnerOldPotentialGain;
-                const loserEloBefore = loserStats.elo - loserOldPotentialLoss;
+                const winnerRdBefore = entry.statsA && entry.a === winner ? 
+                                      (entry.statsA.rdBefore || GLICKO2_RD_INITIAL) :
+                                      entry.statsB && entry.b === winner ?
+                                      (entry.statsB.rdBefore || GLICKO2_RD_INITIAL) :
+                                      winnerStats.rd;
+                const loserRdBefore = entry.statsA && entry.a === loser ?
+                                     (entry.statsA.rdBefore || GLICKO2_RD_INITIAL) :
+                                     entry.statsB && entry.b === loser ?
+                                     (entry.statsB.rdBefore || GLICKO2_RD_INITIAL) :
+                                     loserStats.rd;
                 
-                // Get current battle counts (this represents how many battles they had BEFORE this one)
-                const winnerBattlesBefore = entry.statsA && entry.a === winner ? entry.statsA.totalBattlesBefore : 
-                                           entry.statsB && entry.b === winner ? entry.statsB.totalBattlesBefore : 
-                                           winnerStats.battles - 1;
-                const loserBattlesBefore = entry.statsA && entry.a === loser ? entry.statsA.totalBattlesBefore : 
-                                          entry.statsB && entry.b === loser ? entry.statsB.totalBattlesBefore : 
-                                          loserStats.battles - 1;
+                const winnerVolatilityBefore = entry.statsA && entry.a === winner ?
+                                              (entry.statsA.volatilityBefore || GLICKO2_VOLATILITY_INITIAL) :
+                                              entry.statsB && entry.b === winner ?
+                                              (entry.statsB.volatilityBefore || GLICKO2_VOLATILITY_INITIAL) :
+                                              winnerStats.volatility;
+                const loserVolatilityBefore = entry.statsA && entry.a === loser ?
+                                             (entry.statsA.volatilityBefore || GLICKO2_VOLATILITY_INITIAL) :
+                                             entry.statsB && entry.b === loser ?
+                                             (entry.statsB.volatilityBefore || GLICKO2_VOLATILITY_INITIAL) :
+                                             loserStats.volatility;
                 
-                // Calculate K-factors based on battles at that time
-                const winnerK = computeAdaptiveK(winnerBattlesBefore);
-                const loserK = computeAdaptiveK(loserBattlesBefore);
-                const K = Math.max(winnerK, loserK);
+                // Recalculate using Glicko-2
+                const result = calculateGlicko2(
+                    winnerRatingBefore, winnerRdBefore, winnerVolatilityBefore,
+                    loserRatingBefore, loserRdBefore, loserVolatilityBefore,
+                    1.0 // winner wins
+                );
                 
-                // Calculate expected probabilities with the restored eloBefore values
-                const expectedWinner = 1 / (1 + Math.pow(10, (loserEloBefore - winnerEloBefore) / 400));
-                const expectedLoser = 1 - expectedWinner;
-                
-                // Calculate new ELO with current K-factors
-                const newWinnerElo = winnerEloBefore + K * (1 - expectedWinner);
-                const newLoserElo = loserEloBefore + K * (0 - expectedLoser);
-                
-                // Apply new ELO
-                winnerStats.elo = newWinnerElo;
-                loserStats.elo = newLoserElo;
-                
-                // Update the global ELO state for subsequent battles
-                // This ensures the next battle uses the recalculated values
+                // Apply new ratings
+                winnerStats.rating = result.rating1;
+                winnerStats.rd = result.rd1;
+                winnerStats.volatility = result.volatility1;
+                loserStats.rating = result.rating2;
+                loserStats.rd = result.rd2;
+                loserStats.volatility = result.volatility2;
                 
                 // Get new ranks
                 const winnerRankAfter = getCoasterRank(winner);
                 const loserRankAfter = getCoasterRank(loser);
                 
                 // Calculate potential gains/losses (needed for logging and stats update)
-                const winnerPotentialGain = newWinnerElo - winnerEloBefore;
-                const loserPotentialLoss = newLoserElo - loserEloBefore;
+                const winnerPotentialGain = result.rating1 - winnerRatingBefore;
+                const loserPotentialLoss = result.rating2 - loserRatingBefore;
                 
                 // Calculate what would have happened if outcome was reversed
-                const loserIfWinElo = loserEloBefore + K * (1 - expectedLoser);
-                const winnerIfLoseElo = winnerEloBefore + K * (0 - expectedWinner);
-                const loserPotentialGain = loserIfWinElo - loserEloBefore;
-                const winnerPotentialLoss = winnerIfLoseElo - winnerEloBefore;
+                const reversedResult = calculateGlicko2(
+                    winnerRatingBefore, winnerRdBefore, winnerVolatilityBefore,
+                    loserRatingBefore, loserRdBefore, loserVolatilityBefore,
+                    0.0 // winner loses
+                );
+                const winnerPotentialLoss = reversedResult.rating1 - winnerRatingBefore;
+                const loserPotentialGain = reversedResult.rating2 - loserRatingBefore;
                 
-                // Update battle stats in history if they exist
+                // Update battle stats in history
                 if (entry.statsA && entry.statsB) {
-                    const isAWinner = (entry.a === winner);
+                    // Update ratingBefore/rdBefore/volatilityBefore with the restored values
+                    entry.statsA.ratingBefore = (entry.a === winner) ? winnerRatingBefore : loserRatingBefore;
+                    entry.statsB.ratingBefore = (entry.b === winner) ? winnerRatingBefore : loserRatingBefore;
+                    entry.statsA.rdBefore = (entry.a === winner) ? winnerRdBefore : loserRdBefore;
+                    entry.statsB.rdBefore = (entry.b === winner) ? winnerRdBefore : loserRdBefore;
+                    entry.statsA.volatilityBefore = (entry.a === winner) ? winnerVolatilityBefore : loserVolatilityBefore;
+                    entry.statsB.volatilityBefore = (entry.b === winner) ? winnerVolatilityBefore : loserVolatilityBefore;
                     
-                    // Update eloBefore with the restored values
-                    entry.statsA.eloBefore = (entry.a === winner) ? winnerEloBefore : loserEloBefore;
-                    entry.statsB.eloBefore = (entry.b === winner) ? winnerEloBefore : loserEloBefore;
-                    
-                    // Update eloAfter with recalculated values
-                    entry.statsA.eloAfter = (entry.a === winner) ? newWinnerElo : newLoserElo;
-                    entry.statsB.eloAfter = (entry.b === winner) ? newWinnerElo : newLoserElo;
-                    
-                    // Update K-factor
-                    entry.statsA.kFactor = K;
-                    entry.statsB.kFactor = K;
+                    // Update ratingAfter/rdAfter/volatilityAfter with recalculated values
+                    entry.statsA.ratingAfter = (entry.a === winner) ? result.rating1 : result.rating2;
+                    entry.statsB.ratingAfter = (entry.b === winner) ? result.rating1 : result.rating2;
+                    entry.statsA.rdAfter = (entry.a === winner) ? result.rd1 : result.rd2;
+                    entry.statsB.rdAfter = (entry.b === winner) ? result.rd1 : result.rd2;
+                    entry.statsA.volatilityAfter = (entry.a === winner) ? result.volatility1 : result.volatility2;
+                    entry.statsB.volatilityAfter = (entry.b === winner) ? result.volatility1 : result.volatility2;
                     
                     // Update ranks
                     entry.statsA.rankAfter = (entry.a === winner) ? winnerRankAfter : loserRankAfter;
@@ -4958,6 +5478,10 @@ const DOM = {};
                     entry.statsA.potentialLoss = (entry.a === winner) ? winnerPotentialLoss : loserPotentialLoss;
                     entry.statsB.potentialGain = (entry.b === winner) ? winnerPotentialGain : loserPotentialGain;
                     entry.statsB.potentialLoss = (entry.b === winner) ? winnerPotentialLoss : loserPotentialLoss;
+                    
+                    // Store expected win probabilities
+                    entry.statsA.expectedWinProbability = (entry.a === winner) ? result.expectedScore1 : (1 - result.expectedScore1);
+                    entry.statsB.expectedWinProbability = (entry.b === winner) ? result.expectedScore1 : (1 - result.expectedScore1);
                 }
                 
                 // Update progress every 50 battles
@@ -5068,12 +5592,7 @@ const DOM = {};
         
         const sorted = [...statsArray].sort((a, b) => {
             let aVal, bVal;
-            if (currentSort.column === 'rank') {
-                // Always sort by ELO for rank, descending (1st to last) or ascending (last to 1st)
-                aVal = displayedElo(a);
-                bVal = displayedElo(b);
-                return currentSort.ascending ? aVal - bVal : bVal - aVal;
-            }
+            
             switch(currentSort.column) {
                 case 'name':
                     aVal = a.name;
@@ -5087,9 +5606,10 @@ const DOM = {};
                     aVal = a.manufacturer;
                     bVal = b.manufacturer;
                     break;
+                case 'rating':
                 case 'elo':
-                    aVal = displayedElo(a);
-                    bVal = displayedElo(b);
+                    aVal = displayedRating(a);
+                    bVal = displayedRating(b);
                     break;
                 case 'battles':
                     aVal = a.battles;
@@ -5108,9 +5628,10 @@ const DOM = {};
                     bVal = b.battles > 0 ? (b.wins / b.battles) : 0;
                     break;
                 default:
-                    aVal = a.elo;
-                    bVal = b.elo;
+                    aVal = a.rating;
+                    bVal = b.rating;
             }
+            
             if (typeof aVal === 'string') {
                 return currentSort.ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
             } else {
@@ -5122,19 +5643,14 @@ const DOM = {};
             const text = th.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
             th.textContent = text;
         });
-        // Add arrow for the active sorted column, including 'elo'
-        // Always show arrow for the active sorted column
-        const ths = Array.from(document.querySelectorAll('.ranking-table th'));
-        let activeHeader = null;
-        if (currentSort.column === 'rank') {
-            // Find the header with text 'Rank'
-            activeHeader = ths.find(th => th.textContent.trim().startsWith('Rank'));
-        } else {
-            activeHeader = ths.find(th => th.textContent.toLowerCase().includes(currentSort.column));
-        }
-        if (activeHeader) {
-            const text = activeHeader.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
-            activeHeader.textContent = text + (currentSort.ascending ? ' ⬆️' : ' ⬇️');
+        // Only add arrow for columns except 'rating'
+        if (currentSort.column !== 'rating' && currentSort.column !== 'elo') {
+            const activeHeader = Array.from(document.querySelectorAll('.ranking-table th'))
+                .find(th => th.textContent.toLowerCase().includes(currentSort.column));
+            if (activeHeader) {
+                const text = activeHeader.textContent.replace(' ⬆️', '').replace(' ⬇️', '');
+                activeHeader.textContent = text + (currentSort.ascending ? ' ⬆️' : ' ⬇️');
+            }
         }
         
         const tbody = document.getElementById('rankingBody');
@@ -5161,30 +5677,25 @@ const DOM = {};
         const rowsHtml = [];
         const cardsHtml = [];
 
-        // Compute ELO-based ranks for all coasters
-        const eloSorted = [...statsArray].sort((a, b) => displayedElo(b) - displayedElo(a));
-        const nameToRank = {};
-        eloSorted.forEach((c, idx) => { nameToRank[c.name] = idx + 1; });
-
-        sorted.forEach((coaster) => {
-            const rank = nameToRank[coaster.name] || '';
+        sorted.forEach((coaster, index) => {
+            const rank = index + 1;
             const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
             const winrate = coaster.battles > 0 ? ((coaster.wins / coaster.battles) * 100).toFixed(1) : '0.0';
             const escapedName = coaster.name.replace(/'/g, "\\'");
 
-            const dataId = (coaster.name || '').replace(/"/g, '&quot;');
-            rowsHtml.push(`
-                <tr data-id="${dataId}">
-                    <td><span class="rank-medal">${medal}</span>${rank}</td>
-                    <td><strong>${coaster.name}</strong></td>
-                    <td>${coaster.park}</td>
-                    <td>${coaster.manufacturer}</td>
-                    <td><span class="elo-score">${Math.round(displayedElo(coaster))}</span></td>
-                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
-                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
-                    <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
-                </tr>
-            `);
+                const dataId = (coaster.name || '').replace(/"/g, '&quot;');
+                rowsHtml.push(`
+                    <tr data-id="${dataId}">
+                        <td><span class="rank-medal">${medal}</span>${rank}</td>
+                        <td><strong>${coaster.name}</strong></td>
+                        <td>${coaster.park}</td>
+                        <td>${coaster.manufacturer}</td>
+                        <td><span class="elo-score">${Math.round(displayedRating(coaster))} ± ${Math.round(coaster.rd)}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
+                    </tr>
+                `);
 
             // Card for mobile
             const rankBadgeClass = rank <= 3 ? 'rank-badge top-3' : 'rank-badge';
@@ -5196,8 +5707,8 @@ const DOM = {};
                         <div class="meta">${coaster.park} • ${coaster.manufacturer} • <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}-${coaster.losses}</span></div>
                     </div>
                     <div class="ranking-right">
-                        <div class="elo">${Math.round(displayedElo(coaster))}</div>
-                    </div>
+                            <div class="elo">${Math.round(displayedRating(coaster))}</div>
+                        </div>
                 </div>
             `);
         });
@@ -5314,7 +5825,7 @@ const DOM = {};
         saveData();
         displayBattle();
         updateRanking();
-        updateAchievementsTab();
+        updatePinsDisplay();
         alert('Alle data is gereset! 🔄');
     }
 
@@ -5337,12 +5848,12 @@ function downloadRankingCSV() {
         return;
     }
     
-    // Sort by ELO (same as default ranking view)
+    // Sort by rating (same as default ranking view)
     const statsArray = Object.values(coasterStats);
-    const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+    const sorted = [...statsArray].sort((a, b) => b.rating - a.rating);
     
     // Create CSV header
-    let csv = 'Rank,Naam,Park,Fabrikant,ELO,Battles,Wins,Losses,Win%\n';
+    let csv = 'Rank,Naam,Park,Fabrikant,Rating,RD,Volatility,Battles,Wins,Losses,Win%\n';
     
     // Add data rows
     sorted.forEach((coaster, index) => {
@@ -5358,7 +5869,7 @@ function downloadRankingCSV() {
             return text;
         };
         
-        csv += `${rank},${escapeCsv(coaster.name)},${escapeCsv(coaster.park)},${escapeCsv(coaster.manufacturer)},${Math.round(coaster.elo)},${coaster.battles},${coaster.wins},${coaster.losses},${winrate}\n`;
+        csv += `${rank},${escapeCsv(coaster.name)},${escapeCsv(coaster.park)},${escapeCsv(coaster.manufacturer)},${Math.round(coaster.rating)},${Math.round(coaster.rd)},${coaster.volatility.toFixed(6)},${coaster.battles},${coaster.wins},${coaster.losses},${winrate}\n`;
     });
     
     // Create download
@@ -5385,7 +5896,7 @@ function getGameStats() {
     const statsArray = Object.values(coasterStats);
     
     // Check if any coaster is ranked #1
-    const sorted = [...statsArray].sort((a, b) => b.elo - a.elo);
+    const sorted = [...statsArray].sort((a, b) => b.rating - a.rating);
     const hasTopRankedCoaster = sorted.length > 0;
     
     // Check if all coasters have minimum battles
@@ -5436,13 +5947,13 @@ function checkAndShowAchievements() {
         }, index * 600); // Stagger by 600ms
     });
     
-    // Always update achievements tab display (not just when new achievements)
-    updateAchievementsTab();
+    // Always update pins display (not just when new pins)
+    updatePinsDisplay();
 }
 
-// Render the achievements tab
-function updateAchievementsTab() {
-    console.log('updateAchievementsTab called');
+// Render the pins display (in profile overlay)
+function updatePinsDisplay() {
+    console.log('updatePinsDisplay called');
     console.log('achievementManager exists:', typeof achievementManager !== 'undefined');
     
     if (typeof achievementManager === 'undefined') {
@@ -5450,43 +5961,33 @@ function updateAchievementsTab() {
         return;
     }
     
-    const grid = document.getElementById('achievementsGrid');
-    const progressText = document.getElementById('achievementProgress');
-    const progressPercentage = document.getElementById('achievementPercentage');
-    const progressBar = document.getElementById('achievementProgressBar');
-    const tabCounter = document.getElementById('achievementCount');
+    const grid = document.getElementById('pinsGrid');
+    const filterCounter = document.getElementById('achievementFilterCounter');
     
     if (!grid) {
-        console.warn('achievementsGrid element not found');
+        console.warn('pinsGrid element not found');
         return;
     }
     
-    const achievements = achievementManager.getAllAchievements();
+    const pins = achievementManager.getAllAchievements();
     const unlockedCount = achievementManager.getUnlockedCount();
     const totalCount = achievementManager.getTotalCount();
     const percentage = Math.round((unlockedCount / totalCount) * 100);
     
-    console.log('Updating achievements tab:', { unlockedCount, totalCount, percentage });
-    
-    // Update progress indicators
-    if (progressText) progressText.textContent = `${unlockedCount} / ${totalCount}`;
-    if (progressPercentage) progressPercentage.textContent = `(${percentage}%)`;
-    if (progressBar) progressBar.style.width = `${percentage}%`;
-    if (tabCounter) tabCounter.textContent = `${unlockedCount}/${totalCount}`;
+    console.log('Updating pins display:', { unlockedCount, totalCount, percentage });
     
     // Update filter counter
-    const filterCounter = document.getElementById('achievementFilterCounter');
     if (filterCounter) filterCounter.textContent = `${unlockedCount}/${totalCount} unlocked`;
     
-    // Render achievement cards
-    grid.innerHTML = achievements.map(achievement => {
-        const lockedClass = achievement.unlocked ? 'unlocked' : 'locked';
-        const categoryClass = `category-${achievement.category || 'battles'}`;
+    // Render pin cards
+    grid.innerHTML = pins.map(pin => {
+        const lockedClass = pin.unlocked ? 'unlocked' : 'locked';
+        const categoryClass = `category-${pin.category || 'battles'}`;
         
         let dateHtml = '';
-        if (achievement.unlocked && achievement.unlockedDate) {
+        if (pin.unlocked && pin.unlockedDate) {
             try {
-                const date = new Date(achievement.unlockedDate);
+                const date = new Date(pin.unlockedDate);
                 const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 dateHtml = `<div class="achievement-date">Unlocked ${dateStr}</div>`;
             } catch (e) {
@@ -5495,21 +5996,21 @@ function updateAchievementsTab() {
         }
         
         return `
-            <div class="achievement-card ${lockedClass} ${categoryClass}" data-category="${achievement.category || 'battles'}">
-                <div class="achievement-icon">${achievement.icon}</div>
-                <div class="achievement-name">${achievement.name}</div>
-                <div class="achievement-desc">${achievement.description}</div>
+            <div class="achievement-card ${lockedClass} ${categoryClass}" data-category="${pin.category || 'battles'}">
+                <div class="achievement-icon">${pin.icon}</div>
+                <div class="achievement-name">${pin.name}</div>
+                <div class="achievement-desc">${pin.description}</div>
                 ${dateHtml}
             </div>
         `;
     }).join('');
     
-    console.log('Achievement cards rendered:', achievements.length);
+    console.log('Pin cards rendered:', pins.length);
 }
 
-// Filter achievements by category
-function filterAchievements(category) {
-    const grid = document.getElementById('achievementsGrid');
+// Filter pins by category
+function filterPins(category) {
+    const grid = document.getElementById('pinsGrid');
     if (!grid) return;
     
     const cards = grid.querySelectorAll('.achievement-card');
@@ -5533,7 +6034,225 @@ function filterAchievements(category) {
             card.style.display = hasCategory ? '' : 'none';
         }
     });
+}
+
+// Show pins overlay
+function showPinsOverlay() {
+    const overlay = document.getElementById('pinsOverlay');
+    const profileContent = document.getElementById('profileContent');
+    if (!overlay) return;
     
-    // Match tab heights after filtering
-    setTimeout(() => matchTabHeights(), 50);
+    // Update pins display before showing
+    updatePinsDisplay();
+    
+    // Hide profile content and show overlay
+    if (profileContent) profileContent.style.display = 'none';
+    overlay.style.display = 'block';
+    
+    // Scroll to top of overlay
+    setTimeout(() => {
+        overlay.scrollTop = 0;
+    }, 0);
+}
+
+// Hide pins overlay
+function hidePinsOverlay() {
+    const overlay = document.getElementById('pinsOverlay');
+    const profileContent = document.getElementById('profileContent');
+    if (!overlay) return;
+    
+    overlay.style.display = 'none';
+    if (profileContent) profileContent.style.display = 'block';
+}
+
+// ===== CREDIT CARD FUNCTIONS =====
+
+// Manufacturer color mapping (lightened and desaturated)
+const manufacturerColors = {
+    'B&M': '#F0F1F2',
+    'Bolliger & Mabillard': '#F0F1F2',
+    'Intamin': '#F5DADA',
+    'Vekoma': '#FCE8D6',
+    'Mack Rides': '#DDE7F5',
+    'Gerstlauer': '#DFF0E3',
+    'RMC': '#EBE0D6',
+    'Rocky Mountain Construction': '#EBE0D6',
+    'GCI': '#FCF5D9',
+    'Great Coasters International': '#FCF5D9',
+    'Maurer Rides': '#EDE3F5',
+    'S&S': '#F2EFEA',
+    'Zamperla': '#F5E3ED',
+    'Zierer': '#DFF0F0',
+    'Schwarzkopf': '#EFEAE6',
+    'Other': '#EFEAE6',
+    'Unknown': '#EFEAE6'
+};
+
+// Sample coaster database (will be replaced with real data later)
+const coasterDatabase = {
+    'steelvengeance': {
+        id: 'steelvengeance',
+        name: 'Steel Vengeance',
+        park: 'Cedar Point',
+        country: 'USA',
+        manufacturer: 'Rocky Mountain Construction',
+        type: 'Hybrid',
+        models: ['I-Box Hybrid'],
+        topSpeed: 119,
+        height: 62,
+        length: 1790,
+        inversions: 4,
+        playerRank: 2,
+        openingYear: 2018,
+        image: 'images/steel-vengeance.jpg'
+    },
+    'bluefire': {
+        id: 'bluefire',
+        name: 'Blue Fire Megacoaster',
+        park: 'Europa-Park',
+        country: 'Germany',
+        manufacturer: 'Mack Rides',
+        type: 'Steel',
+        models: ['Launch coaster'],
+        topSpeed: 100,
+        height: 38,
+        length: 1056,
+        inversions: 4,
+        playerRank: 14,
+        openingYear: 2009,
+        image: 'images/blue-fire.jpg'
+    },
+    'thesmiler': {
+        id: 'thesmiler',
+        name: 'The Smiler',
+        park: 'Alton Towers',
+        country: 'UK',
+        manufacturer: 'Gerstlauer',
+        type: 'Steel',
+        models: ['Infinity coaster'],
+        topSpeed: 85,
+        height: 30,
+        length: 1170,
+        inversions: 14,
+        playerRank: 29,
+        openingYear: 2013,
+        image: 'images/the-smiler.jpg'
+    }
+};
+
+function openCreditCard(coasterId) {
+    const coaster = coasterDatabase[coasterId];
+    if (!coaster) return;
+
+    const overlay = document.getElementById('creditCardOverlay');
+    const container = document.getElementById('creditCardContainer');
+    
+    // Get manufacturer color
+    const bgColor = manufacturerColors[coaster.manufacturer] || manufacturerColors['Unknown'];
+    
+    // Get border color (darker version for frame)
+    const borderColors = {
+        'B&M': '#D0D1D2',
+        'Bolliger & Mabillard': '#D0D1D2',
+        'Intamin': '#E35B5B',
+        'Vekoma': '#F2994A',
+        'Mack Rides': '#5B8EDB',
+        'Gerstlauer': '#6FAE75',
+        'RMC': '#A47148',
+        'Rocky Mountain Construction': '#A47148',
+        'GCI': '#F2C94C',
+        'Great Coasters International': '#F2C94C',
+        'Maurer Rides': '#9B6CCF',
+        'S&S': '#D6C7A1',
+        'Zamperla': '#E38EB5',
+        'Zierer': '#5EC4C4',
+        'Schwarzkopf': '#C7C4BF',
+        'Other': '#B0ABA6',
+        'Unknown': '#B0ABA6'
+    };
+    const borderColor = borderColors[coaster.manufacturer] || borderColors['Unknown'];
+    
+    // Build rank badge
+    let rankClass = 'rank-other';
+    let rankDisplay = coaster.playerRank;
+    if (coaster.playerRank === 1) rankClass = 'rank-gold';
+    else if (coaster.playerRank === 2) rankClass = 'rank-silver';
+    else if (coaster.playerRank === 3) rankClass = 'rank-bronze';
+    
+    // Type emoji
+    const typeEmoji = coaster.type === 'Wood' ? '🌲' : coaster.type === 'Steel' ? '⚔️' : '🔄';
+    
+    // Check if stats qualify for metallic shine
+    const speedShine = coaster.topSpeed >= 100;
+    const heightShine = coaster.height >= 50;
+    const lengthShine = coaster.length >= 1250;
+    const inversionsShine = coaster.inversions >= 5;
+    
+    // Display values or small dash
+    const displaySpeed = coaster.topSpeed ? coaster.topSpeed : '-';
+    const displayHeight = coaster.height ? coaster.height : '-';
+    const displayLength = coaster.length ? coaster.length : '-';
+    const displayInversions = coaster.inversions !== undefined && coaster.inversions !== null ? coaster.inversions : '-';
+    
+    container.innerHTML = `
+        <div class="credit-card-outer" style="border: 6px solid ${bgColor};">
+            <div class="credit-card" style="background-color: ${bgColor}; border: 9px solid ${borderColor};">
+                <!-- Image Area -->
+                <div class="credit-card-image" style="border-color: ${borderColor};">
+                ${coaster.image ? `<img src="${coaster.image}" alt="${coaster.name}" class="credit-card-img" />` : `
+                    <div class="credit-card-placeholder">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M40 10L45 30H65L50 42L55 62L40 50L25 62L30 42L15 30H35L40 10Z" fill="#D1D5DB" opacity="0.3"/>
+                        </svg>
+                    </div>
+                `}
+                    <!-- Rank Badge -->
+                    <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
+                </div>
+                
+                <!-- Text Information -->
+                <div class="credit-card-info">
+                    <h1 class="credit-card-name">${coaster.name}</h1>
+                    <div class="credit-card-divider"></div>
+                    <p class="credit-card-location">${coaster.park} - ${coaster.country}${coaster.openingYear ? ' - ' + coaster.openingYear : ''}</p>
+                    <p class="credit-card-meta">${coaster.manufacturer} - ${coaster.type}${coaster.models.length > 0 ? ' - ' + coaster.models.join(' / ') : ''}</p>
+                    <div class="credit-card-divider"></div>
+                </div>
+                
+                <!-- Stats Grid -->
+                <div class="credit-card-stats">
+                    <div class="credit-stat credit-stat-top-left">
+                        <div class="credit-stat-label">speed</div>
+                        <div class="credit-stat-value">${displaySpeed}${displaySpeed !== '-' ? 'km/h' : ''}</div>
+                    </div>
+                    <div class="credit-stat credit-stat-top-right">
+                        <div class="credit-stat-label">height</div>
+                        <div class="credit-stat-value">${displayHeight}${displayHeight !== '-' ? 'm' : ''}</div>
+                    </div>
+                    <div class="credit-stat credit-stat-bottom-left">
+                        <div class="credit-stat-label">length</div>
+                        <div class="credit-stat-value">${displayLength}${displayLength !== '-' ? 'm' : ''}</div>
+                    </div>
+                    <div class="credit-stat credit-stat-bottom-right">
+                        <div class="credit-stat-label">inversions</div>
+                        <div class="credit-stat-value">${displayInversions}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    overlay.style.display = 'flex';
+    setTimeout(() => overlay.classList.add('show'), 10);
+}
+
+function closeCreditCard(event) {
+    // If event is passed, check if clicking overlay (not card content)
+    if (event && event.target.closest('.credit-card-popup') && event.target !== event.currentTarget) {
+        return;
+    }
+    
+    const overlay = document.getElementById('creditCardOverlay');
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.style.display = 'none', 300);
 }
