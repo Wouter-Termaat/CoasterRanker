@@ -2100,7 +2100,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 @media (max-width: 768px) {
     #battle-tab {
         position: relative;
-        padding: 8px !important;
+        padding: 1vh !important;
         height: auto;
         overflow: visible;
     }
@@ -2109,31 +2109,31 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 8px 0;
+        padding: 1vh 0;
         position: relative;
         width: 100%;
-        min-height: 400px;
+        min-height: max(300px, 40vh);
     }
 
     .battle-container {
         flex-direction: row;
         flex-wrap: nowrap;
-        gap: 4px;
+        gap: 0.5vw;
         justify-content: center;
         align-items: stretch;
         width: 100%;
         max-width: 100%;
-        padding: 0 4px;
+        padding: 0 0.5vw;
         box-sizing: border-box;
         position: relative;
     }
 
     .vs-overlay {
-        width: 40px;
-        height: 40px;
-        font-size: 0.9em;
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(255, 255, 255, 0.95);
-        letter-spacing: 1px;
+        width: clamp(35px, 8vw, 50px);
+        height: clamp(35px, 8vw, 50px);
+        font-size: clamp(0.8em, 2vw, 1em);
+        box-shadow: 0 0.5vh 2vh rgba(0, 0, 0, 0.4), 0 0 0 0.5vw rgba(255, 255, 255, 0.95);
+        letter-spacing: 0.05em;
         position: absolute;
         left: 50%;
         top: 50%;
@@ -2141,49 +2141,61 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     }
 
     .coaster-card {
-        flex: 1;
-        max-width: calc(50% - 22px);
+        flex: 1 1 0;
+        max-width: calc(50% - 5vw);
         min-width: 0;
         width: auto !important;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        max-height: 70vh;
     }
 
     .coaster-image {
         position: static;
         opacity: 1;
-        border-radius: 20px 20px 0 0;
-        aspect-ratio: 1 / 1.1;
-        font-size: 1.2em;
-        max-height: 50vh;
+        border-radius: clamp(8px, 2vw, 16px) clamp(8px, 2vw, 16px) 0 0;
+        aspect-ratio: 1 / 1;
+        font-size: clamp(0.75em, 2vw, 1em);
+        max-height: min(35vh, 300px);
+        min-height: clamp(100px, 20vh, 150px);
+        object-fit: cover;
+        width: 100%;
+        flex-shrink: 1;
+    }
+
+    .coaster-img {
+        width: 100%;
+        height: 100%;
         object-fit: cover;
     }
 
     .coaster-content {
         position: static;
-        padding: 8px 10px;
+        padding: clamp(4px, 1vh, 8px) clamp(6px, 1.5vw, 10px);
         min-height: auto;
         flex-shrink: 0;
+        gap: clamp(2px, 0.5vh, 6px);
     }
 
     .coaster-rank-badge {
-        width: 32px;
-        height: 32px;
-        font-size: 0.75em;
-        top: 8px;
-        right: 8px;
+        width: clamp(24px, 6vw, 32px);
+        height: clamp(24px, 6vw, 32px);
+        font-size: clamp(0.65em, 1.5vw, 0.8em);
+        top: clamp(4px, 1vh, 8px);
+        right: clamp(4px, 1vw, 8px);
     }
 
     .coaster-name {
-        font-size: 0.95em;
+        font-size: clamp(0.75em, 2.5vw, 1em);
         text-shadow: none;
-        line-height: 1.2;
+        line-height: 1.15;
+        font-weight: 700;
     }
 
     .coaster-subtitle {
-        font-size: 0.75em;
+        font-size: clamp(0.65em, 2vw, 0.8em);
         text-shadow: none;
         line-height: 1.2;
     }
