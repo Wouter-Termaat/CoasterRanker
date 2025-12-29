@@ -2097,7 +2097,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     min-width: 200px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     #battle-tab {
         position: relative;
         padding: 0 !important;
@@ -2107,124 +2107,133 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     }
 
     .battle-area {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 2vw;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: flex-start !important;
+        padding: 4px !important;
         position: relative;
-        width: 100%;
+        width: 100vw !important;
         height: auto;
+        box-sizing: border-box;
     }
 
     .battle-container {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: nowrap;
-        gap: 2vw;
-        justify-content: center;
-        align-items: flex-start;
-        width: 96vw;
-        padding: 0;
-        margin: 0;
-        box-sizing: border-box;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 4px !important;
+        justify-content: center !important;
+        align-items: flex-start !important;
+        width: 100vw !important;
+        padding: 0 4px !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
         position: relative;
     }
 
     .vs-overlay {
-        width: 8vw;
-        height: 8vw;
-        font-size: 2.5vw;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.95);
-        letter-spacing: 0;
-        position: absolute;
-        left: 50%;
-        top: 30%;
-        transform: translate(-50%, -50%);
+        width: 36px !important;
+        height: 36px !important;
+        font-size: 0.7em !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.95) !important;
+        letter-spacing: 0 !important;
+        position: absolute !important;
+        left: 50% !important;
+        top: 25% !important;
+        transform: translate(-50%, -50%) !important;
         z-index: 10;
     }
 
-    /* Target the outer wrapper */
-    .credit-card-outer,
-    .battle-card,
-    .coaster-card {
+    /* Outer wrapper - CRITICAL */
+    .credit-card-outer {
         flex: 1 1 0 !important;
-        width: 0 !important;
-        max-width: 46vw !important;
+        width: calc(50vw - 10px) !important;
+        max-width: calc(50vw - 10px) !important;
         min-width: 0 !important;
         box-sizing: border-box !important;
-        display: flex !important;
-        flex-direction: column;
-        overflow: hidden;
-        border-radius: 3vw !important;
+        display: block !important;
+        overflow: hidden !important;
+        border-radius: 12px !important;
         margin: 0 !important;
         padding: 0 !important;
-        border-width: 0.8vw !important;
-        max-height: 80vh;
+        border-width: 3px !important;
     }
 
-    /* The actual credit card inside */
-    .credit-card {
+    /* Inner card */
+    .credit-card,
+    .battle-card {
         width: 100% !important;
         height: auto !important;
-        max-width: none !important;
+        max-width: 100% !important;
         max-height: none !important;
-        border-radius: 3vw !important;
-        display: flex;
-        flex-direction: column;
+        border-radius: 10px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        border-width: 4px !important;
+        overflow: hidden !important;
     }
 
-    .coaster-image {
-        position: static !important;
-        opacity: 1;
-        border-radius: 2.5vw 2.5vw 0 0;
-        aspect-ratio: 1;
-        font-size: 2.5vw;
-        height: auto;
-        width: 100%;
-        object-fit: cover;
-        flex-shrink: 0;
+    .credit-card-image {
+        position: relative !important;
+        width: 100% !important;
+        aspect-ratio: 1 !important;
+        height: auto !important;
+        border-radius: 8px 8px 0 0 !important;
+        overflow: hidden !important;
+        border-width: 2px !important;
     }
 
-    .coaster-img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+    .credit-card-img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
     }
 
-    .coaster-content {
-        position: static !important;
-        padding: 2vw 2.5vw !important;
-        min-height: auto;
-        flex-shrink: 1;
-        gap: 1vw;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+    .credit-rank-badge {
+        width: 28px !important;
+        height: 28px !important;
+        font-size: 0.7em !important;
+        top: 4px !important;
+        right: 4px !important;
     }
 
-    .coaster-rank-badge {
-        width: 6vw !important;
-        height: 6vw !important;
-        font-size: 2.5vw !important;
-        top: 1.5vw !important;
-        right: 1.5vw !important;
+    .credit-card-info {
+        padding: 6px 8px !important;
+        flex-shrink: 1 !important;
     }
 
-    .coaster-name {
-        font-size: 3.5vw !important;
-        text-shadow: none;
+    .credit-card-name {
+        font-size: 0.85em !important;
         line-height: 1.1 !important;
-        font-weight: 700;
-        margin: 0 !important;
-        padding: 0 !important;
+        margin: 0 0 4px 0 !important;
     }
 
-    .coaster-subtitle {
-        font-size: 2.8vw !important;
-        text-shadow: none;
-        line-height: 1.15 !important;
-        margin: 0 !important;
-        padding: 0 !important;
+    .credit-card-location,
+    .credit-card-meta {
+        font-size: 0.7em !important;
+        line-height: 1.1 !important;
+        margin: 2px 0 !important;
+    }
+
+    .credit-card-divider {
+        margin: 4px 0 !important;
+    }
+
+    .credit-card-stats {
+        padding: 4px !important;
+        gap: 2px !important;
+    }
+
+    .credit-stat {
+        padding: 4px !important;
+    }
+
+    .credit-stat-label {
+        font-size: 0.65em !important;
+    }
+
+    .credit-stat-value {
+        font-size: 0.75em !important;
     }
 
     .user-selector {
