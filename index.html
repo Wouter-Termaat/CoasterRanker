@@ -3,7 +3,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coaster Ranker</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -65,8 +65,8 @@
                 <span class="tab-text">Ranking</span>
             </button>
             <button class="tab" onclick="switchTab('history')">
-                <span class="tab-icon"><img src="images/scroll.svg" alt="History" style="width: 1em; height: 1em;"></span>
-                <span class="tab-text">History</span>
+                <span class="tab-icon"><img src="images/duel.svg" alt="Duel" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Duel</span>
             </button>
         </div>
 
@@ -130,7 +130,7 @@
                             <p class="quest-text" id="questProgressText">0/25 battles</p>
                         </div>
                     </div>
-                    <button class="home-action-btn" onclick="switchTab('battle')" style="width: 100%; margin-top: 12px;">⚔️ Start Battle!</button>
+                    <button class="home-link-btn" onclick="switchTab('battle')" style="width: 100%; margin-top: 12px;">Start Battle →</button>
                 </div>
 
                 <div class="home-card">
@@ -145,6 +145,7 @@
                             <span class="session-stat-label">Close fights</span>
                         </div>
                     </div>
+                    <button class="home-link-btn" onclick="showHistoryOverlay('profile')" style="margin-top: 12px;">View Battle History →</button>
                 </div>
             </div>
 
@@ -183,45 +184,76 @@
             <!-- Pins Collection Overlay -->
             <div id="pinsOverlay" class="pins-overlay" style="display: none;">
                 <div class="pins-overlay-header">
-                    <button class="pins-back-btn" onclick="hidePinsOverlay()">← Back to Profile</button>
-                    <h2 class="pins-overlay-title">Pin Collection</h2>
-                </div>
-                <div class="achievement-filters">
-                    <div class="achievement-counter" id="achievementFilterCounter">0/31 unlocked</div>
-                    <div class="filter-tags-container">
-                        <button class="filter-tag active" data-category="all" onclick="filterPins('all')">
-                            All
-                        </button>
-                        <button class="filter-tag" data-category="battles" onclick="filterPins('battles')">
-                            ⚔️ Battles
-                        </button>
-                        <button class="filter-tag" data-category="close-fights" onclick="filterPins('close-fights')">
-                            💥 Close Fights
-                        </button>
-                        <button class="filter-tag" data-category="patterns" onclick="filterPins('patterns')">
-                            🔄 Patterns
-                        </button>
-                        <button class="filter-tag" data-category="collection" onclick="filterPins('collection')">
-                            🌍 Collection
-                        </button>
-                        <button class="filter-tag" data-category="siblings" onclick="filterPins('siblings')">
-                            👯 Siblings
-                        </button>
-                        <button class="filter-tag" data-category="ranking" onclick="filterPins('ranking')">
-                            📊 Ranking
-                        </button>
-                        <button class="filter-tag" data-category="special" onclick="filterPins('special')">
-                            ✨ Special
-                        </button>
+                    <div class="pins-overlay-top">
+                        <button class="pins-back-btn" onclick="hidePinsOverlay()">← Back to Profile</button>
+                        <h2 class="pins-overlay-title">Pin Collection</h2>
+                    </div>
+                    <div class="achievement-filters">
+                        <div class="achievement-counter" id="achievementFilterCounter">0/31 unlocked</div>
+                        <div class="filter-tags-container">
+                            <button class="filter-tag active" data-category="all" onclick="filterPins('all')">
+                                All
+                            </button>
+                            <button class="filter-tag" data-category="battles" onclick="filterPins('battles')">
+                                ⚔️ Battles
+                            </button>
+                            <button class="filter-tag" data-category="close-fights" onclick="filterPins('close-fights')">
+                                💥 Close Fights
+                            </button>
+                            <button class="filter-tag" data-category="patterns" onclick="filterPins('patterns')">
+                                🔄 Patterns
+                            </button>
+                            <button class="filter-tag" data-category="collection" onclick="filterPins('collection')">
+                                🌍 Collection
+                            </button>
+                            <button class="filter-tag" data-category="siblings" onclick="filterPins('siblings')">
+                                👯 Siblings
+                            </button>
+                            <button class="filter-tag" data-category="ranking" onclick="filterPins('ranking')">
+                                📊 Ranking
+                            </button>
+                            <button class="filter-tag" data-category="special" onclick="filterPins('special')">
+                                ✨ Special
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div class="achievements-grid" id="pinsGrid">
+                <div class="achievements-grid pins-overlay-content" id="pinsGrid">
                     <!-- Pin cards will be inserted here dynamically -->
+                </div>
+            </div>
+
+            <!-- History Overlay (Profile Tab) -->
+            <div id="historyOverlayProfile" class="history-overlay" style="display: none;">
+                <div class="history-overlay-header">
+                    <div class="history-overlay-top">
+                        <button class="history-back-btn" onclick="hideHistoryOverlay('profile')">← Back to Profile</button>
+                        <h2 class="history-overlay-title">Battle History</h2>
+                    </div>
+                    <div class="history-header-row">
+                        <div class="autocomplete-container">
+                            <div class="search-input-wrapper">
+                                <input id="historySearchProfile" type="text" class="search-box" placeholder="🔍 Search coaster..." oninput="handleHistorySearchInput('profile')" onkeydown="handleHistorySearchKeydown(event, 'profile')" onfocus="showHistoryAutocomplete('profile')" style="width:100%;" />
+                                <button id="clearHistorySearchBtnProfile" class="clear-search-btn" onclick="clearHistorySearch('profile')" style="display:none;" title="Clear search">✕</button>
+                            </div>
+                            <div id="historyAutocompleteProfile" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div class="history-filters" id="historyFiltersProfile" aria-hidden="false">
+                            <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all', 'profile')">All battles</button>
+                            <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close', 'profile')">Close fights</button>
+                            <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins', 'profile')">Wins</button>
+                            <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses', 'profile')">Losses</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="historyContainerProfile" class="history-overlay-content">
+                    <div class="no-battles">No battles yet — start choosing to build your history.</div>
                 </div>
             </div>
         </div>
 
         <div id="battle-tab" class="tab-content">
+            <button class="history-nav-btn" onclick="showHistoryOverlay('battle')" style="position: absolute; top: 20px; right: 20px; background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25); z-index: 999; white-space: nowrap;">History</button>
             <div class="battle-area">
             <div class="vs-overlay">VS</div>
             <div class="battle-container" id="battleContainer">
@@ -229,32 +261,46 @@
             </div>
         
             </div>
-        </div>
-        <div id="history-tab" class="tab-content">
-            <div class="history-header-row">
-                <div class="autocomplete-container">
-                    <div class="search-input-wrapper">
-                        <input id="historySearch" type="text" class="search-box" placeholder="🔍 Search matchup..." oninput="handleHistorySearchInput()" onkeydown="handleHistorySearchKeydown(event)" onfocus="showHistoryAutocomplete()" style="width:100%;" />
-                        <button id="clearHistorySearchBtn" class="clear-search-btn" onclick="clearHistorySearch()" style="display:none;" title="Clear search">✕</button>
+
+            <!-- History Overlay (Battle Tab) -->
+            <div id="historyOverlayBattle" class="history-overlay" style="display: none;">
+                <div class="history-overlay-header">
+                    <div class="history-overlay-top">
+                        <button class="history-back-btn" onclick="hideHistoryOverlay('battle')">← Back to Battle</button>
+                        <h2 class="history-overlay-title">Battle History</h2>
                     </div>
-                    <div id="historyAutocomplete" class="autocomplete-dropdown"></div>
+                    <div class="history-header-row">
+                        <div class="autocomplete-container">
+                            <div class="search-input-wrapper">
+                                <input id="historySearchBattle" type="text" class="search-box" placeholder="🔍 Search coaster..." oninput="handleHistorySearchInput('battle')" onkeydown="handleHistorySearchKeydown(event, 'battle')" onfocus="showHistoryAutocomplete('battle')" style="width:100%;" />
+                                <button id="clearHistorySearchBtnBattle" class="clear-search-btn" onclick="clearHistorySearch('battle')" style="display:none;" title="Clear search">✕</button>
+                            </div>
+                            <div id="historyAutocompleteBattle" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div class="history-filters" id="historyFiltersBattle" aria-hidden="false">
+                            <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all', 'battle')">All battles</button>
+                            <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close', 'battle')">Close fights</button>
+                            <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins', 'battle')">Wins</button>
+                            <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses', 'battle')">Losses</button>
+                        </div>
+                    </div>
                 </div>
-                <!-- History Filters: always visible, but wins/losses only when coaster selected -->
-                <div class="history-filters" id="historyFilters" aria-hidden="false">
-                    <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all')">All battles</button>
-                    <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close')">Close fights</button>
-                    <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins')">Wins</button>
-                    <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses')">Losses</button>
+                <div id="historyContainerBattle" class="history-overlay-content">
+                    <div class="no-battles">No battles yet — start choosing to build your history.</div>
                 </div>
             </div>
-            <div id="historyContainer" style="overflow:auto;">
-                <div class="no-battles">No battles yet — start choosing to build your history.</div>
+        </div>
+        <div id="history-tab" class="tab-content">
+            <div style="display: flex; justify-content: center; align-items: center; height: 100%; min-height: 400px;">
+                <div style="text-align: center; color: #6b7280; font-size: 1.5em; font-weight: 500;">
+                    Coming soon!
+                </div>
             </div>
         </div>
 
         <div id="credits-tab" class="tab-content">
+            <button class="add-credits-btn" style="position: absolute; top: 20px; right: 20px; background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25); z-index: 999; white-space: nowrap;">Add Credits</button>
             <h2 style="padding: 20px 20px 10px 20px; margin: 0; color: #111827; font-size: 1.5em;">Coaster Credits</h2>
-            <p style="padding: 0 20px 10px 20px; margin: 0; color: #6b7280; font-size: 0.95em;">Your collection of ridden coasters</p>
             <div class="credits-grid">
                 <!-- Cards will be populated dynamically by JavaScript -->
             </div>

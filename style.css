@@ -53,9 +53,14 @@
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
-    min-height: 100vh;
-    padding: 20px;
+    height: 100vh;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
     transition: background 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Dark Mode Styles */
@@ -466,12 +471,16 @@ body.dark-mode .home-link-btn:hover {
 
 .container {
     max-width: 1200px;
+    width: 95vw;
+    height: 95vh;
     margin: 0 auto;
     position: relative;
     background: white;
     border-radius: 20px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .dev-btn {
@@ -653,15 +662,15 @@ body.dark-mode .home-link-btn:hover {
 /* Dev-data overlay inside cards, positioned over coaster images */
 .dev-data-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    background: rgba(0, 0, 0, 0.3);
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.75);
     color: #fff;
     padding: 8px 10px;
     font-size: 0.75em;
     line-height: 1.4;
     pointer-events: auto; /* CHANGED: Allow clicks on overlay (especially for retry button) */
-    z-index: 1100; /* Very high z-index to be above everything including rank badge */
+    z-index: 100000; /* Very high z-index to be above everything including rank badge */
     border-radius: 6px;
     max-width: 140px;
     backdrop-filter: blur(4px);
@@ -704,25 +713,33 @@ body.dark-mode .home-link-btn:hover {
 .header-left, .header-right { top: 50%; transform: translateY(-50%); }
 
 .header {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 100;
     border-radius: 0;
     color: white;
     background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
     text-align: left;
-    --header-height: 80px;
-    padding: 40px 16px;
-    min-height: var(--header-height);
+    padding: 2vh 16px;
+    flex-shrink: 0;
 }
 
 /* Center the active battle tab vertically on desktop */
 @media (min-width: 601px) {
     .tab-content#battle-tab.active,
-    .tab-content#home-tab.active {
+    .tab-content#home-tab.active,
+    .tab-content#credits-tab.active,
+    .tab-content#ranking-tab.active,
+    .tab-content#history-tab.active {
         display: block;
-        min-height: 900px;
         padding: 20px;
+        position: relative;
+    }
+    
+    /* Ensure button stays in top right on desktop */
+    .tab-content#battle-tab.active .battle-history-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
     }
     
     .tab-content#battle-tab.active .battle-area { 
@@ -730,7 +747,7 @@ body.dark-mode .home-link-btn:hover {
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 860px;
+        height: 100%;
     }
     
     .tab-content#battle-tab.active .battle-container {
@@ -739,7 +756,7 @@ body.dark-mode .home-link-btn:hover {
     
     .tab-content#battle-tab.active .coaster-card {
         flex: 0 0 auto;
-        width: 420px;
+        width: clamp(300px, 35vw, 420px);
     }
 }
 
@@ -769,7 +786,7 @@ body.dark-mode .home-link-btn:hover {
 .header-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
 .header h1 {
-    font-size: 2.5em;
+    font-size: clamp(1.5em, 3.5vh, 2.5em);
     margin: 0;
 }
 
@@ -897,8 +914,11 @@ body.dark-mode .home-link-btn:hover {
 @media (max-width: 600px) {
     body {
         padding: 0;
-        min-height: 100vh;
-        overflow-y: auto;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
     }
 
     .header h1 {
@@ -914,51 +934,55 @@ body.dark-mode .home-link-btn:hover {
         border-radius: 0;
         display: flex;
         flex-direction: column;
-        min-height: 100vh;
-        overflow: visible;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
     }
 
     .header {
-        position: sticky;
-        top: 0;
+        position: relative;
         z-index: 100;
         border-radius: 0;
         text-align: left;
-        /* enforce a larger header: explicit padding + min-height and CSS variable
-           so other components (tabs sticky offset) can reference the header size */
-        --header-height: 60px;
-        padding: 20px 16px !important; /* larger vertical padding */
-        min-height: var(--header-height);
+        padding: 16px !important;
+        flex-shrink: 0;
         box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
     }
 
     .tabs {
-        position: sticky;
-        top: var(--header-height, 110px);
         z-index: 99;
         background: #f5f5f5;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        flex-shrink: 0;
     }
 
     .tab-content {
         display: none;
         padding: 12px;
         min-height: 0;
+        overflow-y: auto;
         overflow-x: hidden;
         box-sizing: border-box;
+        flex: 1;
     }
 
     .tab-content.active {
-        display: block;
+        display: flex;
+        flex-direction: column;
     }
 
     .tab-content#battle-tab.active {
-        display: flex;
-        flex-direction: column;
         justify-content: center;
         align-items: center;
-        min-height: calc(100vh - var(--header-height, 80px) - 60px);
         padding: 16px 12px;
+        position: relative;
+    }
+    
+    /* Ensure button stays in top right even with flex layout */
+    .tab-content#battle-tab.active .battle-history-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
     }
 
     .header-inner {
@@ -1037,14 +1061,15 @@ body.dark-mode .home-link-btn:hover {
     display: flex;
     background: #f5f5f5;
     border-bottom: 2px solid #ddd;
+    flex-shrink: 0;
 }
 
 .tab {
     flex: 1;
-    padding: 20px;
+    padding: clamp(12px, 2vh, 20px);
     text-align: center;
     cursor: pointer;
-    font-size: 1.1em;
+    font-size: clamp(0.9em, 1.5vh, 1.1em);
     font-weight: 600;
     transition: all 0.3s ease;
     border: none;
@@ -1102,6 +1127,9 @@ body.dark-mode .home-link-btn:hover {
     display: none;
     padding: 20px;
     box-sizing: border-box;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
 }
 
 .tab-content.active {
@@ -1249,8 +1277,8 @@ body.dark-mode .home-link-btn:hover {
 /* Rank climb animation */
 .rank-change-badge {
     position: absolute;
-    top: -18px;
-    right: 32px;
+    top: -12px;
+    right: 38px;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
     padding: 6px 10px;
@@ -1262,7 +1290,7 @@ body.dark-mode .home-link-btn:hover {
     gap: 4px;
     animation: badgeSimpleIn 0.15s ease-out, badgeFadeOut 0.3s ease-in 0.5s forwards;
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-    z-index: 1050; /* Below dev-data overlay but above card content */
+    z-index: 100001; /* Above everything including dev-data overlay */
     white-space: nowrap;
     min-width: 60px;
     justify-content: center;
@@ -1619,24 +1647,24 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 .stats-summary {
     background: #f5f7fa;
-    padding: 12px;
+    padding: clamp(8px, 1vh, 12px);
     border-radius: 8px;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
+    gap: clamp(6px, 1vh, 12px);
     width: 100%;
 }
 
 .stat-item {
     text-align: center;
-    padding: 10px 8px;
+    padding: clamp(6px, 1vh, 10px) 8px;
     background: white;
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
 .stat-value {
-    font-size: 1.6em;
+    font-size: clamp(1.2em, 1.8vh, 1.6em);
     font-weight: bold;
     color: #4CA1AF;
     display: block;
@@ -1644,7 +1672,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 .stat-label {
     color: #666;
-    font-size: 0.8em;
+    font-size: clamp(0.7em, 1vh, 0.8em);
     margin-top: 4px;
     display: block;
 }
@@ -2105,7 +2133,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     .battle-area {
         display: flex !important;
         justify-content: center !important;
-        align-items: flex-start !important;
+        align-items: center !important;
         padding: 8px 4px !important;
         position: relative;
         width: 100vw !important;
@@ -2120,7 +2148,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
         flex-wrap: nowrap !important;
         gap: 4px !important;
         justify-content: center !important;
-        align-items: flex-start !important;
+        align-items: center !important;
         width: 100vw !important;
         padding: 0 4px !important;
         margin: 0 !important;
@@ -2634,9 +2662,6 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 16px;
     padding: 0 20px 20px 20px;
-    max-width: 900px;
-    margin: 0 auto;
-    justify-items: center;
     align-items: start;
 }
 
@@ -2959,14 +2984,28 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
    HOME TAB STYLES
    ============================================ */
 
+.profile-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 .home-welcome {
     text-align: center;
-    margin-bottom: 32px;
+    margin-bottom: clamp(12px, 2vh, 24px);
+    padding: clamp(12px, 2vh, 32px) 20px;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .home-welcome h2 {
     color: var(--app-accent);
-    font-size: 2.2em;
+    font-size: clamp(1.3em, 3vh, 2.5em);
     font-weight: 700;
     margin: 0;
 }
@@ -2974,12 +3013,13 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .home-card {
     background: white;
     border-radius: 12px;
-    padding: 22px;
+    padding: clamp(12px, 1.5vh, 20px);
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
+    margin-bottom: clamp(10px, 1.5vh, 16px);
     display: flex;
     flex-direction: column;
-    min-height: 200px;
+    min-height: 0;
+    flex-shrink: 0;
 }
 
 .home-card-full {
@@ -2988,10 +3028,10 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 .home-card-title {
-    font-size: 1.1em;
+    font-size: clamp(0.95em, 1.3vh, 1.1em);
     font-weight: 700;
     color: var(--app-dark);
-    margin-bottom: 12px;
+    margin-bottom: clamp(6px, 1vh, 10px);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -3000,8 +3040,9 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .home-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: clamp(8px, 1.2vh, 14px);
+    margin-bottom: clamp(10px, 1.5vh, 18px);
+    flex-shrink: 0;
 }
 
 .home-grid-2col {
@@ -3013,7 +3054,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 /* Daily Quest Styles */
 .daily-quest {
-    padding: 8px 0;
+    padding: 4px 0;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -3021,9 +3062,9 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 .quest-description {
-    font-size: 0.95em;
+    font-size: clamp(0.8em, 1.1vh, 0.95em);
     color: #666;
-    margin-bottom: 12px;
+    margin-bottom: clamp(6px, 1vh, 10px);
     font-weight: 500;
 }
 
@@ -3056,7 +3097,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 /* Top 3 Coasters Styles */
 .top-coasters {
-    min-height: 100px;
+    min-height: 0;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -3066,8 +3107,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .top-coaster-item {
     display: flex;
     align-items: center;
-    padding: 8px;
-    margin-bottom: 6px;
+    padding: clamp(4px, 0.8vh, 6px) clamp(6px, 1vh, 8px);\n    margin-bottom: clamp(3px, 0.6vh, 5px);
     background: #f5f7fa;
     border-radius: 6px;
     transition: transform 0.2s ease;
@@ -3107,8 +3147,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 /* Achievement Summary Styles */
 .achievement-summary {
-    padding: 8px 0;
-    min-height: 100px;
+    padding: 4px 0;
+    min-height: 0;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -3120,11 +3160,11 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: clamp(6px, 1vh, 10px);
 }
 
 .achievement-count-big {
-    font-size: 2.2em;
+    font-size: clamp(1.6em, 2.5vh, 2.2em);
     font-weight: 700;
     color: var(--app-accent);
     line-height: 1;
@@ -3175,14 +3215,14 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 .session-stat-value {
-    font-size: 1.8em;
+    font-size: clamp(1.3em, 2vh, 1.8em);
     font-weight: 700;
     color: var(--app-accent);
     line-height: 1;
 }
 
 .session-stat-label {
-    font-size: 0.75em;
+    font-size: clamp(0.65em, 0.9vh, 0.75em);
     color: #666;
     margin-top: 4px;
     text-align: center;
@@ -3191,16 +3231,16 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 /* Link Buttons */
 .home-link-btn {
     width: 100%;
-    padding: 8px;
+    padding: clamp(6px, 0.8vh, 8px);
     background: white;
     border: 2px solid var(--app-accent);
     color: var(--app-accent);
     border-radius: 6px;
     font-weight: 700;
-    font-size: 0.85em;
+    font-size: clamp(0.75em, 1vh, 0.85em);
     cursor: pointer;
     transition: all 0.2s ease;
-    margin-top: 10px;
+    margin-top: clamp(6px, 1vh, 10px);
 }
 
 .home-link-btn:hover {
@@ -3243,16 +3283,17 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .profile-reset-container {
     display: flex;
     gap: 12px;
-    margin-top: 32px;
+    margin-top: clamp(10px, 2vh, 24px);
+    flex-shrink: 0;
 }
 
 .profile-reset-btn {
     flex: 1;
-    padding: 12px 20px;
+    padding: clamp(8px, 1.2vh, 12px) 20px;
     color: white;
     border: none;
     border-radius: 8px;
-    font-size: 0.95em;
+    font-size: clamp(0.8em, 1.2vh, 0.95em);
     font-weight: 600;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -3299,109 +3340,114 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 @media (max-width: 768px) {
     .home-grid {
         grid-template-columns: 1fr;
-        gap: 10px;
+        gap: clamp(6px, 1vh, 10px);
     }
     
     .home-grid-2col {
         grid-template-columns: 1fr;
-        gap: 10px;
+        gap: clamp(6px, 1vh, 10px);
     }
 
     .home-welcome {
-        margin-bottom: 12px;
+        margin-bottom: clamp(8px, 1.5vh, 12px);
     }
 
     .home-welcome h2 {
-        font-size: 1.2em;
-        padding: 8px 20px;
+        font-size: clamp(1.1em, 2vh, 1.4em);
+        padding: clamp(4px, 1vh, 8px) 20px;
     }
 
     .home-card {
-        padding: 12px;
-        margin-bottom: 10px;
-        min-height: 160px;
+        padding: clamp(10px, 1.2vh, 14px);
+        margin-bottom: clamp(6px, 1vh, 10px);
+        min-height: 0;
     }
 
     .home-card-title {
-        font-size: 0.95em;
-        margin-bottom: 8px;
+        font-size: clamp(0.85em, 1.2vh, 0.95em);
+        margin-bottom: clamp(4px, 0.8vh, 8px);
     }
 
     .stats-summary {
-        padding: 8px;
-        gap: 8px;
+        padding: clamp(6px, 1vh, 10px);
+        gap: clamp(6px, 0.8vh, 10px);
     }
 
     .stat-item {
-        padding: 8px 6px;
+        padding: clamp(6px, 1vh, 10px) 6px;
     }
 
     .stat-value {
-        font-size: 1.3em;
+        font-size: clamp(1.1em, 1.5vh, 1.3em);
     }
 
     .stat-label {
-        font-size: 0.7em;
+        font-size: clamp(0.65em, 0.85vh, 0.75em);
     }
 
     .quest-description {
-        font-size: 0.85em;
-        margin-bottom: 8px;
+        font-size: clamp(0.75em, 1vh, 0.85em);
+        margin-bottom: clamp(4px, 0.8vh, 8px);
     }
 
     .quest-text {
-        font-size: 0.85em;
+        font-size: clamp(0.75em, 1vh, 0.85em);
     }
 
     .achievement-count-big {
-        font-size: 1.8em;
+        font-size: clamp(1.5em, 2vh, 1.8em);
     }
 
     .achievement-count-label {
-        font-size: 0.75em;
+        font-size: clamp(0.65em, 0.9vh, 0.75em);
     }
 
     .recent-achievement-icon {
-        font-size: 1.4em;
-        padding: 5px;
+        font-size: clamp(1.2em, 1.6vh, 1.4em);
+        padding: clamp(4px, 0.6vh, 5px);
     }
 
     .session-stat-value {
-        font-size: 1.5em;
+        font-size: clamp(1.2em, 1.8vh, 1.5em);
     }
 
     .session-stat-label {
-        font-size: 0.7em;
+        font-size: clamp(0.65em, 0.85vh, 0.7em);
     }
 
     .top-coaster-item {
-        padding: 6px;
-        margin-bottom: 5px;
+        padding: clamp(4px, 0.8vh, 6px);
+        margin-bottom: clamp(3px, 0.6vh, 5px);
     }
 
     .top-coaster-rank {
-        font-size: 1.2em;
+        font-size: clamp(1em, 1.4vh, 1.2em);
         min-width: 28px;
     }
 
     .top-coaster-name {
-        font-size: 0.85em;
+        font-size: clamp(0.75em, 1vh, 0.85em);
     }
 
     .top-coaster-elo {
-        font-size: 0.75em;
+        font-size: clamp(0.65em, 0.9vh, 0.75em);
     }
 
     .home-link-btn {
-        padding: 6px;
-        font-size: 0.8em;
-        margin-top: 8px;
+        padding: clamp(5px, 0.8vh, 6px);
+        font-size: clamp(0.7em, 0.95vh, 0.8em);
+        margin-top: clamp(5px, 1vh, 8px);
     }
 
     .home-action-btn {
         width: 100%;
-        font-size: 0.95em;
-        padding: 10px 20px;
+        font-size: clamp(0.85em, 1.1vh, 0.95em);
+        padding: clamp(8px, 1.2vh, 10px) 20px;
+    }
+
+    .profile-reset-btn {
+        padding: clamp(8px, 1vh, 10px) 16px;
+        font-size: clamp(0.75em, 1vh, 0.85em);
     }
 }
 
@@ -3591,25 +3637,33 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     background: white;
     z-index: 9999;
     overflow-y: auto;
-    padding: 20px;
+    padding: 0;
 }
 
-/* Ensure home-tab is positioned relative for the overlay */
-#home-tab {
+/* Ensure home-tab and battle-tab are positioned relative for the overlays */
+#home-tab, #battle-tab {
     position: relative;
 }
 
 .pins-overlay-header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 20px;
     position: sticky;
     top: 0;
     background: white;
-    padding: 10px 0;
+    padding: 20px 20px 10px 20px;
     z-index: 10000;
     border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 0;
+}
+
+.pins-overlay-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.pins-overlay-content {
+    padding: 20px;
 }
 
 .pins-back-btn {
@@ -3641,12 +3695,80 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     margin: 0;
 }
 
+/* History Overlay Styles */
+.history-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: white;
+    z-index: 9999;
+    overflow-y: auto;
+    padding: 0;
+}
+
+.history-overlay-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    padding: 20px 20px 10px 20px;
+    z-index: 10000;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 0;
+}
+
+.history-overlay-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.history-overlay-content {
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.history-back-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    border: none;
+    border-radius: 8px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    box-shadow: 0 2px 8px rgba(76, 161, 175, 0.3);
+}
+
+.history-back-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.4);
+}
+
+.history-back-btn:active {
+    transform: translateY(0);
+}
+
+.history-overlay-title {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #2c3e50;
+    margin: 0;
+}
+
 @media (max-width: 768px) {
     .pins-overlay {
-        padding: 12px;
+        padding: 0;
     }
     
     .pins-overlay-header {
+        padding: 12px 12px 10px 12px;
+    }
+    
+    .pins-overlay-top {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
@@ -3654,6 +3776,32 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     
     .pins-back-btn {
         width: 100%;
+    }
+    
+    .pins-overlay-content {
+        padding: 12px;
+    }
+
+    .history-overlay {
+        padding: 0;
+    }
+    
+    .history-overlay-header {
+        padding: 12px 12px 10px 12px;
+    }
+    
+    .history-overlay-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .history-back-btn {
+        width: 100%;
+    }
+    
+    .history-overlay-content {
+        padding: 12px;
     }
 }
 
@@ -3927,7 +4075,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     object-position: center;
     display: block;
     border-radius: 8px;
-    border: 4px solid rgba(0, 0, 0, 0.25);
+    border: 4px solid rgba(0, 0, 0, 0.5);
     box-sizing: border-box;
 }
 
@@ -4083,8 +4231,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 /* Horizontal divider */
 .credit-card-stats::after {
     top: 50%;
-    left: 0;
-    right: 0;
+    left: 20px;
+    width: calc(100% - 60px);
     height: 1px;
     transform: translateY(-0.5px);
 }
@@ -4215,4 +4363,122 @@ body.dark-mode .credit-card-close {
 
 body.dark-mode .credit-card-close:hover {
     background: rgba(255, 255, 255, 0.25);
+}
+
+/* ===== BATTLE HISTORY BUTTON ===== */
+.history-nav-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%) !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 18px !important;
+    border-radius: 8px !important;
+    font-size: 0.95em !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25) !important;
+    white-space: nowrap !important;
+    z-index: 999 !important;
+    display: inline-block !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+.history-nav-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.35) !important;
+    background: linear-gradient(135deg, #5ab1bf 0%, #3d4f61 100%) !important;
+}
+
+.history-nav-btn:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 8px rgba(76, 161, 175, 0.2) !important;
+}
+
+#battle-tab .history-nav-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+}
+
+#battle-tab.active .history-nav-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+}
+
+.tab-content#battle-tab .history-nav-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+}
+
+/* Dark mode support */
+body.dark-mode .history-nav-btn {
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%) !important;
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.3) !important;
+}
+
+body.dark-mode .history-nav-btn:hover {
+    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.4) !important;
+}
+
+@media (max-width: 768px) {
+    .history-nav-btn {
+        top: 10px !important;
+        right: 10px !important;
+        padding: 8px 14px !important;
+        font-size: 0.85em !important;
+    }
+}
+
+/* OLD BUTTON STYLES - REMOVE THESE */
+.battle-history-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%) !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 18px !important;
+    border-radius: 8px !important;
+    font-size: 0.95em !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25) !important;
+    white-space: nowrap !important;
+    z-index: 150 !important;
+    display: inline-block !important;
+}
+
+.battle-history-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.35) !important;
+}
+
+.battle-history-btn:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 8px rgba(76, 161, 175, 0.2) !important;
+}
+
+/* Dark mode support */
+body.dark-mode .battle-history-btn {
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%) !important;
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.3) !important;
+}
+
+body.dark-mode .battle-history-btn:hover {
+    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.4) !important;
+}
+
+@media (max-width: 768px) {
+    .battle-history-btn {
+        top: 10px !important;
+        right: 10px !important;
+        padding: 8px 14px !important;
+        font-size: 0.85em !important;
+    }
 }

@@ -15,11 +15,15 @@
             
             const values = line.split(',');
             if (values.length >= 5) {
+                // Parse operatief field more carefully
+                const operatiefValue = (values[4] || '').trim();
+                const operatiefNum = parseInt(operatiefValue, 10);
+                
                 data.push({
                     naam: (values[1] || '').trim(),
                     park: (values[2] || '').trim(),
                     fabrikant: (values[3] || '').trim(),
-                    operatief: parseInt(values[4]) || 0
+                    operatief: isNaN(operatiefNum) ? 0 : operatiefNum
                 });
             }
         }
@@ -92,7 +96,11 @@
             coastersDataLuca = parseCSV(lucaText);
             coastersDataWouter = parseCSV(wouterText);
             
-            console.info(`Loaded: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
+            // Count operational coasters
+            const lucaOperational = coastersDataLuca.filter(c => c.operatief === 1).length;
+            const wouterOperational = coastersDataWouter.filter(c => c.operatief === 1).length;
+            
+            console.info(`Loaded: Luca=${coastersDataLuca.length} (${lucaOperational} operational), Wouter=${coastersDataWouter.length} (${wouterOperational} operational)`);
             initializeApp();
         } catch (error) {
             console.error('Error loading data:', error.message);
@@ -181,11 +189,17 @@
         const badge = document.getElementById('currentUserBadge');
         if (badge) badge.textContent = `Logged in as: ${savedUser === 'luca' ? 'Luca' : 'Wouter'}`;
         
-        // Load user-specific data
+        // Load user-specific data - ONLY operational coasters (operatief === 1)
         if (savedUser === 'luca') {
-            coasters = coastersDataLuca.filter(c => c.operatief === 1);
+            const allCoasters = coastersDataLuca;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+            const nonOperational = allCoasters.length - coasters.length;
+            console.log(`🎯 Selected user: Luca - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
         } else {
-            coasters = coastersDataWouter.filter(c => c.operatief === 1);
+            const allCoasters = coastersDataWouter;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+            const nonOperational = allCoasters.length - coasters.length;
+            console.log(`🎯 Selected user: Wouter - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
         }
         
         // Load user data
@@ -590,52 +604,53 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Check both P361 (part of) and P127 (owned by) for park relationships
     console.log(`  🔍 Fast (Park-aware): "${variant}" at "${parkVariants[0] || parkName}"`);
     
-    // Try with all park variants for better matching
-    for (const parkVariant of parkVariants.slice(0, 2)) { // Try top 2 park variants
-        const escapedParkVar = escapeSPARQL(parkVariant);
-        const parkAwareQuery = `
-            SELECT ?item ?image ?parkLabel WHERE {
-              ?item rdfs:label ?itemLabel .
-              FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapedName}")))
-              ${coasterTypeFilter}
-              ?item wdt:P18 ?image .
-              
-              # Check both "owned by" (P127) and "part of" (P361) for park
-              { ?item wdt:P127 ?park } UNION { ?item wdt:P361 ?park }
-              ?park rdfs:label ?parkLabel .
-              FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
-            }
-            LIMIT 1
-        `;
-        
-        try {
-            const result = await querySPARQL(parkAwareQuery);
-            if (result) {
-                console.log(`✓ Found "${coasterName}" with park verification (using "${parkVariant}")`);
-                return result;
-            }
-        } catch (e) {
-            console.warn(`    ⚠️ Park-aware search failed for "${parkVariant}": ${e.message}`);
+    // Try with first park variant only - if it doesn't work, move to fallback
+    let foundPark = false;
+    const parkVariant = parkVariants[0];
+    const escapedParkVar = escapeSPARQL(parkVariant);
+    const parkAwareQuery = `
+        SELECT ?item ?image ?parkLabel WHERE {
+          ?item rdfs:label ?itemLabel .
+          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapedName}")))
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
+          
+          # Check both "owned by" (P127) and "part of" (P361) for park
+          { ?item wdt:P127 ?park } UNION { ?item wdt:P361 ?park }
+          ?park rdfs:label ?parkLabel .
+          FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
         }
-        
-        // NEW: If park is correct, loosen name restrictions - try with any coaster at this park
-        // This helps find coasters with different naming conventions in Wikidata
-        console.log(`  🔍 Trying looser name match at "${parkVariant}"...`);
-        const looseNameQuery = `
-            SELECT ?item ?image ?itemLabel ?parkLabel WHERE {
-              ?item rdfs:label ?itemLabel .
-              ${coasterTypeFilter}
-              ?item wdt:P18 ?image .
-              
-              # Check both "owned by" (P127) and "part of" (P361) for park
-              { ?item wdt:P127 ?park } UNION { ?item wdt:P361 ?park }
-              ?park rdfs:label ?parkLabel .
-              FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
-            }
-            LIMIT 15
-        `;
-        
-        try {
+        LIMIT 1
+    `;
+    
+    try {
+        const result = await querySPARQL(parkAwareQuery);
+        if (result) {
+            console.log(`✓ Found "${coasterName}" with park verification (using "${parkVariant}")`);
+            return result;
+        }
+    } catch (e) {
+        console.warn(`    ⚠️ Park-aware search failed for "${parkVariant}": ${e.message}`);
+    }
+    
+    // Only try looser name matching if the park exists in Wikidata
+    // This helps find coasters with different naming conventions in Wikidata
+    console.log(`  🔍 Trying looser name match at "${parkVariant}"...`);
+    const looseNameQuery = `
+        SELECT ?item ?image ?itemLabel ?parkLabel WHERE {
+          ?item rdfs:label ?itemLabel .
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
+          
+          # Check both "owned by" (P127) and "part of" (P361) for park
+          { ?item wdt:P127 ?park } UNION { ?item wdt:P361 ?park }
+          ?park rdfs:label ?parkLabel .
+          FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
+        }
+        LIMIT 15
+    `;
+    
+    try {
             const results = await querySPARQLMultiple(looseNameQuery);
             if (results && results.length > 0) {
                 // Helper function to normalize strings for flexible matching
@@ -668,22 +683,27 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     if (normalizedSearchName === normalizedCandidate) {
                         score = 100;
                     }
-                    // Strategy 2: Check if base name matches (e.g., "joris en de draak" matches "joris en de draak - vuur")
-                    else if (baseSearchName && normalizedCandidate.includes(baseSearchName)) {
+                    // Strategy 2: Check if candidate contains the base name (e.g., "joris en de draak" in "joris en de draak vuur")
+                    // This handles variants like "Joris en de draak - vuur" matching "Joris en de draak"
+                    else if (baseSearchName && baseSearchName.length > 3 && normalizedCandidate.includes(baseSearchName)) {
+                        score = 90;
+                    }
+                    // Strategy 3: Check if base name contains the candidate (e.g., "joris en de draak" contains "joris")
+                    else if (baseSearchName && baseSearchName.length > 3 && baseSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 3) {
                         score = 85;
                     }
-                    // Strategy 3: Check if candidate contains the search name (e.g., "euro mir" in "euro-mir")
+                    // Strategy 4: Check if candidate contains the full search name (e.g., "euro mir" in "euromir")
                     else if (normalizedCandidate.includes(normalizedSearchName)) {
+                        score = 80;
+                    }
+                    // Strategy 5: Check if search name contains candidate (e.g., "winjas fear" contains "winja")
+                    else if (normalizedSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 4) {
                         score = 75;
                     }
-                    // Strategy 4: Check if search name contains candidate (e.g., "winjas" contains "winja")
-                    else if (normalizedSearchName.includes(normalizedCandidate)) {
-                        score = 70;
-                    }
-                    // Strategy 5: Use similarity score for partial matches
+                    // Strategy 6: Use similarity score for partial matches
                     else {
                         const similarity = getSimilarityScore(coasterName, candidateName);
-                        if (similarity >= 40) {
+                        if (similarity >= 50) {
                             score = similarity;
                         }
                     }
@@ -698,7 +718,7 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
                     }
                 }
                 
-                if (bestMatch && bestScore >= 40) {
+                if (bestMatch && bestScore >= 50) {
                     console.log(`✓ Found "${coasterName}" with loosened name matching (score: ${bestScore})`);
                     return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
                 }
@@ -706,7 +726,6 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         } catch (e) {
             console.warn(`    ⚠️ Loose name search failed: ${e.message}`);
         }
-    }
     
     // STRATEGY 2: Fallback to name-only if park search failed
     // (Some coasters might not have park data in Wikidata)
@@ -2313,9 +2332,14 @@ function hideLoadingScreen() {
 // Preload all coaster images during loading screen
 async function preloadAllCoasterImages() {
     if (!currentUser || !coasters || coasters.length === 0) {
+        console.warn('⚠️ preloadAllCoasterImages: No user or coasters available');
         hideLoadingScreen();
         return;
     }
+    
+    console.log(`📊 Image Loading Summary for ${currentUser}:`);
+    console.log(`   Total coasters to load: ${coasters.length}`);
+    console.log(`   Current user: ${currentUser}`);
     
     cleanOldCacheVersions();
     
@@ -2354,12 +2378,43 @@ async function preloadAllCoasterImages() {
     
     console.log(`🚀 Loading ${coasters.length - cachedCount} new images (${cachedCount} from cache)...`);
     
-    // Load in small batches to avoid rate limiting
-    const batchSize = 5;
-    const batchDelay = 300; // 300ms between batches
+    // Load in batches to avoid rate limiting while maintaining speed
+    // Larger batches for cached items, smaller for API calls
+    const uncachedCoasters = [];
+    const cachedCoasters = [];
     
-    for (let i = 0; i < coasters.length; i += batchSize) {
-        const batch = coasters.slice(i, i + batchSize);
+    // Separate cached from uncached
+    for (const coaster of coasters) {
+        const normalizedName = normalizeCoasterName(coaster.naam);
+        const normalizedPark = normalizeCoasterName(coaster.park);
+        const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
+        if (localStorage.getItem(cacheKey)) {
+            cachedCoasters.push(coaster);
+        } else {
+            uncachedCoasters.push(coaster);
+        }
+    }
+    
+    // Load cached items quickly in larger batches (they're instant)
+    const cachedBatchSize = 20;
+    for (let i = 0; i < cachedCoasters.length; i += cachedBatchSize) {
+        const batch = cachedCoasters.slice(i, i + cachedBatchSize);
+        await Promise.all(
+            batch.map(coaster => 
+                getCoasterImage(coaster).then(() => {
+                    updateImageLoadStats();
+                    updateLoadingScreen(imageLoadStats.loaded, imageLoadStats.total, imageLoadStats.failed);
+                })
+            )
+        );
+    }
+    
+    // Load uncached items in smaller batches with delay to avoid rate limiting
+    const batchSize = 5;
+    const batchDelay = 250; // Reduced from 300ms to 250ms for faster loading
+    
+    for (let i = 0; i < uncachedCoasters.length; i += batchSize) {
+        const batch = uncachedCoasters.slice(i, i + batchSize);
         
         await Promise.all(
             batch.map(coaster => 
@@ -2370,13 +2425,13 @@ async function preloadAllCoasterImages() {
             )
         );
         
-        // Wait between batches only if fetching new images
-        if (i + batchSize < coasters.length) {
+        // Wait between batches only if there are more uncached items to load
+        if (i + batchSize < uncachedCoasters.length) {
             await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
     }
     
-    console.log(`✓ All ${coasters.length} coasters loaded!`);
+    console.log(`✓ All ${coasters.length} coasters loaded for ${currentUser}!`);
     console.log(`  Loaded: ${imageLoadStats.loaded}, Failed: ${imageLoadStats.failed}, From cache: ${imageLoadStats.cached}`);
     
     hideLoadingScreen();
@@ -2762,11 +2817,17 @@ const DOM = {};
         const badge = document.getElementById('currentUserBadge');
         if (badge) badge.textContent = `Logged in as: ${user === 'luca' ? 'Luca' : 'Wouter'}`;
         
-        // Load user-specific data
+        // Load user-specific data - ONLY operational coasters (operatief === 1)
         if (user === 'luca') {
-            coasters = coastersDataLuca.filter(c => c.operatief === 1);
+            const allCoasters = coastersDataLuca;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+            const nonOperational = allCoasters.length - coasters.length;
+            console.log(`🎯 Switched to Luca - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
         } else {
-            coasters = coastersDataWouter.filter(c => c.operatief === 1);
+            const allCoasters = coastersDataWouter;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+            const nonOperational = allCoasters.length - coasters.length;
+            console.log(`🎯 Switched to Wouter - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
         }
         
         // Load or initialize stats
@@ -3546,19 +3607,25 @@ const DOM = {};
             </div>
         `;
 
-        // Place overlay inside coaster cards, over the images
+        // Place overlay inside image wrapper (which has overflow:visible) at the top
         const cards = battleContainer.querySelectorAll('.coaster-card, .battle-card');
         if (cards[0]) {
-            const leftOverlay = document.createElement('div');
-            leftOverlay.className = 'dev-data-overlay';
-            leftOverlay.innerHTML = devLeftHtml;
-            cards[0].appendChild(leftOverlay);
+            const imageWrapper = cards[0].querySelector('.credit-card-image-wrapper') || cards[0].querySelector('.credit-card-image');
+            if (imageWrapper) {
+                const leftOverlay = document.createElement('div');
+                leftOverlay.className = 'dev-data-overlay';
+                leftOverlay.innerHTML = devLeftHtml;
+                imageWrapper.appendChild(leftOverlay);
+            }
         }
         if (cards[1]) {
-            const rightOverlay = document.createElement('div');
-            rightOverlay.className = 'dev-data-overlay';
-            rightOverlay.innerHTML = devRightHtml;
-            cards[1].appendChild(rightOverlay);
+            const imageWrapper = cards[1].querySelector('.credit-card-image-wrapper') || cards[1].querySelector('.credit-card-image');
+            if (imageWrapper) {
+                const rightOverlay = document.createElement('div');
+                rightOverlay.className = 'dev-data-overlay';
+                rightOverlay.innerHTML = devRightHtml;
+                imageWrapper.appendChild(rightOverlay);
+            }
         }
     }
 
@@ -4435,6 +4502,7 @@ const DOM = {};
         preloadNextBattles();
         
         // Check if this is a close fight (will be used for banner)
+        // Both coasters must have 3+ battles for a close fight to be valid
         const leftStatsForCheck = coasterStats[left.naam] || { battles: 0 };
         const rightStatsForCheck = coasterStats[right.naam] || { battles: 0 };
         const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles >= 3) && (rightStatsForCheck.battles >= 3));
@@ -4443,12 +4511,12 @@ const DOM = {};
         const generateBattleCard = (coaster, imageUrl, rank, choice) => {
             const bgColor = manufacturerColors[coaster.fabrikant] || manufacturerColors['Unknown'];
             const borderColors = {
-                'B&M': '#D0D1D2', 'Bolliger & Mabillard': '#D0D1D2',
-                'Intamin': '#E35B5B', 'Vekoma': '#F2994A', 'Mack Rides': '#5B8EDB',
-                'Gerstlauer': '#6FAE75', 'RMC': '#A47148', 'Rocky Mountain Construction': '#A47148',
-                'GCI': '#F2C94C', 'Great Coasters International': '#F2C94C',
-                'Maurer Rides': '#9B6CCF', 'S&S': '#D6C7A1', 'Zamperla': '#E38EB5',
-                'Zierer': '#5EC4C4', 'Schwarzkopf': '#C7C4BF', 'Other': '#B0ABA6', 'Unknown': '#B0ABA6'
+                'B&M': '#A8AAAC', 'Bolliger & Mabillard': '#A8AAAC',
+                'Intamin': '#C42424', 'Vekoma': '#D97316', 'Mack Rides': '#2563EB',
+                'Gerstlauer': '#3D7A47', 'RMC': '#7A4A1F', 'Rocky Mountain Construction': '#7A4A1F',
+                'GCI': '#D9A616', 'Great Coasters International': '#D9A616',
+                'Maurer Rides': '#6F3FA8', 'S&S': '#B8A471', 'Zamperla': '#C45A85',
+                'Zierer': '#2E9494', 'Schwarzkopf': '#9F9A8F', 'Other': '#827D78', 'Unknown': '#827D78'
             };
             const borderColor = borderColors[coaster.fabrikant] || borderColors['Unknown'];
             
@@ -4720,7 +4788,12 @@ const DOM = {};
             updateSessionStats(wasCloseMatchFlag);
 
             // Track for achievements
-            const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) <= 3;
+            // Close fight requires both coasters to have 3+ battles (using stats BEFORE this battle)
+            const winnerBattlesBeforeFight = (winnerStats.battles - 1);
+            const loserBattlesBeforeFight = (loserStats.battles - 1);
+            const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) <= 3 && 
+                                 winnerBattlesBeforeFight >= 3 && 
+                                 loserBattlesBeforeFight >= 3;
             const perfectMatch = (winner.park === loser.park) && 
                                (winner.fabrikant === loser.fabrikant) &&
                                winner.park && loser.park && 
@@ -4751,13 +4824,13 @@ const DOM = {};
                 const badge = document.createElement('div');
                 badge.className = 'rank-change-badge';
                 badge.innerHTML = `<span class="arrow">↑</span><span>+${rankChange}</span>`;
-                // Append to the credit-card-image div (where rank badge is) for proper positioning at top
+                // Append to outer wrapper (which has overflow:visible) to be fully visible above card
                 const winnerCard = cards[index];
                 if (winnerCard) {
-                    const imageContainer = winnerCard.querySelector('.credit-card-image');
-                    if (imageContainer) {
-                        imageContainer.style.position = 'relative';
-                        imageContainer.appendChild(badge);
+                    const outerWrapper = winnerCard.closest('.credit-card-outer');
+                    if (outerWrapper) {
+                        outerWrapper.style.position = 'relative';
+                        outerWrapper.appendChild(badge);
                     }
                 }
                 setTimeout(() => { if (badge.parentElement) badge.remove(); }, 800);
@@ -5193,6 +5266,18 @@ const DOM = {};
             hidePinsOverlay();
         } catch (e) { /* ignore */ }
         
+        // Hide history overlays when switching tabs
+        try {
+            const profileOverlay = document.getElementById('historyOverlayProfile');
+            const battleOverlay = document.getElementById('historyOverlayBattle');
+            if (profileOverlay && profileOverlay.style.display === 'block') {
+                hideHistoryOverlay('profile');
+            }
+            if (battleOverlay && battleOverlay.style.display === 'block') {
+                hideHistoryOverlay('battle');
+            }
+        } catch (e) { /* ignore */ }
+        
         // Always hide close battle overlay when switching tabs
         try {
             cancelCloseIntro();
@@ -5338,22 +5423,28 @@ const DOM = {};
     // Track if user actually selected a coaster (vs just typing)
     let coasterSelected = false;
 
-    function setHistoryFilter(filter) {
+    function setHistoryFilter(filter, source) {
         if (!filter) return;
         historyFilter = filter;
         // update active class on buttons
-        const btns = document.querySelectorAll('#historyFilters .filter-btn');
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const btns = document.querySelectorAll('#historyFilters' + suffix + ' .filter-btn');
         btns.forEach(b => {
             const f = b.getAttribute('data-filter');
             if (f === filter) b.classList.add('active'); else b.classList.remove('active');
         });
         // refresh displayed history
-        displayHistory();
+        if (source) {
+            displayHistoryInOverlay(source);
+        } else {
+            displayHistory();
+        }
     }
 
-    function updateHistoryFilterUI() {
-        const input = document.getElementById('historySearch');
-        const historyFilters = document.getElementById('historyFilters');
+    function updateHistoryFilterUI(source) {
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const input = document.getElementById('historySearch' + suffix);
+        const historyFilters = document.getElementById('historyFilters' + suffix);
         if (!historyFilters) return;
         if (coasterSelected) {
             document.body.classList.add('coaster-selected');
@@ -5376,30 +5467,40 @@ const DOM = {};
         return Array.from(coasterNames).sort();
     }
 
-    function handleHistorySearchInput() {
-        const input = document.getElementById('historySearch');
-        const clearBtn = document.getElementById('clearHistorySearchBtn');
+    function handleHistorySearchInput(source) {
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const input = document.getElementById('historySearch' + suffix);
+        const clearBtn = document.getElementById('clearHistorySearchBtn' + suffix);
+        if (!input || !clearBtn) return;
         clearBtn.style.display = input.value.trim() ? 'block' : 'none';
         coasterSelected = false; // Reset when typing
-        showHistoryAutocomplete();
-        updateHistoryFilterUI();
+        showHistoryAutocomplete(source);
+        updateHistoryFilterUI(source);
     }
 
-    function clearHistorySearch() {
-        const input = document.getElementById('historySearch');
-        const clearBtn = document.getElementById('clearHistorySearchBtn');
+    function clearHistorySearch(source) {
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const input = document.getElementById('historySearch' + suffix);
+        const clearBtn = document.getElementById('clearHistorySearchBtn' + suffix);
+        const dropdown = document.getElementById('historyAutocomplete' + suffix);
+        if (!input || !clearBtn || !dropdown) return;
         input.value = '';
         clearBtn.style.display = 'none';
-        const dropdown = document.getElementById('historyAutocomplete');
         dropdown.classList.remove('show');
         coasterSelected = false;
-        displayHistory();
-        updateHistoryFilterUI();
+        if (source) {
+            displayHistoryInOverlay(source);
+        } else {
+            displayHistory();
+        }
+        updateHistoryFilterUI(source);
     }
 
-    function showHistoryAutocomplete() {
-        const input = document.getElementById('historySearch');
-        const dropdown = document.getElementById('historyAutocomplete');
+    function showHistoryAutocomplete(source) {
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const input = document.getElementById('historySearch' + suffix);
+        const dropdown = document.getElementById('historyAutocomplete' + suffix);
+        if (!input || !dropdown) return;
         const query = input.value.trim().toLowerCase();
         
         const allSuggestions = getHistoryAutocompleteSuggestions();
@@ -5413,26 +5514,35 @@ const DOM = {};
         }
         
         dropdown.innerHTML = filteredSuggestions.map((name, idx) => 
-            `<div class="autocomplete-item" data-index="${idx}" onclick="selectHistorySuggestion('${name.replace(/'/g, "\\'")}')">${escapeHtml(name)}</div>`
+            `<div class="autocomplete-item" data-index="${idx}" onclick="selectHistorySuggestion('${name.replace(/'/g, "\\'")}', '${source || ''}')">${escapeHtml(name)}</div>`
         ).join('');
         
         dropdown.classList.add('show');
         selectedAutocompleteIndex = -1;
     }
 
-    function selectHistorySuggestion(name) {
-        const input = document.getElementById('historySearch');
-        const clearBtn = document.getElementById('clearHistorySearchBtn');
+    function selectHistorySuggestion(name, source) {
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const input = document.getElementById('historySearch' + suffix);
+        const clearBtn = document.getElementById('clearHistorySearchBtn' + suffix);
+        const dropdown = document.getElementById('historyAutocomplete' + suffix);
+        if (!input || !clearBtn || !dropdown) return;
         input.value = name;
         clearBtn.style.display = 'block';
-        document.getElementById('historyAutocomplete').classList.remove('show');
+        dropdown.classList.remove('show');
         coasterSelected = true;
-        displayHistory();
-        updateHistoryFilterUI();
+        if (source) {
+            displayHistoryInOverlay(source);
+        } else {
+            displayHistory();
+        }
+        updateHistoryFilterUI(source);
     }
 
-    function handleHistorySearchKeydown(event) {
-        const dropdown = document.getElementById('historyAutocomplete');
+    function handleHistorySearchKeydown(event, source) {
+        const suffix = source ? source.charAt(0).toUpperCase() + source.slice(1) : '';
+        const dropdown = document.getElementById('historyAutocomplete' + suffix);
+        if (!dropdown) return;
         const items = dropdown.querySelectorAll('.autocomplete-item');
         
         if (!dropdown.classList.contains('show') || items.length === 0) return;
@@ -5468,10 +5578,25 @@ const DOM = {};
 
     // Close dropdown when clicking outside
     document.addEventListener('click', (event) => {
+        // Handle main history tab dropdown
         const dropdown = document.getElementById('historyAutocomplete');
         const input = document.getElementById('historySearch');
         if (dropdown && input && !input.contains(event.target) && !dropdown.contains(event.target)) {
             dropdown.classList.remove('show');
+        }
+        
+        // Handle profile overlay dropdown
+        const dropdownProfile = document.getElementById('historyAutocompleteProfile');
+        const inputProfile = document.getElementById('historySearchProfile');
+        if (dropdownProfile && inputProfile && !inputProfile.contains(event.target) && !dropdownProfile.contains(event.target)) {
+            dropdownProfile.classList.remove('show');
+        }
+        
+        // Handle battle overlay dropdown
+        const dropdownBattle = document.getElementById('historyAutocompleteBattle');
+        const inputBattle = document.getElementById('historySearchBattle');
+        if (dropdownBattle && inputBattle && !inputBattle.contains(event.target) && !dropdownBattle.contains(event.target)) {
+            dropdownBattle.classList.remove('show');
         }
     });
 
@@ -5497,6 +5622,17 @@ const DOM = {};
         saveData();
         displayHistory();
         displayBattle(); // Refresh battle view in case new pairs are available
+        
+        // Also refresh overlays if they're visible
+        const profileOverlay = document.getElementById('historyOverlayProfile');
+        const battleOverlay = document.getElementById('historyOverlayBattle');
+        if (profileOverlay && profileOverlay.style.display === 'block') {
+            displayHistoryInOverlay('profile');
+        }
+        if (battleOverlay && battleOverlay.style.display === 'block') {
+            displayHistoryInOverlay('battle');
+        }
+        
         // show toast confirming deletion
         try {
             showToast(`Removed: ${removed.a} ↔ ${removed.b}`);
@@ -5672,6 +5808,16 @@ const DOM = {};
         saveData();
         displayHistory();
         updateRanking();
+        
+        // Also refresh overlays if they're visible
+        const profileOverlay = document.getElementById('historyOverlayProfile');
+        const battleOverlay = document.getElementById('historyOverlayBattle');
+        if (profileOverlay && profileOverlay.style.display === 'block') {
+            displayHistoryInOverlay('profile');
+        }
+        if (battleOverlay && battleOverlay.style.display === 'block') {
+            displayHistoryInOverlay('battle');
+        }
         
         // Get new ranks after switching for toast message
         const oldWinnerRankAfter = getCoasterRank(oldWinner);
@@ -6151,21 +6297,48 @@ const DOM = {};
     }
 
     function viewCoasterHistory(coasterName) {
-        // Switch to history tab
-        switchTab('history');
+        // Check if we're in an overlay
+        const profileOverlay = document.getElementById('historyOverlayProfile');
+        const battleOverlay = document.getElementById('historyOverlayBattle');
         
-        // Set the search box value to the coaster name
-        const historySearch = document.getElementById('historySearch');
-        const clearBtn = document.getElementById('clearHistorySearchBtn');
-        historySearch.value = coasterName;
-        clearBtn.style.display = 'block';
+        let inOverlay = null;
+        if (profileOverlay && profileOverlay.style.display === 'block') {
+            inOverlay = 'profile';
+        } else if (battleOverlay && battleOverlay.style.display === 'block') {
+            inOverlay = 'battle';
+        }
         
-        // Mark as selected
-        coasterSelected = true;
-        
-        // Trigger the search/filter
-        displayHistory();
-        updateHistoryFilterUI();
+        if (inOverlay) {
+            // We're in an overlay, update that overlay's search
+            const suffix = inOverlay === 'profile' ? 'Profile' : 'Battle';
+            const historySearch = document.getElementById('historySearch' + suffix);
+            const clearBtn = document.getElementById('clearHistorySearchBtn' + suffix);
+            if (historySearch && clearBtn) {
+                historySearch.value = coasterName;
+                clearBtn.style.display = 'block';
+                coasterSelected = true;
+                displayHistoryInOverlay(inOverlay);
+                updateHistoryFilterUI(inOverlay);
+            }
+        } else {
+            // Not in an overlay, switch to history tab
+            switchTab('history');
+            
+            // Set the search box value to the coaster name
+            const historySearch = document.getElementById('historySearch');
+            const clearBtn = document.getElementById('clearHistorySearchBtn');
+            if (historySearch && clearBtn) {
+                historySearch.value = coasterName;
+                clearBtn.style.display = 'block';
+                
+                // Mark as selected
+                coasterSelected = true;
+                
+                // Trigger the search/filter
+                displayHistory();
+                updateHistoryFilterUI();
+            }
+        }
     }
 
     function resetRankingOnly() {
@@ -6485,27 +6658,185 @@ function hidePinsOverlay() {
     if (profileContent) profileContent.style.display = 'block';
 }
 
+// Show history overlay
+function showHistoryOverlay(source) {
+    const currentUser = localStorage.getItem('lastUser');
+    if (!currentUser) {
+        alert('Please select a user first');
+        return;
+    }
+
+    if (source === 'profile') {
+        const overlay = document.getElementById('historyOverlayProfile');
+        const profileContent = document.getElementById('profileContent');
+        if (!overlay) return;
+        
+        // Update history display before showing
+        updateHistoryDisplay('profile');
+        
+        // Hide profile content and show overlay
+        if (profileContent) profileContent.style.display = 'none';
+        overlay.style.display = 'block';
+        
+        // Scroll to top of overlay
+        setTimeout(() => {
+            overlay.scrollTop = 0;
+        }, 0);
+    } else if (source === 'battle') {
+        const overlay = document.getElementById('historyOverlayBattle');
+        const battleArea = document.querySelector('#battle-tab .battle-area');
+        const historyBtn = document.querySelector('#battle-tab .history-nav-btn');
+        if (!overlay) return;
+        
+        // Update history display before showing
+        updateHistoryDisplay('battle');
+        
+        // Hide battle area and button, show overlay
+        if (battleArea) battleArea.style.display = 'none';
+        if (historyBtn) historyBtn.style.display = 'none';
+        overlay.style.display = 'block';
+        
+        // Scroll to top of overlay
+        setTimeout(() => {
+            overlay.scrollTop = 0;
+        }, 0);
+    }
+}
+
+// Hide history overlay
+function hideHistoryOverlay(source) {
+    if (source === 'profile') {
+        const overlay = document.getElementById('historyOverlayProfile');
+        const profileContent = document.getElementById('profileContent');
+        if (!overlay) return;
+        
+        overlay.style.display = 'none';
+        if (profileContent) profileContent.style.display = 'block';
+    } else if (source === 'battle') {
+        const overlay = document.getElementById('historyOverlayBattle');
+        const battleArea = document.querySelector('#battle-tab .battle-area');
+        const historyBtn = document.querySelector('#battle-tab .history-nav-btn');
+        if (!overlay) return;
+        
+        overlay.style.display = 'none';
+        if (battleArea) battleArea.style.display = '';
+        if (historyBtn) historyBtn.style.display = '';
+    }
+}
+
+// Update history display for overlay
+function updateHistoryDisplay(source) {
+    displayHistoryInOverlay(source);
+}
+
+// Display history in overlay
+function displayHistoryInOverlay(source) {
+    const suffix = source === 'profile' ? 'Profile' : 'Battle';
+    const container = document.getElementById('historyContainer' + suffix);
+    if (!container) return;
+    if (!coasterHistory || coasterHistory.length === 0) {
+        container.innerHTML = '<div class="no-battles">No battles yet — start choosing to build your history.</div>';
+        return;
+    }
+    const input = document.getElementById('historySearch' + suffix);
+    const query = input ? input.value.trim() : '';
+    const qLower = (query || '').toLowerCase();
+    const hasSelected = !!qLower;
+
+    // Ensure filter UI reflects whether a coaster is selected
+    updateHistoryFilterUI(source);
+
+    // Render only pair, highlight winner with a green pill and add a subtle delete button
+    const rows = coasterHistory.slice().reverse().map((entry, idx) => {
+        const originalIndex = coasterHistory.length - 1 - idx;
+        // Use stored left/right positions if available, otherwise fall back to a/b
+        let a = entry.left || entry.a;
+        let b = entry.right || entry.b;
+        const winner = entry.winner;
+
+        const pairText = `${a} ↔ ${b}`;
+        // If there's a search query, only show rows that include the query
+        if (qLower && !pairText.toLowerCase().includes(qLower) && !a.toLowerCase().includes(qLower) && !b.toLowerCase().includes(qLower)) {
+            return '';
+        }
+
+        // If there's a search query, put the matching coaster on the left
+        if (qLower) {
+            const aMatches = a.toLowerCase().includes(qLower);
+            const bMatches = b.toLowerCase().includes(qLower);
+            // If only b matches, swap them so the selected coaster appears left
+            if (!aMatches && bMatches) {
+                [a, b] = [b, a];
+            }
+        }
+
+        // Apply active filter
+        if (typeof historyFilter !== 'undefined' && historyFilter && historyFilter !== 'all') {
+            const selectedName = query;
+            if (historyFilter === 'wins') {
+                // only show battles where selectedName is the winner (requires selected coaster)
+                if (!hasSelected || winner !== selectedName) return '';
+            } else if (historyFilter === 'losses') {
+                // only show battles where selectedName lost (requires selected coaster)
+                if (!hasSelected || winner === selectedName) return '';
+                if (a !== selectedName && b !== selectedName) return '';
+            } else if (historyFilter === 'close') {
+                // show all close fights (or only those involving selected coaster if one is selected)
+                if (!entry.closeFight) return '';
+                if (hasSelected && a !== selectedName && b !== selectedName) return '';
+            }
+        }
+
+        const winnerClass = (entry && entry.closeFight) ? 'winner-pill close-win' : 'winner-pill';
+        const aHtml = (winner === a) ? `<span class="clickable-history-name" onclick="viewCoasterHistory('${a.replace(/'/g, "\\'")}')" style="cursor:pointer;"><span class="${winnerClass}">${escapeHtml(a)}</span></span>` : `<span class="clickable-history-name" onclick="viewCoasterHistory('${a.replace(/'/g, "\\'")}')" style="cursor:pointer;">${escapeHtml(a)}</span>`;
+        const bHtml = (winner === b) ? `<span class="clickable-history-name" onclick="viewCoasterHistory('${b.replace(/'/g, "\\'")}')" style="cursor:pointer;"><span class="${winnerClass}">${escapeHtml(b)}</span></span>` : `<span class="clickable-history-name" onclick="viewCoasterHistory('${b.replace(/'/g, "\\'")}')" style="cursor:pointer;">${escapeHtml(b)}</span>`;
+
+        const arrowHtml = entry && entry.closeFight ? `<span class="close-fight-icon" title="Close fight">⚔️</span>` : '↔';
+
+        return `
+            <div class="history-row">
+                <div class="history-pair">
+                    <div class="history-name left"><strong>${aHtml}</strong></div>
+                    <div class="history-arrow">${arrowHtml}</div>
+                    <div class="history-name right"><strong>${bHtml}</strong></div>
+                </div>
+                <div class="history-actions">
+                    <button class="history-switch" title="Switch winner" onclick="switchHistoryWinner(${originalIndex})">⇄</button>
+                    <button class="history-delete" title="Delete this matchup" onclick="deleteHistoryEntry(${originalIndex})">✖</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // If filtering removed all rows, show empty state
+    if (!rows || rows.trim() === '') {
+        container.innerHTML = '<div class="no-battles">No matchups found for this search.</div>';
+    } else {
+        container.innerHTML = rows;
+    }
+}
+
 // ===== CREDIT CARD FUNCTIONS =====
 
-// Manufacturer color mapping (lightened and desaturated)
+// Manufacturer color mapping (25% more saturated and 10% darker, then reduced by 20% saturation)
 const manufacturerColors = {
-    'B&M': '#F0F1F2',
-    'Bolliger & Mabillard': '#F0F1F2',
-    'Intamin': '#F5DADA',
-    'Vekoma': '#FCE8D6',
-    'Mack Rides': '#DDE7F5',
-    'Gerstlauer': '#DFF0E3',
-    'RMC': '#EBE0D6',
-    'Rocky Mountain Construction': '#EBE0D6',
-    'GCI': '#FCF5D9',
-    'Great Coasters International': '#FCF5D9',
-    'Maurer Rides': '#EDE3F5',
-    'S&S': '#F2EFEA',
-    'Zamperla': '#F5E3ED',
-    'Zierer': '#DFF0F0',
-    'Schwarzkopf': '#EFEAE6',
-    'Other': '#EFEAE6',
-    'Unknown': '#EFEAE6'
+    'B&M': '#DCDCDE',
+    'Bolliger & Mabillard': '#DCDCDE',
+    'Intamin': '#E9BFC0',
+    'Vekoma': '#F5D2B9',
+    'Mack Rides': '#C4D3EA',
+    'Gerstlauer': '#CAE0D2',
+    'RMC': '#D6CABB',
+    'Rocky Mountain Construction': '#D6CABB',
+    'GCI': '#F5EAB9',
+    'Great Coasters International': '#F5EAB9',
+    'Maurer Rides': '#DACFEB',
+    'S&S': '#E3DFD3',
+    'Zamperla': '#EACEDE',
+    'Zierer': '#CAE0E0',
+    'Schwarzkopf': '#DED7CC',
+    'Other': '#DED7CC',
+    'Unknown': '#DED7CC'
 };
 
 // Sample coaster database (will be replaced with real data later)
@@ -6570,25 +6901,25 @@ function openCreditCard(coasterId) {
     // Get manufacturer color
     const bgColor = manufacturerColors[coaster.manufacturer] || manufacturerColors['Unknown'];
     
-    // Get border color (darker version for frame)
+    // Get border color (25% more saturated and 10% darker)
     const borderColors = {
-        'B&M': '#D0D1D2',
-        'Bolliger & Mabillard': '#D0D1D2',
-        'Intamin': '#E35B5B',
-        'Vekoma': '#F2994A',
-        'Mack Rides': '#5B8EDB',
-        'Gerstlauer': '#6FAE75',
-        'RMC': '#A47148',
-        'Rocky Mountain Construction': '#A47148',
-        'GCI': '#F2C94C',
-        'Great Coasters International': '#F2C94C',
-        'Maurer Rides': '#9B6CCF',
-        'S&S': '#D6C7A1',
-        'Zamperla': '#E38EB5',
-        'Zierer': '#5EC4C4',
-        'Schwarzkopf': '#C7C4BF',
-        'Other': '#B0ABA6',
-        'Unknown': '#B0ABA6'
+        'B&M': '#A8AAAC',
+        'Bolliger & Mabillard': '#A8AAAC',
+        'Intamin': '#C42424',
+        'Vekoma': '#D97316',
+        'Mack Rides': '#2563EB',
+        'Gerstlauer': '#3D7A47',
+        'RMC': '#7A4A1F',
+        'Rocky Mountain Construction': '#7A4A1F',
+        'GCI': '#D9A616',
+        'Great Coasters International': '#D9A616',
+        'Maurer Rides': '#6F3FA8',
+        'S&S': '#B8A471',
+        'Zamperla': '#C45A85',
+        'Zierer': '#2E9494',
+        'Schwarzkopf': '#9F9A8F',
+        'Other': '#827D78',
+        'Unknown': '#827D78'
     };
     const borderColor = borderColors[coaster.manufacturer] || borderColors['Unknown'];
     
@@ -6616,13 +6947,8 @@ function openCreditCard(coasterId) {
     
     container.innerHTML = `
         <div class="credit-card-outer" style="border: 6px solid ${bgColor};">
-            <!-- Rank Badge positioned relative to outer wrapper (on top of everything) -->
-            <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
-            
             <div class="credit-card" style="background-color: ${bgColor}; border: 9px solid ${borderColor};">
-                <!-- Image Area with Rank Badge Wrapper -->
-                <div class="credit-card-image-wrapper">
-                    <div class="credit-card-image" style="border-color: ${borderColor};">
+                <div class="credit-card-image" style="border-color: ${borderColor};">
                     ${coaster.image ? `<img src="${coaster.image}" alt="${coaster.name}" class="credit-card-img" />` : `
                         <div class="credit-card-placeholder">
                             <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -6630,10 +6956,9 @@ function openCreditCard(coasterId) {
                             </svg>
                         </div>
                     `}
-                    </div>
+                    <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
                 </div>
                 
-                <!-- Text Information -->
                 <div class="credit-card-info">
                     <h1 class="credit-card-name">${coaster.name}</h1>
                     <div class="credit-card-divider"></div>
@@ -6642,21 +6967,20 @@ function openCreditCard(coasterId) {
                     <div class="credit-card-divider"></div>
                 </div>
                 
-                <!-- Stats Grid -->
                 <div class="credit-card-stats">
-                    <div class="credit-stat credit-stat-top-left">
+                    <div class="credit-stat">
                         <div class="credit-stat-label">speed</div>
                         <div class="credit-stat-value">${displaySpeed}${displaySpeed !== '-' ? 'km/h' : ''}</div>
                     </div>
-                    <div class="credit-stat credit-stat-top-right">
+                    <div class="credit-stat">
                         <div class="credit-stat-label">height</div>
                         <div class="credit-stat-value">${displayHeight}${displayHeight !== '-' ? 'm' : ''}</div>
                     </div>
-                    <div class="credit-stat credit-stat-bottom-left">
+                    <div class="credit-stat">
                         <div class="credit-stat-label">length</div>
                         <div class="credit-stat-value">${displayLength}${displayLength !== '-' ? 'm' : ''}</div>
                     </div>
-                    <div class="credit-stat credit-stat-bottom-right">
+                    <div class="credit-stat">
                         <div class="credit-stat-label">inversions</div>
                         <div class="credit-stat-value">${displayInversions}</div>
                     </div>
@@ -6685,25 +7009,25 @@ function populateCreditsGrid() {
     const creditsGrid = document.querySelector('.credits-grid');
     if (!creditsGrid) return;
     
-    // Get border colors (same as in openCreditCard)
+    // Get border colors (25% more saturated and 10% darker)
     const borderColors = {
-        'B&M': '#D0D1D2',
-        'Bolliger & Mabillard': '#D0D1D2',
-        'Intamin': '#E35B5B',
-        'Vekoma': '#F2994A',
-        'Mack Rides': '#5B8EDB',
-        'Gerstlauer': '#6FAE75',
-        'RMC': '#A47148',
-        'Rocky Mountain Construction': '#A47148',
-        'GCI': '#F2C94C',
-        'Great Coasters International': '#F2C94C',
-        'Maurer Rides': '#9B6CCF',
-        'S&S': '#D6C7A1',
-        'Zamperla': '#E38EB5',
-        'Zierer': '#5EC4C4',
-        'Schwarzkopf': '#C7C4BF',
-        'Other': '#B0ABA6',
-        'Unknown': '#B0ABA6'
+        'B&M': '#A8AAAC',
+        'Bolliger & Mabillard': '#A8AAAC',
+        'Intamin': '#C42424',
+        'Vekoma': '#D97316',
+        'Mack Rides': '#2563EB',
+        'Gerstlauer': '#3D7A47',
+        'RMC': '#7A4A1F',
+        'Rocky Mountain Construction': '#7A4A1F',
+        'GCI': '#D9A616',
+        'Great Coasters International': '#D9A616',
+        'Maurer Rides': '#6F3FA8',
+        'S&S': '#B8A471',
+        'Zamperla': '#C45A85',
+        'Zierer': '#2E9494',
+        'Schwarzkopf': '#9F9A8F',
+        'Other': '#827D78',
+        'Unknown': '#827D78'
     };
     
     // Generate HTML for each coaster in the database
