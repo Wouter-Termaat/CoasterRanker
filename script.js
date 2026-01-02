@@ -8,6 +8,7 @@
     function parseCSV(csvText) {
         const lines = csvText.trim().split('\n');
         const data = [];
+        const seen = new Set(); // Track unique coasters to avoid duplicates
         
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
@@ -19,16 +20,56 @@
                 const operatiefValue = (values[4] || '').trim();
                 const operatiefNum = parseInt(operatiefValue, 10);
                 
-                data.push({
-                    naam: (values[1] || '').trim(),
-                    park: (values[2] || '').trim(),
-                    fabrikant: (values[3] || '').trim(),
-                    operatief: isNaN(operatiefNum) ? 0 : operatiefNum
-                });
+                const naam = (values[1] || '').trim();
+                const park = (values[2] || '').trim();
+                const fabrikant = (values[3] || '').trim();
+                
+                // Create unique key based on name + park to avoid duplicates
+                const uniqueKey = `${naam.toLowerCase()}|${park.toLowerCase()}`;
+                
+                // Only add if we haven't seen this coaster before
+                if (!seen.has(uniqueKey)) {
+                    seen.add(uniqueKey);
+                    data.push({
+                        naam: naam,
+                        park: park,
+                        fabrikant: fabrikant,
+                        operatief: isNaN(operatiefNum) ? 0 : operatiefNum
+                    });
+                }
             }
         }
         
         return data;
+    }
+
+    // Helper function to reload CSV data from files
+    async function reloadCoasterCSVData() {
+        try {
+            const [lucaResponse, wouterResponse] = await Promise.all([
+                fetch('Top List Coasters v Luca - List of Coaster.csv'),
+                fetch('Top List Coasters Wouter - List of Coaster.csv')
+            ]);
+            
+            if (!lucaResponse.ok || !wouterResponse.ok) {
+                throw new Error(`HTTP error! Luca: ${lucaResponse.status}, Wouter: ${wouterResponse.status}`);
+            }
+            
+            const lucaText = await lucaResponse.text();
+            const wouterText = await wouterResponse.text();
+            
+            coastersDataLuca = parseCSV(lucaText);
+            coastersDataWouter = parseCSV(wouterText);
+            
+            // Count operational coasters
+            const lucaOperational = coastersDataLuca.filter(c => c.operatief === 1).length;
+            const wouterOperational = coastersDataWouter.filter(c => c.operatief === 1).length;
+            
+            console.info(`Reloaded CSV: Luca=${coastersDataLuca.length} (${lucaOperational} operational), Wouter=${coastersDataWouter.length} (${wouterOperational} operational)`);
+        } catch (error) {
+            console.error('Error reloading CSV data:', error.message);
+            // Don't throw - keep existing data if reload fails
+        }
     }
 
     async function loadCoasterData() {
@@ -185,10 +226,6 @@
             tab.style.cursor = 'pointer';
         });
         
-        // Update badge
-        const badge = document.getElementById('currentUserBadge');
-        if (badge) badge.textContent = `Logged in as: ${savedUser === 'luca' ? 'Luca' : 'Wouter'}`;
-        
         // Load user-specific data - ONLY operational coasters (operatief === 1)
         if (savedUser === 'luca') {
             const allCoasters = coastersDataLuca;
@@ -204,6 +241,14 @@
         
         // Load user data
         loadUserData();
+        
+        // Load level/XP data
+        loadLevelData();
+        
+        // Update badge with level
+        const badge = document.getElementById('currentUserBadge');
+        const userName = savedUser === 'luca' ? 'Luca' : 'Wouter';
+        if (badge) badge.textContent = `${userName} - Level ${userLevel}`;
         
         // Load achievements
         if (typeof achievementManager !== 'undefined') {
@@ -323,13 +368,21 @@ const imageMemoryCache = new Map();
 let preloadQueue = [];
 let isPreloading = false;
 let keyboardUsageDetected = false;
-const PRELOAD_QUEUE_SIZE_NORMAL = 3;
-const PRELOAD_QUEUE_SIZE_FAST = 6;
+const PRELOAD_QUEUE_SIZE_NORMAL = 8;
+const PRELOAD_QUEUE_SIZE_FAST = 15;
+let nextBattlePreloaded = null; // Cache for next fully loaded battle
 
 // Normalize coaster/park name for cache key matching
+// Helper function to remove accents and diacritics
+function removeAccents(str) {
+    if (!str) return '';
+    // Normalize to NFD (decomposed form) and remove combining diacritical marks
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 function normalizeCoasterName(name) {
     if (!name) return '';
-    return name
+    return removeAccents(name)  // Remove accents first
         .toLowerCase()
         .trim()
         .replace(/[^\w\s-]/g, '') // Remove special chars except hyphens
@@ -374,16 +427,18 @@ function levenshteinDistance(str1, str2) {
 function isFuzzyMatch(str1, str2, maxDistance = 3) {
     if (!str1 || !str2) return false;
     
-    // Exact match
-    if (str1.toLowerCase() === str2.toLowerCase()) return true;
+    // Remove accents before comparing for more flexible matching
+    const s1 = removeAccents(str1).toLowerCase();
+    const s2 = removeAccents(str2).toLowerCase();
+    
+    // Exact match (after accent removal)
+    if (s1 === s2) return true;
     
     // Substring match
-    const s1Lower = str1.toLowerCase();
-    const s2Lower = str2.toLowerCase();
-    if (s1Lower.includes(s2Lower) || s2Lower.includes(s1Lower)) return true;
+    if (s1.includes(s2) || s2.includes(s1)) return true;
     
     // Levenshtein distance check
-    const distance = levenshteinDistance(str1, str2);
+    const distance = levenshteinDistance(s1, s2);
     return distance <= maxDistance;
 }
 
@@ -391,8 +446,9 @@ function isFuzzyMatch(str1, str2, maxDistance = 3) {
 function getSimilarityScore(str1, str2) {
     if (!str1 || !str2) return 0;
     
-    const s1 = str1.toLowerCase();
-    const s2 = str2.toLowerCase();
+    // Remove accents before comparing to be more flexible
+    const s1 = removeAccents(str1).toLowerCase();
+    const s2 = removeAccents(str2).toLowerCase();
     
     if (s1 === s2) return 100;
     
@@ -633,6 +689,33 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         console.warn(`    ⚠️ Park-aware search failed for "${parkVariant}": ${e.message}`);
     }
     
+    // FALLBACK for park-aware query: Try location properties (P276, P131) if part of/owned by didn't work
+    console.log(`  🔍 Trying park-aware search with location properties...`);
+    const parkLocationQuery = `
+        SELECT ?item ?image ?locationLabel WHERE {
+          ?item rdfs:label ?itemLabel .
+          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapedName}")))
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
+          
+          # Check location properties P276 (location) and P131 (located in)
+          { ?item wdt:P276 ?location } UNION { ?item wdt:P131 ?location }
+          ?location rdfs:label ?locationLabel .
+          FILTER(CONTAINS(LCASE(?locationLabel), LCASE("${escapedParkVar}")))
+        }
+        LIMIT 1
+    `;
+    
+    try {
+        const result = await querySPARQL(parkLocationQuery);
+        if (result) {
+            console.log(`✓ Found "${coasterName}" with location verification (using "${parkVariant}")`);
+            return result;
+        }
+    } catch (e) {
+        console.warn(`    ⚠️ Park location search failed for "${parkVariant}": ${e.message}`);
+    }
+    
     // Only try looser name matching if the park exists in Wikidata
     // This helps find coasters with different naming conventions in Wikidata
     console.log(`  🔍 Trying looser name match at "${parkVariant}"...`);
@@ -725,6 +808,98 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
             }
         } catch (e) {
             console.warn(`    ⚠️ Loose name search failed: ${e.message}`);
+        }
+    
+    // FALLBACK: Try looser name matching with location properties if part of/owned by didn't work
+    console.log(`  🔍 Trying looser name match with location properties...`);
+    const looseLocationQuery = `
+        SELECT ?item ?image ?itemLabel ?locationLabel WHERE {
+          ?item rdfs:label ?itemLabel .
+          ${coasterTypeFilter}
+          ?item wdt:P18 ?image .
+          
+          # Check location properties P276 (location) and P131 (located in)
+          { ?item wdt:P276 ?location } UNION { ?item wdt:P131 ?location }
+          ?location rdfs:label ?locationLabel .
+          FILTER(CONTAINS(LCASE(?locationLabel), LCASE("${escapedParkVar}")))
+        }
+        LIMIT 15
+    `;
+    
+    try {
+            const results = await querySPARQLMultiple(looseLocationQuery);
+            if (results && results.length > 0) {
+                // Helper function to normalize strings for flexible matching
+                const normalizeForMatching = (str) => {
+                    return str.toLowerCase()
+                        .replace(/['`´]/g, '')  // Remove apostrophes
+                        .replace(/[-–—]/g, ' ')  // Replace hyphens with spaces
+                        .replace(/\s+/g, ' ')    // Normalize spaces
+                        .trim();
+                };
+                
+                // Get normalized version of search name
+                const normalizedSearchName = normalizeForMatching(coasterName);
+                // Also get base name (before dash/colon)
+                const baseSearchName = normalizeForMatching(
+                    coasterName.split(/\s*[-:]\s*/)[0]
+                );
+                
+                // Score each candidate by name similarity
+                let bestMatch = null;
+                let bestScore = 0;
+                
+                for (const candidate of results) {
+                    const candidateName = candidate.itemLabel?.value || '';
+                    const normalizedCandidate = normalizeForMatching(candidateName);
+                    
+                    let score = 0;
+                    
+                    // Strategy 1: Check if normalized names match exactly
+                    if (normalizedSearchName === normalizedCandidate) {
+                        score = 100;
+                    }
+                    // Strategy 2: Check if candidate contains the base name
+                    else if (baseSearchName && baseSearchName.length > 3 && normalizedCandidate.includes(baseSearchName)) {
+                        score = 90;
+                    }
+                    // Strategy 3: Check if base name contains the candidate
+                    else if (baseSearchName && baseSearchName.length > 3 && baseSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 3) {
+                        score = 85;
+                    }
+                    // Strategy 4: Check if candidate contains the full search name
+                    else if (normalizedCandidate.includes(normalizedSearchName)) {
+                        score = 80;
+                    }
+                    // Strategy 5: Check if search name contains candidate
+                    else if (normalizedSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 4) {
+                        score = 75;
+                    }
+                    // Strategy 6: Use similarity score for partial matches
+                    else {
+                        const similarity = getSimilarityScore(coasterName, candidateName);
+                        if (similarity >= 50) {
+                            score = similarity;
+                        }
+                    }
+                    
+                    if (score > 0) {
+                        console.log(`    Found potential match (location): "${candidateName}" (score: ${score})`);
+                    }
+                    
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMatch = candidate.image?.value;
+                    }
+                }
+                
+                if (bestMatch && bestScore >= 50) {
+                    console.log(`✓ Found "${coasterName}" with location-based loosened matching (score: ${bestScore})`);
+                    return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
+                }
+            }
+        } catch (e) {
+            console.warn(`    ⚠️ Loose location search failed: ${e.message}`);
         }
     
     // STRATEGY 2: Fallback to name-only if park search failed
@@ -1169,15 +1344,23 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
             localStorage.setItem(cacheKey, result.url);
             
-            const cards = document.querySelectorAll('.coaster-card');
+            // Update in-memory cache
+            imageMemoryCache.set(cacheKey, result.url);
+            
+            // Update all visible cards (both .coaster-card and .battle-card)
+            const cards = document.querySelectorAll('.coaster-card, .battle-card');
             cards.forEach(card => {
-                const nameEl = card.querySelector('.coaster-name');
-                const cardName = nameEl?.textContent;
-                if (nameEl && nameEl.textContent === coasterName) {
-                    const img = card.querySelector('.coaster-img');
+                // Check both .coaster-name (old style) and .credit-card-name (new battle cards)
+                const nameEl = card.querySelector('.coaster-name') || card.querySelector('.credit-card-name');
+                if (nameEl && nameEl.textContent.trim() === coasterName) {
+                    // Update both .coaster-img (old style) and .credit-card-img (new battle cards)
+                    const img = card.querySelector('.coaster-img') || card.querySelector('.credit-card-img');
                     if (img) {
-                        const oldSrc = img.src;
                         img.src = result.url;
+                        // Force image reload in case it's cached
+                        img.onload = () => {
+                            console.log(`✓ Image updated for ${coasterName}`);
+                        };
                     }
                 }
             });
@@ -1245,12 +1428,20 @@ window.retryCoasterImage = async function(coasterName, parkName, manufacturer, e
             const cacheKey = `coasterImage_${CACHE_VERSION}_${normalizedName}_${normalizedPark}`;
             localStorage.setItem(cacheKey, placeholderUrl);
             
-            const cards = document.querySelectorAll('.coaster-card');
+            // Update in-memory cache
+            imageMemoryCache.set(cacheKey, placeholderUrl);
+            
+            // Update all visible cards (both .coaster-card and .battle-card)
+            const cards = document.querySelectorAll('.coaster-card, .battle-card');
             cards.forEach(card => {
-                const nameEl = card.querySelector('.coaster-name');
-                if (nameEl && nameEl.textContent === coasterName) {
-                    const img = card.querySelector('.coaster-img');
-                    if (img) img.src = placeholderUrl;
+                // Check both .coaster-name (old style) and .credit-card-name (new battle cards)
+                const nameEl = card.querySelector('.coaster-name') || card.querySelector('.credit-card-name');
+                if (nameEl && nameEl.textContent.trim() === coasterName) {
+                    // Update both .coaster-img (old style) and .credit-card-img (new battle cards)
+                    const img = card.querySelector('.coaster-img') || card.querySelector('.credit-card-img');
+                    if (img) {
+                        img.src = placeholderUrl;
+                    }
                 }
             });
             
@@ -1464,10 +1655,11 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
     let cleanName = coasterName.trim().replace(/\s+/g, ' ');
     basicVariants.add(cleanName);
     
-    // First try with just the basic name
+    // First try with just the basic name and variants
     let foundBasicResults = false;
     
-    for (const nameVariant of Array.from(basicVariants).slice(0, 3)) { // Max 3 variants for Strategy 0
+    // Try more variants from the start (5 instead of 3)
+    for (const nameVariant of Array.from(basicVariants).slice(0, 5)) {
         console.log(`  🔍 COMBINED: "${nameVariant}" + "${parkName}"`);
         
         const combinedQuery = `
@@ -1513,31 +1705,48 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer, returnA
         }
     }
     
-    // Only try accent variants if no basic results found
+    // Always try accent variants early (not just when basic search fails)
+    console.log(`  🔤 Adding accent-free and simplified variants...`);
+    
+    // Add accent-free version (tarántula -> tarantula, Fénix -> fenix)
+    const accentFree = removeAccents(cleanName);
+    if (accentFree !== cleanName && accentFree.length >= 3) {
+        basicVariants.add(accentFree);
+        console.log(`    Added accent-free: "${accentFree}"`);
+    }
+    
+    // Simplify (remove punctuation) - often helps
+    const simplified = cleanName.replace(/[']/g, '').replace(/ - /g, ' ').trim();
+    if (simplified !== cleanName && simplified.length >= 3) {
+        basicVariants.add(simplified);
+        console.log(`    Added simplified: "${simplified}"`);
+    }
+    
+    // Add accent-free version of simplified
+    const simplifiedAccentFree = removeAccents(simplified);
+    if (simplifiedAccentFree !== simplified && simplifiedAccentFree.length >= 3) {
+        basicVariants.add(simplifiedAccentFree);
+        console.log(`    Added simplified+accent-free: "${simplifiedAccentFree}"`);
+    }
+    
+    // Only use KNOWN accent substitutions (not random combinations)
+    const knownAccentMap = {
+        'fenix': 'Fénix',
+        'phoenix': 'Fénix',
+        'geforce': 'G-Force',
+        'baron': 'Baron 1898',
+        'joris': 'Joris en de Draak'
+    };
+    
+    const lowerName = cleanName.toLowerCase();
+    for (const [from, to] of Object.entries(knownAccentMap)) {
+        if (lowerName.includes(from)) {
+            basicVariants.add(to);
+        }
+    }
+    
+    // Now search with all variants (up to 5)
     if (!foundBasicResults && returnAll) {
-        console.log(`  🔤 No results from basic search, trying accent variants...`);
-        
-        // Simplify first (remove punctuation) - often helps
-        const simplified = cleanName.replace(/[']/g, '').replace(/ - /g, ' ').trim();
-        if (simplified !== cleanName && simplified.length >= 3) {
-            basicVariants.add(simplified);
-        }
-        
-        // Only use KNOWN accent substitutions (not random combinations)
-        const knownAccentMap = {
-            'fenix': 'Fénix',
-            'phoenix': 'Fénix',
-            'geforce': 'G-Force',
-            'baron': 'Baron 1898',
-            'joris': 'Joris en de Draak'
-        };
-        
-        const lowerName = cleanName.toLowerCase();
-        for (const [from, to] of Object.entries(knownAccentMap)) {
-            if (lowerName.includes(from)) {
-                basicVariants.add(to);
-            }
-        }
         
         // Try accent variants (skip first one as it was already tried)
         for (const nameVariant of Array.from(basicVariants).slice(1, 3)) {
@@ -2193,7 +2402,16 @@ async function preloadNextBattles() {
     const queueSize = keyboardUsageDetected ? PRELOAD_QUEUE_SIZE_FAST : PRELOAD_QUEUE_SIZE_NORMAL;
     
     try {
-        // Generate next potential battles
+        // Generate and cache the immediate next battle first for instant display
+        if (!nextBattlePreloaded) {
+            const nextPair = getRandomCoasters();
+            if (nextPair && nextPair.length === 2) {
+                await preloadBattleImages(nextPair[0], nextPair[1]);
+                nextBattlePreloaded = nextPair;
+            }
+        }
+        
+        // Generate additional potential battles for queue
         const battlesToPreload = [];
         for (let i = 0; i < queueSize; i++) {
             const pair = getRandomCoasters();
@@ -2817,6 +3035,9 @@ const DOM = {};
         const badge = document.getElementById('currentUserBadge');
         if (badge) badge.textContent = `Logged in as: ${user === 'luca' ? 'Luca' : 'Wouter'}`;
         
+        // Reload CSV data to ensure we have the latest coasters
+        await reloadCoasterCSVData();
+        
         // Load user-specific data - ONLY operational coasters (operatief === 1)
         if (user === 'luca') {
             const allCoasters = coastersDataLuca;
@@ -3133,10 +3354,23 @@ const DOM = {};
         }
     }
 
-    function resetAllUserData() {
+    async function resetAllUserData() {
         if (!currentUser) return;
         const ok = confirm('Are you sure? This will delete rankings, history and pairing progress for the user.');
         if (!ok) return;
+        
+        // Reload CSV data to ensure we have the latest coasters
+        await reloadCoasterCSVData();
+        
+        // Update coasters array for current user with operational coasters only
+        if (currentUser === 'luca') {
+            const allCoasters = coastersDataLuca;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+        } else {
+            const allCoasters = coastersDataWouter;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+        }
+        
         coasterStats = initializeStats();
         totalBattlesCount = 0;
         coasterHistory = [];
@@ -3788,11 +4022,21 @@ const DOM = {};
                     }
 
                     let j = sampleIndexFromWeights(condWeights, randomFn);
+                    // Ensure j is different from i
                     if (j === i) {
                         let guard = 0;
                         while (j === i && guard++ < 8) j = sampleIndexFromWeights(condWeights, randomFn);
-                        if (j === i) j = (i + 1) % length;
+                        // If still the same, find first different index
+                        if (j === i) {
+                            for (let offset = 1; offset < length; offset++) {
+                                j = (i + offset) % length;
+                                if (j !== i) break;
+                            }
+                        }
                     }
+                    
+                    // Additional safety check: never allow same coaster in a battle
+                    if (i === j) continue;
 
                     const a = coasters[i], b = coasters[j];
                     const key = pairKey(a.naam, b.naam);
@@ -4403,9 +4647,8 @@ const DOM = {};
         } catch (e) { /* ignore */ }
         
         const battleContainerEl = DOM.battleContainer;
-        // If no user selected, show hint
+        // If no user selected, skip display
         if (!currentUser) {
-            (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">Select a user above first! 👆</div>';
             try { if (battleContainerEl) battleContainerEl.style.display = 'none'; } catch (e) {}
             currentBattle = null;
             return;
@@ -4421,7 +4664,13 @@ const DOM = {};
         // If developer forced a close battle and `currentBattle` is already set, don't overwrite it.
         // Also check if we have a saved battle from previous session/tab switch
         if (!currentBattle || (!devForceCloseBattle && currentBattle.length !== 2)) {
-            currentBattle = getRandomCoasters();
+            // Use pre-cached battle if available for instant display
+            if (nextBattlePreloaded && nextBattlePreloaded.length === 2) {
+                currentBattle = nextBattlePreloaded;
+                nextBattlePreloaded = null; // Clear cache after use
+            } else {
+                currentBattle = getRandomCoasters();
+            }
         }
         const battleContainer = DOM.battleContainer || $id('battleContainer');
         
@@ -4786,6 +5035,13 @@ const DOM = {};
             // Update daily quest and session stats
             updateDailyQuest();
             updateSessionStats(wasCloseMatchFlag);
+            
+            // Award XP for the battle
+            let xpAmount = 10; // Base XP for battle
+            if (wasCloseMatchFlag) {
+                xpAmount += 5; // Bonus for close fight
+            }
+            awardXP(xpAmount, wasCloseMatchFlag ? 'Battle (close fight)' : 'Battle');
 
             // Track for achievements
             // Close fight requires both coasters to have 3+ battles (using stats BEFORE this battle)
@@ -5037,6 +5293,213 @@ const DOM = {};
     // HOME TAB FUNCTIONALITY
     // ============================================
 
+    // ============================================
+    // LEVEL & XP SYSTEM
+    // ============================================
+    
+    const MAX_LEVEL = 100;
+    let userLevel = 1;
+    let totalXPEarned = 0;
+    
+    // Calculate required XP for a given level (exponential curve)
+    // Level 1 = 250 XP (~25 battles), Level 10 = ~4000 XP cumulative (~400 battles)
+    function getXPForLevel(level) {
+        if (level <= 0) return 0;
+        if (level === 1) return 0;
+        return Math.floor(250 * Math.pow(1.15, level - 2));
+    }
+    
+    // Get cumulative XP needed to reach a level
+    function getCumulativeXPForLevel(level) {
+        let cumulative = 0;
+        for (let i = 2; i <= level; i++) {
+            cumulative += getXPForLevel(i);
+        }
+        return cumulative;
+    }
+    
+    // Calculate current level from total XP
+    function calculateLevel(xp) {
+        let level = 1;
+        let cumulativeXP = 0;
+        
+        while (level < MAX_LEVEL) {
+            const xpForNextLevel = getXPForLevel(level + 1);
+            if (cumulativeXP + xpForNextLevel > xp) {
+                break;
+            }
+            cumulativeXP += xpForNextLevel;
+            level++;
+        }
+        
+        return level;
+    }
+    
+    // Get XP progress within current level (returns {current, required})
+    function getXPProgressInLevel(xp, level) {
+        if (level >= MAX_LEVEL) {
+            return { current: 0, required: 0, totalXP: xp };
+        }
+        
+        const cumulativeForCurrentLevel = getCumulativeXPForLevel(level);
+        const currentXPInLevel = xp - cumulativeForCurrentLevel;
+        const requiredForNextLevel = getXPForLevel(level + 1);
+        
+        return {
+            current: currentXPInLevel,
+            required: requiredForNextLevel,
+            totalXP: xp
+        };
+    }
+    
+    // Load level/XP data from localStorage
+    function loadLevelData() {
+        if (!currentUser) return;
+        
+        const savedLevel = parseInt(localStorage.getItem(`userLevel_${currentUser}`)) || 1;
+        const savedXP = parseInt(localStorage.getItem(`totalXPEarned_${currentUser}`)) || 0;
+        
+        userLevel = savedLevel;
+        totalXPEarned = savedXP;
+        
+        // Recalculate level from XP to ensure consistency
+        const calculatedLevel = calculateLevel(totalXPEarned);
+        if (calculatedLevel !== userLevel) {
+            userLevel = calculatedLevel;
+            localStorage.setItem(`userLevel_${currentUser}`, userLevel.toString());
+        }
+    }
+    
+    // Save level/XP data to localStorage
+    function saveLevelData() {
+        if (!currentUser) return;
+        
+        localStorage.setItem(`userLevel_${currentUser}`, userLevel.toString());
+        localStorage.setItem(`totalXPEarned_${currentUser}`, totalXPEarned.toString());
+    }
+    
+    // Award XP and check for level up
+    function awardXP(amount, reason) {
+        if (!currentUser || amount <= 0) return;
+        
+        const oldLevel = userLevel;
+        totalXPEarned += amount;
+        
+        // Recalculate level
+        userLevel = calculateLevel(totalXPEarned);
+        
+        // Save to localStorage
+        saveLevelData();
+        
+        // Update session XP tracking
+        if (typeof sessionXP !== 'undefined') {
+            sessionXP += amount;
+        }
+        
+        // Check for level up
+        if (userLevel > oldLevel) {
+            showLevelUpToast(userLevel);
+            
+            // Update level displays
+            updateLevelDisplays();
+        } else {
+            // Just update XP progress bar
+            updateXPProgressBar();
+        }
+    }
+    
+    // Show level-up celebration toast
+    function showLevelUpToast(newLevel) {
+        // Remove any existing level-up toast
+        const existing = document.querySelector('.levelup-toast');
+        if (existing) existing.remove();
+        
+        const toast = document.createElement('div');
+        toast.className = 'levelup-toast';
+        
+        toast.innerHTML = `
+            <div class="levelup-icon">🎉</div>
+            <div class="levelup-content">
+                <div class="levelup-header">Level Up!</div>
+                <div class="levelup-level">Now Level ${newLevel}</div>
+            </div>
+        `;
+        
+        document.body.appendChild(toast);
+        
+        // Trigger animation
+        setTimeout(() => toast.classList.add('show'), 10);
+        
+        // Remove after 4 seconds
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 400);
+        }, 4000);
+    }
+    
+    // Update all level displays in the UI
+    function updateLevelDisplays() {
+        // Update header badge
+        const badge = document.getElementById('currentUserBadge');
+        if (badge && currentUser) {
+            const userName = currentUser === 'luca' ? 'Luca' : 'Wouter';
+            badge.textContent = `${userName} - Level ${userLevel}`;
+        }
+        
+        // Update profile tab level display
+        updateProfileLevelDisplay();
+        
+        // Update XP progress bar
+        updateXPProgressBar();
+    }
+    
+    // Update the XP progress bar in profile tab
+    function updateXPProgressBar() {
+        const progressBar = document.getElementById('xpProgressFill');
+        const progressText = document.getElementById('xpProgressText');
+        const currentLevelText = document.getElementById('currentLevelText');
+        const nextLevelText = document.getElementById('nextLevelText');
+        
+        if (userLevel >= MAX_LEVEL) {
+            // Max level reached
+            if (progressBar) progressBar.style.width = '100%';
+            if (progressText) progressText.textContent = `MAX LEVEL`;
+            if (currentLevelText) currentLevelText.textContent = `${MAX_LEVEL}`;
+            if (nextLevelText) nextLevelText.textContent = 'MAX';
+            return;
+        }
+        
+        const progress = getXPProgressInLevel(totalXPEarned, userLevel);
+        const percentage = progress.required > 0 ? (progress.current / progress.required * 100) : 0;
+        
+        if (progressBar) {
+            progressBar.style.width = percentage + '%';
+        }
+        
+        if (progressText) {
+            progressText.textContent = `${progress.current.toLocaleString()}/${progress.required.toLocaleString()} XP`;
+        }
+        
+        if (currentLevelText) {
+            currentLevelText.textContent = `${userLevel}`;
+        }
+        
+        if (nextLevelText) {
+            nextLevelText.textContent = `${userLevel + 1}`;
+        }
+    }
+    
+    // Update profile tab with username and level badge
+    function updateProfileLevelDisplay() {
+        const welcomeEl = document.getElementById('homeWelcome');
+        if (welcomeEl && currentUser) {
+            const userName = currentUser === 'luca' ? 'Luca' : 'Wouter';
+            welcomeEl.innerHTML = `${userName} <span class="level-badge">${userLevel}</span>`;
+        }
+        
+        updateXPProgressBar();
+    }
+
     // Daily quest tracking
     let dailyQuestProgress = 0;
     let lastQuestResetDate = null;
@@ -5070,8 +5533,14 @@ const DOM = {};
             loadDailyQuest();
         }
         
+        const wasCompleted = (dailyQuestProgress === 25);
         dailyQuestProgress = Math.min(dailyQuestProgress + 1, 25);
         localStorage.setItem(`dailyQuestProgress_${currentUser}`, dailyQuestProgress.toString());
+        
+        // Award XP if quest just completed
+        if (!wasCompleted && dailyQuestProgress === 25) {
+            awardXP(50, 'Daily quest completed');
+        }
         
         // Update UI if on home tab
         const questFill = document.getElementById('questProgressFill');
@@ -5087,10 +5556,14 @@ const DOM = {};
     // Session stats tracking
     let sessionBattles = 0;
     let sessionCloseFights = 0;
+    let sessionXP = 0;
+    let sessionStartLevel = 1;
 
     function resetSessionStats() {
         sessionBattles = 0;
         sessionCloseFights = 0;
+        sessionXP = 0;
+        sessionStartLevel = userLevel;
     }
 
     function updateSessionStats(isCloseFight = false) {
@@ -5100,9 +5573,23 @@ const DOM = {};
         // Update UI if on home tab
         const sessionBattlesEl = document.getElementById('sessionBattles');
         const sessionCloseFightsEl = document.getElementById('sessionCloseFights');
+        const sessionXPEl = document.getElementById('sessionXP');
+        const sessionLevelsEl = document.getElementById('sessionLevels');
         
         if (sessionBattlesEl) sessionBattlesEl.textContent = sessionBattles;
         if (sessionCloseFightsEl) sessionCloseFightsEl.textContent = sessionCloseFights;
+        if (sessionXPEl) sessionXPEl.textContent = `${sessionXP} XP`;
+        
+        // Show levels gained if any
+        const levelsGained = userLevel - sessionStartLevel;
+        if (sessionLevelsEl) {
+            if (levelsGained > 0) {
+                sessionLevelsEl.textContent = `${levelsGained} level${levelsGained > 1 ? 's' : ''}`;
+                sessionLevelsEl.parentElement.style.display = 'flex';
+            } else {
+                sessionLevelsEl.parentElement.style.display = 'none';
+            }
+        }
     }
 
     function displayHome() {
@@ -5118,7 +5605,7 @@ const DOM = {};
             document.getElementById('homeProgressPercentage').textContent = '0%';
             document.getElementById('questProgressFill').style.width = '0%';
             document.getElementById('questProgressText').textContent = '0/25 battles';
-            document.getElementById('homeTop3').innerHTML = '<div class="no-battles">Select a user first! 👆</div>';
+            document.getElementById('homeTop3').innerHTML = '';
             document.getElementById('homeAchievementCount').textContent = '0/0';
             document.getElementById('homeRecentAchievements').innerHTML = '';
             document.getElementById('sessionBattles').textContent = '0';
@@ -5126,10 +5613,11 @@ const DOM = {};
             return;
         }
 
-        // Update welcome message
-        const welcomeEl = document.getElementById('homeWelcome');
-        const userName = currentUser.charAt(0).toUpperCase() + currentUser.slice(1);
-        if (welcomeEl) welcomeEl.textContent = `Welcome, ${userName}!`;
+        // Load level/XP data
+        loadLevelData();
+        
+        // Update welcome message with level badge
+        updateProfileLevelDisplay();
 
         // Update profile stats (moved from ranking tab)
         const statsArray = Object.values(coasterStats);
@@ -5891,7 +6379,6 @@ const DOM = {};
     // Ranking Wizard: Recalculate all battles using current K-factors to correct for "lucky start"
     async function runRankingWizard() {
         if (!currentUser) {
-            alert('Select a user first!');
             return;
         }
         
@@ -6131,7 +6618,7 @@ const DOM = {};
 
     function updateRanking() {
         if (!currentUser) {
-            document.getElementById('rankingBody').innerHTML = '<tr><td colspan="8" class="no-battles">Select a user first! 🎢</td></tr>';
+            document.getElementById('rankingBody').innerHTML = '';
             return;
         }
         
@@ -6239,12 +6726,20 @@ const DOM = {};
             return;
         }
 
+        // First, calculate true ranks based on rating (not sort position)
+        // This ensures ranks stay consistent regardless of sorting or filtering
+        const ratingsSorted = [...statsArray].sort((a, b) => b.rating - a.rating);
+        const rankMap = {};
+        ratingsSorted.forEach((coaster, index) => {
+            rankMap[coaster.name] = index + 1;
+        });
+
         // Build table rows and mobile cards
         const rowsHtml = [];
         const cardsHtml = [];
 
         sorted.forEach((coaster, index) => {
-            const rank = index + 1;
+            const rank = rankMap[coaster.name]; // Use true rank, not sorted position
             const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
             const winrate = coaster.battles > 0 ? ((coaster.wins / coaster.battles) * 100).toFixed(1) : '0.0';
             const escapedName = coaster.name.replace(/'/g, "\\'");
@@ -6365,11 +6860,18 @@ const DOM = {};
         coasterHistory = [];
         completedPairs = new Set();
         
+        // Reset level and XP
+        userLevel = 1;
+        totalXPEarned = 0;
+        localStorage.removeItem(`userLevel_${currentUser}`);
+        localStorage.removeItem(`totalXPEarned_${currentUser}`);
+        
         // DO NOT reset achievements - they are preserved
         
         saveData();
         displayBattle();
         updateRanking();
+        displayHome(); // Refresh to update level display
         alert('Ranking is gereset! Achievements zijn behouden. 🔄');
     }
 
@@ -6388,14 +6890,58 @@ const DOM = {};
         modal.classList.remove('show');
     }
 
-    function confirmReset() {
+    async function confirmReset() {
         closeResetModal();
+        
+        // Show loading overlay
+        const overlay = document.getElementById('imageLoadingOverlay');
+        if (overlay) {
+            overlay.style.display = 'flex';
+            overlay.classList.remove('hidden');
+        }
+        
+        // Clear all image cache
+        const keys = Object.keys(localStorage);
+        let clearedImages = 0;
+        keys.forEach(key => {
+            if (key.startsWith('coasterImage_')) {
+                localStorage.removeItem(key);
+                clearedImages++;
+            }
+        });
+        console.log(`🧹 Cleared ${clearedImages} cached images during reset`);
+        
+        // Reset image load stats
+        imageLoadStats = {
+            loaded: 0,
+            total: 0,
+            failed: 0,
+            cached: 0
+        };
+        
+        // Reload CSV data to ensure we have the latest coasters
+        await reloadCoasterCSVData();
+        
+        // Update coasters array for current user with operational coasters only
+        if (currentUser === 'luca') {
+            const allCoasters = coastersDataLuca;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+        } else {
+            const allCoasters = coastersDataWouter;
+            coasters = allCoasters.filter(c => c.operatief === 1);
+        }
         
         // Perform the full reset
         coasterStats = initializeStats();
         totalBattlesCount = 0;
         coasterHistory = [];
         completedPairs = new Set();
+        
+        // Reset level and XP
+        userLevel = 1;
+        totalXPEarned = 0;
+        localStorage.removeItem(`userLevel_${currentUser}`);
+        localStorage.removeItem(`totalXPEarned_${currentUser}`);
         
         // Reset achievements
         if (typeof achievementManager !== 'undefined') {
@@ -6416,8 +6962,14 @@ const DOM = {};
         }
         
         saveData();
+        
+        // Reload all images from scratch
+        await preloadAllCoasterImages();
+        
+        // Now refresh displays
         displayBattle();
         updateRanking();
+        displayHome(); // Refresh to update level display
         updatePinsDisplay();
         alert('Alle data is gereset! 🔄');
     }
@@ -6432,7 +6984,6 @@ const DOM = {};
     // Creating a downloadable CSV of the current ranking
 function downloadRankingCSV() {
     if (!currentUser) {
-        alert('Select a user first!');
         return;
     }
     
@@ -6662,7 +7213,6 @@ function hidePinsOverlay() {
 function showHistoryOverlay(source) {
     const currentUser = localStorage.getItem('lastUser');
     if (!currentUser) {
-        alert('Please select a user first');
         return;
     }
 
@@ -6991,6 +7541,146 @@ function openCreditCard(coasterId) {
     
     overlay.style.display = 'flex';
     setTimeout(() => overlay.classList.add('show'), 10);
+    
+    // Setup 3D tilt effect
+    const cardOuter = container.querySelector('.credit-card-outer');
+    const popup = document.querySelector('.credit-card-popup');
+    const maxTilt = 30; // degrees
+    
+    // Mouse tracking for desktop - track across entire overlay
+    function handleMouseMove(e) {
+        const rect = overlay.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        // Normalize to -1 to 1 range based on full overlay
+        const mouseX = (e.clientX - centerX) / (rect.width / 2);
+        const mouseY = (e.clientY - centerY) / (rect.height / 2);
+        
+        // Calculate rotation (inverted for opposite movement)
+        const rotateY = -mouseX * maxTilt;
+        const rotateX = mouseY * maxTilt;
+        
+        // Apply transform
+        cardOuter.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        
+        // Update shine position and angle based on tilt (inverse - simulates fixed light reflecting off tilted surface)
+        // When card tilts left (negative rotateY), shine appears on right side
+        const shineX = 50 - (rotateY / maxTilt) * 30;
+        const shineY = 50 - (rotateX / maxTilt) * 30;
+        
+        // Calculate diagonal angle based on tilt direction
+        const shineAngle = 135 + rotateY * 1.5 + rotateX * 1.5;
+        
+        cardOuter.style.setProperty('--shine-x', `${shineX}%`);
+        cardOuter.style.setProperty('--shine-y', `${shineY}%`);
+        cardOuter.style.setProperty('--shine-angle', `${shineAngle}deg`);
+        
+        // Dynamic shadow based on tilt (reduced by half)
+        const shadowX = rotateY * 0.75;
+        const shadowY = -rotateX * 0.75;
+        const shadowBlur = 20 + (Math.abs(rotateX) + Math.abs(rotateY)) * 0.6;
+        cardOuter.style.boxShadow = `
+            ${shadowX}px ${shadowY}px 6px rgba(0, 0, 0, 0.05),
+            ${shadowX * 2}px ${shadowY * 2}px 15px rgba(0, 0, 0, 0.08),
+            ${shadowX * 3}px ${shadowY * 3}px 28px rgba(0, 0, 0, 0.1),
+            ${shadowX * 4}px ${shadowY * 4}px ${shadowBlur}px rgba(0, 0, 0, 0.12)
+        `;
+    }
+    
+    // Reset on mouse leave
+    function handleMouseLeave() {
+        cardOuter.style.transform = 'rotateX(0deg) rotateY(0deg)';
+        cardOuter.style.setProperty('--shine-x', '50%');
+        cardOuter.style.setProperty('--shine-y', '50%');
+        cardOuter.style.setProperty('--shine-angle', '135deg');
+        cardOuter.style.boxShadow = '';
+    }
+    
+    overlay.addEventListener('mousemove', handleMouseMove);
+    overlay.addEventListener('mouseleave', handleMouseLeave);
+    
+    // Gyroscope support for mobile
+    let gyroEnabled = false;
+    
+    async function enableGyroscope() {
+        if (typeof DeviceOrientationEvent !== 'undefined') {
+            // Check if permission is needed (iOS 13+)
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        gyroEnabled = true;
+                        attachGyroscope();
+                    }
+                } catch (error) {
+                    console.log('Gyroscope permission denied or not supported');
+                }
+            } else {
+                // Permission not needed (Android, older iOS)
+                gyroEnabled = true;
+                attachGyroscope();
+            }
+        }
+    }
+    
+    function handleOrientation(e) {
+        if (!gyroEnabled) return;
+        
+        // beta: front-to-back tilt (-180 to 180)
+        // gamma: left-to-right tilt (-90 to 90)
+        const beta = e.beta || 0;
+        const gamma = e.gamma || 0;
+        
+        // Normalize and limit to maxTilt
+        const rotateX = Math.max(-maxTilt, Math.min(maxTilt, beta * 0.3));
+        const rotateY = Math.max(-maxTilt, Math.min(maxTilt, gamma * 0.5));
+        
+        // Apply transform
+        cardOuter.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        
+        // Update shine based on tilt (inverse - fixed light reflecting off tilted surface)
+        const shineX = 50 - (rotateY / maxTilt) * 30;
+        const shineY = 50 - (rotateX / maxTilt) * 30;
+        const shineAngle = 135 + rotateY * 1.5 + rotateX * 1.5;
+        
+        cardOuter.style.setProperty('--shine-x', `${shineX}%`);
+        cardOuter.style.setProperty('--shine-y', `${shineY}%`);
+        cardOuter.style.setProperty('--shine-angle', `${shineAngle}deg`);
+        
+        // Dynamic shadow based on tilt (reduced by half)
+        const shadowX = rotateY * 0.75;
+        const shadowY = -rotateX * 0.75;
+        const shadowBlur = 20 + (Math.abs(rotateX) + Math.abs(rotateY)) * 0.6;
+        cardOuter.style.boxShadow = `
+            ${shadowX}px ${shadowY}px 6px rgba(0, 0, 0, 0.05),
+            ${shadowX * 2}px ${shadowY * 2}px 15px rgba(0, 0, 0, 0.08),
+            ${shadowX * 3}px ${shadowY * 3}px 28px rgba(0, 0, 0, 0.1),
+            ${shadowX * 4}px ${shadowY * 4}px ${shadowBlur}px rgba(0, 0, 0, 0.12)
+        `;
+    }
+    
+    function attachGyroscope() {
+        window.addEventListener('deviceorientation', handleOrientation);
+    }
+    
+    // Request gyroscope permission on first touch (mobile)
+    function requestGyroOnTouch() {
+        enableGyroscope();
+        popup.removeEventListener('touchstart', requestGyroOnTouch);
+    }
+    
+    popup.addEventListener('touchstart', requestGyroOnTouch, { once: true });
+    
+    // Store cleanup functions
+    overlay._cleanup = () => {
+        overlay.removeEventListener('mousemove', handleMouseMove);
+        overlay.removeEventListener('mouseleave', handleMouseLeave);
+        popup.removeEventListener('touchstart', requestGyroOnTouch);
+        if (gyroEnabled) {
+            window.removeEventListener('deviceorientation', handleOrientation);
+        }
+    };
 }
 
 function closeCreditCard(event) {
@@ -7000,6 +7690,13 @@ function closeCreditCard(event) {
     }
     
     const overlay = document.getElementById('creditCardOverlay');
+    
+    // Cleanup event listeners
+    if (overlay._cleanup) {
+        overlay._cleanup();
+        overlay._cleanup = null;
+    }
+    
     overlay.classList.remove('show');
     setTimeout(() => overlay.style.display = 'none', 300);
 }
@@ -7036,8 +7733,20 @@ function populateCreditsGrid() {
         const bgColor = manufacturerColors[coaster.manufacturer] || manufacturerColors['Unknown'];
         const borderColor = borderColors[coaster.manufacturer] || borderColors['Unknown'];
         
+        // Create image HTML - use coaster image or placeholder
+        const imageHTML = coaster.image 
+            ? `<img src="${coaster.image}" alt="${coaster.name}" loading="lazy" />` 
+            : `<div class="preview-image-placeholder">
+                    <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M40 10L45 30H65L50 42L55 62L40 50L25 62L30 42L15 30H35L40 10Z" fill="#D1D5DB" opacity="0.3"/>
+                    </svg>
+               </div>`;
+        
         return `
             <div class="coaster-card" onclick="openCreditCard('${coasterId}')" style="--card-bg: ${bgColor}; --card-border: ${borderColor};">
+                <div class="preview-image" style="background-color: ${bgColor}; border-color: ${borderColor};">
+                    ${imageHTML}
+                </div>
                 <div class="coaster-name">${coaster.name}</div>
             </div>
         `;

@@ -93,6 +93,16 @@
             <div id="profileContent" class="profile-content" style="display: none;">
             <div class="home-welcome">
                 <h2 id="homeWelcome">Welcome to Coaster Ranker!</h2>
+                <div class="level-xp-inline">
+                    <div class="xp-text-inline" id="xpProgressText">0/250 XP</div>
+                    <div class="level-progress-inline">
+                        <span class="level-number" id="currentLevelText">1</span>
+                        <div class="xp-bar-inline">
+                            <div class="xp-bar-fill-inline" id="xpProgressFill" style="width: 0%"></div>
+                        </div>
+                        <span class="level-number" id="nextLevelText">2</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Profile Stats Card (Full Width) -->
@@ -144,6 +154,10 @@
                             <span class="session-stat-value" id="sessionCloseFights">0</span>
                             <span class="session-stat-label">Close fights</span>
                         </div>
+                        <div class="session-stat">
+                            <span class="session-stat-value" id="sessionXP">0 XP</span>
+                            <span class="session-stat-label">XP Gained</span>
+                        </div>
                     </div>
                     <button class="home-link-btn" onclick="showHistoryOverlay('profile')" style="margin-top: 12px;">View Battle History →</button>
                 </div>
@@ -176,8 +190,8 @@
 
             <!-- Reset Buttons -->
             <div class="profile-reset-container">
-                <button class="profile-reset-btn profile-reset-ranking" onclick="resetRankingOnly()">🔄 Reset Ranking</button>
-                <button class="profile-reset-btn profile-reset-all" onclick="resetAllData()">⚠️ Reset All Data</button>
+                <button class="profile-reset-btn profile-reset-ranking" onclick="resetRankingOnly()">Reset Ranking</button>
+                <button class="profile-reset-btn profile-reset-all" onclick="resetAllData()">Reset All Data</button>
             </div>
             </div>
 
@@ -257,7 +271,6 @@
             <div class="battle-area">
             <div class="vs-overlay">VS</div>
             <div class="battle-container" id="battleContainer">
-                <div class="no-battles">Select a user above first! 👆</div>
             </div>
         
             </div>
@@ -299,8 +312,10 @@
         </div>
 
         <div id="credits-tab" class="tab-content">
-            <button class="add-credits-btn" style="position: absolute; top: 20px; right: 20px; background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25); z-index: 999; white-space: nowrap;">Add Credits</button>
-            <h2 style="padding: 20px 20px 10px 20px; margin: 0; color: #111827; font-size: 1.5em;">Coaster Credits</h2>
+            <div class="ranking-header">
+                <h2 style="margin: 0; font-size: 1.5em; line-height: 1.4;">Coaster Credits</h2>
+                <button class="add-credits-btn" style="background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25); white-space: nowrap;">Add Credits</button>
+            </div>
             <div class="credits-grid">
                 <!-- Cards will be populated dynamically by JavaScript -->
             </div>
@@ -455,6 +470,7 @@
                     <li>All battle history</li>
                     <li>All coaster rankings</li>
                     <li>All pins</li>
+                    <li>Level and XP progress</li>
                     <li>All progress and statistics</li>
                 </ul>
                 <p class="modal-warning-strong">This action cannot be undone!</p>
@@ -479,6 +495,7 @@
                 <ul class="modal-list">
                     <li>All battle history</li>
                     <li>All coaster rankings</li>
+                    <li>Level and XP progress</li>
                 </ul>
                 <p class="modal-info">Your pins and daily progress will be preserved.</p>
                 <p class="modal-warning-strong">This action cannot be undone!</p>

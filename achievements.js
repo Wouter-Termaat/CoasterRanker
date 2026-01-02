@@ -611,6 +611,7 @@ function showAchievementToast(achievement) {
             <div class="achievement-header">🎉 Pin Unlocked!</div>
             <div class="achievement-name">${achievement.name}</div>
             <div class="achievement-desc">${achievement.description}</div>
+            <div class="achievement-xp">+15 XP</div>
         </div>
     `;
     
@@ -618,6 +619,11 @@ function showAchievementToast(achievement) {
     
     // Trigger animation
     setTimeout(() => toast.classList.add('show'), 10);
+    
+    // Award XP for unlocking achievement
+    if (typeof awardXP === 'function') {
+        awardXP(15, 'Pin unlocked');
+    }
     
     // Remove after 5 seconds
     setTimeout(() => {

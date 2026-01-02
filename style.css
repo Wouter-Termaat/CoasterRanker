@@ -300,6 +300,38 @@ body.dark-mode .dev-btn {
     border-color: #444;
 }
 
+body.dark-mode .session-stat {
+    background: #333;
+}
+
+body.dark-mode .session-stat-label {
+    color: #b0b0b0;
+}
+
+body.dark-mode .top-coaster-item {
+    background: #333;
+}
+
+body.dark-mode .top-coaster-name {
+    color: #e0e0e0;
+}
+
+body.dark-mode .top-coaster-elo {
+    color: #b0b0b0;
+}
+
+body.dark-mode .tab-text {
+    color: inherit;
+}
+
+body.dark-mode .recent-achievement-icon {
+    background: #333;
+}
+
+body.dark-mode .achievement-count-label {
+    color: #b0b0b0;
+}
+
 body.dark-mode .dev-btn:hover {
     background: #3a3a3a;
 }
@@ -1214,16 +1246,32 @@ body.dark-mode .home-link-btn:hover {
 
 .coaster-card.loser,
 .battle-card.loser {
-    transform: scale(0.95);
+    animation: loserBounce 0.8s ease-out;
     opacity: 0.6;
-    transition: all 0.25s ease;
-    animation: loserRecover 0.2s ease 0.7s forwards;
+    transition: opacity 0.25s ease;
 }
 
-@keyframes loserRecover {
-    to {
-    transform: scale(1);
-    opacity: 1;
+@keyframes loserBounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    10% {
+        transform: translateY(15px);
+    }
+    20% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(10px);
+    }
+    40% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(5px);
+    }
+    60% {
+        transform: translateY(0);
     }
 }
 
@@ -2177,7 +2225,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
         min-width: 0 !important;
         box-sizing: border-box !important;
         display: block !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         border-radius: 12px !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -2659,7 +2707,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 /* Credits grid with narrower cards */
 .credits-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
     gap: 16px;
     padding: 0 20px 20px 20px;
     align-items: start;
@@ -2803,12 +2851,10 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4);
 }
 
-/* Coaster Credit Cards */
+/* Coaster Credit Cards - Preview */
 .credits-grid .coaster-card {
     background: var(--card-bg, white);
-    border-radius: 14px;
-    padding: 16px;
-    text-align: center;
+    border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -2816,25 +2862,57 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     cursor: pointer;
     display: flex;
     flex-direction: column;
+    width: 100%;
+    border: 5px solid var(--card-border, rgba(0, 0, 0, 0.1));
+}
+
+.credits-grid .coaster-card .preview-image {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: var(--card-bg, #f3f4f6);
+    border: 2px solid rgba(0, 0, 0, 0.4);
+    border-radius: 4px 4px 0 0;
+    overflow: hidden;
+    display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 1 / 1;
+    position: relative;
+}
+
+.credits-grid .coaster-card .preview-image img {
     width: 100%;
-    min-height: 0;
-    border: 3px solid var(--card-border, rgba(0, 0, 0, 0.1));
+    height: 100%;
+    object-fit: cover;
+}
+
+.credits-grid .coaster-card .preview-image-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.02) 100%);
+}
+
+.credits-grid .coaster-card .preview-image-placeholder svg {
+    width: 40%;
+    height: 40%;
+    opacity: 0.2;
 }
 
 .credits-grid .coaster-card .coaster-name {
     font-weight: 800;
-    font-size: 0.85em;
+    font-size: 0.8em;
     color: #111827;
     margin: 0;
+    padding: 8px 4px;
     line-height: 1.2;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    hyphens: auto;
+    white-space: nowrap;
     text-align: center;
-    max-width: 100%;
+    width: 100%;
+    background: var(--card-bg, white);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .coaster-card:hover {
@@ -2943,6 +3021,14 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     color: rgba(255,255,255,0.95);
 }
 
+.achievement-toast .achievement-xp {
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-top: 6px;
+    opacity: 0.8;
+    color: rgba(255,255,255,0.9);
+}
+
 /* Rarity-specific toast colors */
 .achievement-toast.rarity-uncommon {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -2989,18 +3075,26 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
+}
+
+/* Make profile content scale down to fit */
+.tab-content#home-tab.active .profile-content {
+    max-height: 100%;
 }
 
 .home-welcome {
     text-align: center;
-    margin-bottom: clamp(12px, 2vh, 24px);
-    padding: clamp(12px, 2vh, 32px) 20px;
-    flex-grow: 1;
+    margin-bottom: clamp(10px, 1.5vh, 18px);
+    padding: clamp(10px, 1.5vh, 24px) 20px;
+    flex-grow: 0;
+    flex-shrink: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 10px;
 }
 
 .home-welcome h2 {
@@ -3010,16 +3104,125 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     margin: 0;
 }
 
+.level-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    font-size: 0.8em;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: 12px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Inline Level & XP Progress */
+.level-xp-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 100%;
+    max-width: 360px;
+}
+
+.xp-text-inline {
+    font-size: 0.85em;
+    color: #666;
+    font-weight: 600;
+}
+
+.level-progress-inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.level-number {
+    font-size: 0.9em;
+    font-weight: 700;
+    color: var(--app-accent);
+    min-width: 20px;
+    text-align: center;
+}
+
+.xp-bar-inline {
+    flex: 1;
+    height: 8px;
+    background: rgba(76, 161, 175, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.xp-bar-fill-inline {
+    height: 100%;
+    background: linear-gradient(90deg, #4CA1AF 0%, #667eea 100%);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    box-shadow: 0 0 4px rgba(76, 161, 175, 0.4);
+}
+
+/* Level-up Toast */
+.levelup-toast {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 10000;
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.levelup-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.levelup-icon {
+    font-size: 2em;
+}
+
+.levelup-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.levelup-header {
+    font-size: 0.9em;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.levelup-level {
+    font-size: 1.2em;
+    font-weight: 700;
+}
+
+
 .home-card {
     background: white;
     border-radius: 12px;
-    padding: clamp(12px, 1.5vh, 20px);
+    padding: clamp(10px, 1.2vh, 16px);
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    margin-bottom: clamp(10px, 1.5vh, 16px);
+    margin-bottom: clamp(8px, 1.2vh, 12px);
     display: flex;
     flex-direction: column;
     min-height: 0;
-    flex-shrink: 0;
+    flex-shrink: 1;
 }
 
 .home-card-full {
@@ -3040,9 +3243,9 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .home-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: clamp(8px, 1.2vh, 14px);
-    margin-bottom: clamp(10px, 1.5vh, 18px);
-    flex-shrink: 0;
+    gap: clamp(8px, 1vh, 12px);
+    margin-bottom: clamp(8px, 1.2vh, 14px);
+    flex-shrink: 1;
 }
 
 .home-grid-2col {
@@ -3283,7 +3486,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .profile-reset-container {
     display: flex;
     gap: 12px;
-    margin-top: clamp(10px, 2vh, 24px);
+    margin-top: clamp(8px, 1.2vh, 16px);
     flex-shrink: 0;
 }
 
@@ -3937,6 +4140,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     -ms-user-select: none;
     -webkit-touch-callout: none;
     cursor: default;
+    perspective: 1000px;
 }
 
 .credit-card-close {
@@ -3972,15 +4176,74 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .credit-card-outer {
     border-radius: 20px;
     display: inline-block;
-    overflow: visible;
-    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+    overflow: visible; /* Allow rank badge to appear fully above card */
+    transition: transform 0.1s ease-out, box-shadow 0.1s ease-out, filter 0.1s ease-out;
     will-change: transform;
     transform: translateZ(0);
     position: relative; /* Ensure positioning context for absolutely positioned children */
+    transform-style: preserve-3d;
+    --shine-x: 50%;
+    --shine-y: 50%;
+    --shine-angle: 135deg;
+    /* Enhanced depth shadows - softer and more blurry */
+    box-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.05),
+        0 5px 15px rgba(0, 0, 0, 0.08),
+        0 12px 28px rgba(0, 0, 0, 0.1),
+        0 20px 40px rgba(0, 0, 0, 0.12);
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.1));
 }
 
 .credit-card-outer:hover {
-    transform: translateY(-8px) translateZ(0);
+    /* Hover removed - replaced with 3D tilt effect */
+}
+
+/* Plastic shine overlay - diagonal line following tilt - ONLY in credit card overlay, not battle cards */
+.credit-card-overlay .credit-card-outer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        var(--shine-angle),
+        transparent 0%,
+        transparent 40%,
+        rgba(255, 255, 255, 0.03) 45%,
+        rgba(255, 255, 255, 0.15) 48%,
+        rgba(255, 255, 255, 0.4) 50%,
+        rgba(255, 255, 255, 0.15) 52%,
+        rgba(255, 255, 255, 0.03) 55%,
+        transparent 60%,
+        transparent 100%
+    );
+    background-position: var(--shine-x) var(--shine-y);
+    background-size: 200% 200%;
+    pointer-events: none;
+    z-index: 100000;
+    mix-blend-mode: overlay;
+    opacity: 1;
+    border-radius: 20px;
+    transition: background-position 0.1s ease-out, transform 0.1s ease-out;
+}
+
+/* Card thickness/depth effect - visible stacked layers */
+.credit-card-outer::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: -4px;
+    bottom: -4px;
+    background: 
+        linear-gradient(to right, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.2) 8px, transparent 8px),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.2) 8px, transparent 8px),
+        linear-gradient(135deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.15));
+    border-radius: 20px;
+    pointer-events: none;
+    z-index: -1;
+    transform: translateZ(-4px);
 }
 
 .credit-card-outer.winner {
@@ -3989,10 +4252,9 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 .credit-card-outer.loser {
-    transform: scale(0.95) translateZ(0);
+    animation: loserBounce 0.8s ease-out;
     opacity: 0.6;
-    transition: all 0.25s ease;
-    animation: loserRecover 0.2s ease 0.7s forwards;
+    transition: opacity 0.25s ease;
 }
 
 /* Credit Card Layout */
@@ -4002,14 +4264,17 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     background: white;
     border-radius: 16px;
     overflow: visible;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+        0 1px 3px rgba(0, 0, 0, 0.12),
+        0 4px 8px rgba(0, 0, 0, 0.15);
     display: flex;
     flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     position: relative;
     transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
     will-change: transform;
-    transform: translateZ(0);
+    transform: translateZ(20px); /* Push card forward for depth */
     user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -4026,17 +4291,23 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     -webkit-touch-callout: none;
 }
 
-/* Subtle paper texture */
-.credit-card::before {
+/* Subtle paper texture - on top of everything */
+.credit-card::after {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: url('data:image/svg+xml,%3Csvg width="200" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noise"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /%3E%3C/filter%3E%3Crect width="200" height="200" filter="url(%23noise)" opacity="0.08"/%3E%3C/svg%3E');
+    background-image: url('images/Paper-Texture.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.3;
+    mix-blend-mode: multiply;
     pointer-events: none;
-    z-index: 1;
+    z-index: 99999;
+    border-radius: 16px;
 }
 
 .credit-card > * {
@@ -4250,7 +4521,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 .credit-stat-label {
     font-size: 10px;
-    color: #888;
+    color: #222;
     font-weight: 500;
     text-transform: lowercase;
     letter-spacing: 0.3px;
@@ -4353,6 +4624,39 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     .credit-card-stats {
         margin: 8px 24px 24px 24px;
         max-height: 140px;
+    }
+    
+    /* Level progress adjustments for mobile */
+    .level-xp-inline {
+        max-width: 100%;
+        gap: 4px;
+        margin-top: 8px;
+    }
+    
+    .xp-text-inline {
+        font-size: 0.75em;
+    }
+    
+    .level-progress-inline {
+        gap: 8px;
+    }
+    
+    .level-number {
+        font-size: 0.8em;
+        min-width: 16px;
+    }
+    
+    .level-badge {
+        font-size: 0.65em;
+        padding: 3px 8px;
+        margin-left: 6px;
+    }
+    
+    .levelup-toast {
+        top: 70px;
+        right: 10px;
+        left: 10px;
+        padding: 14px 16px;
     }
 }
 
