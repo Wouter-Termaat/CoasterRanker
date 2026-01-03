@@ -529,7 +529,7 @@ body.dark-mode .home-link-btn:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--app-dark);
+    color: white;
     font-size: 0.95em;
     font-family: inherit;
 }
@@ -675,11 +675,11 @@ body.dark-mode .home-link-btn:hover {
 /* Force close-fight dev button: use close-fight yellow (same as VS) */
 #forceCloseBtn {
     background: #ffd86b;
-    color: var(--app-dark);
+    color: white;
     border: none;
     box-shadow: 0 8px 20px rgba(255,200,90,0.12);
     padding: 10px 12px;
-    font-weight: 800;
+    font-weight: 700;
     border-radius: 8px;
     cursor: pointer;
 }
@@ -746,7 +746,7 @@ body.dark-mode .home-link-btn:hover {
 
 .header {
     position: relative;
-    z-index: 100;
+    z-index: 10001;
     border-radius: 0;
     color: white;
     background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
@@ -813,6 +813,7 @@ body.dark-mode .home-link-btn:hover {
 .header-left { left: 16px; }
 .header-right { 
     right: 16px;
+    z-index: 10000;
 }
 
 .header-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -920,7 +921,7 @@ body.dark-mode .home-link-btn:hover {
     display: none;
     flex-direction: column;
     gap: 8px;
-    z-index: 2000;
+    z-index: 9999;
     min-width: 160px;
 }
 
@@ -1173,6 +1174,44 @@ body.dark-mode .home-link-btn:hover {
     position: relative;
 }
 
+/* Battle History Button */
+#battleHistoryBtn,
+.battle-area .history-nav-btn,
+.history-nav-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 999;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25);
+    white-space: nowrap;
+    display: inline-block;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#battleHistoryBtn:hover,
+.battle-area .history-nav-btn:hover,
+.history-nav-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.35);
+    background: linear-gradient(135deg, #5ab1bf 0%, #3d4f61 100%);
+}
+
+#battleHistoryBtn:active,
+.battle-area .history-nav-btn:active,
+.history-nav-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(76, 161, 175, 0.2);
+}
+
 /* VS Overlay - positioned on top of cards, centered */
 .vs-overlay {
     position: absolute;
@@ -1234,6 +1273,10 @@ body.dark-mode .home-link-btn:hover {
 }
 
 /* Battle cards use outer wrapper for hover - don't apply transform to inner card */
+.battle-card {
+    cursor: pointer;
+}
+
 .battle-card:hover {
     /* No transform - let credit-card-outer handle it */
 }
@@ -1796,25 +1839,42 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     border-radius: 10px;
     overflow: hidden;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    table-layout: fixed;
 }
 
 .ranking-table th {
     background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
     color: white;
-    padding: 15px;
+    padding: 12px 10px;
     text-align: left;
     font-weight: 600;
     cursor: pointer;
     user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
+/* Column widths */
+.ranking-table th:nth-child(1) { width: 60px; }  /* Rank */
+.ranking-table th:nth-child(2) { width: auto; min-width: 140px; }  /* Name */
+.ranking-table th:nth-child(3) { width: auto; min-width: 120px; }  /* Park */
+.ranking-table th:nth-child(4) { width: auto; min-width: 110px; }  /* Manufacturer */
+.ranking-table th:nth-child(5) { width: 140px; }  /* Rating */
+.ranking-table th:nth-child(6) { width: 75px; }  /* Battles */
+.ranking-table th:nth-child(7) { width: 65px; }  /* Wins */
+.ranking-table th:nth-child(8) { width: 75px; }  /* Losses */
 
 .ranking-table th:hover {
     background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
 }
 
 .ranking-table td {
-    padding: 12px 15px;
+    padding: 10px;
     border-bottom: 1px solid #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ranking-table tbody tr:nth-child(even) {
@@ -1833,7 +1893,9 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .elo-score {
     font-weight: bold;
     color: #4CA1AF;
-    font-size: 1.1em;
+    font-size: 1.05em;
+    white-space: nowrap;
+    display: inline-block;
 }
 
 .clickable-stat {
@@ -3074,7 +3136,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     height: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: space-evenly;
     overflow-y: hidden;
     overflow-x: hidden;
 }
@@ -3086,7 +3148,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 .home-welcome {
     text-align: center;
-    margin-bottom: clamp(10px, 1.5vh, 18px);
+    margin-bottom: clamp(16px, 2vh, 24px);
     padding: clamp(10px, 1.5vh, 24px) 20px;
     flex-grow: 0;
     flex-shrink: 1;
@@ -3218,7 +3280,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     border-radius: 12px;
     padding: clamp(10px, 1.2vh, 16px);
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    margin-bottom: clamp(8px, 1.2vh, 12px);
+    margin-bottom: clamp(12px, 1.8vh, 18px);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -3243,8 +3305,8 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 .home-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: clamp(8px, 1vh, 12px);
-    margin-bottom: clamp(8px, 1.2vh, 14px);
+    gap: clamp(10px, 1.5vh, 16px);
+    margin-bottom: clamp(12px, 1.8vh, 18px);
     flex-shrink: 1;
 }
 
@@ -3474,63 +3536,12 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 .home-action-btn:hover {
-    transform: translateY(-3px);
+    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(76, 161, 175, 0.5);
 }
 
 .home-action-btn:active {
     transform: translateY(-1px);
-}
-
-/* Profile Reset Buttons */
-.profile-reset-container {
-    display: flex;
-    gap: 12px;
-    margin-top: clamp(8px, 1.2vh, 16px);
-    flex-shrink: 0;
-}
-
-.profile-reset-btn {
-    flex: 1;
-    padding: clamp(8px, 1.2vh, 12px) 20px;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: clamp(0.8em, 1.2vh, 0.95em);
-    font-weight: 600;
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    white-space: nowrap;
-}
-
-.profile-reset-ranking {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
-}
-
-.profile-reset-ranking:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35);
-}
-
-.profile-reset-ranking:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
-}
-
-.profile-reset-all {
-    background: linear-gradient(135deg, #ff6b6b 0%, #f03e3e 100%);
-    box-shadow: 0 4px 12px rgba(240, 62, 62, 0.25);
-}
-
-.profile-reset-all:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(240, 62, 62, 0.35);
-}
-
-.profile-reset-all:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(240, 62, 62, 0.2);
 }
 
 /* Responsive Design for Home Tab */
@@ -3646,11 +3657,6 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
         width: 100%;
         font-size: clamp(0.85em, 1.1vh, 0.95em);
         padding: clamp(8px, 1.2vh, 10px) 20px;
-    }
-
-    .profile-reset-btn {
-        padding: clamp(8px, 1vh, 10px) 16px;
-        font-size: clamp(0.75em, 1vh, 0.85em);
     }
 }
 
@@ -3795,7 +3801,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 
 .modal-btn-cancel:hover {
     background: #dee2e6;
-    transform: translateY(-1px);
+    transform: translateY(-2px);
 }
 
 .modal-btn-confirm {
@@ -4116,7 +4122,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.85);
-    z-index: 10000;
+    z-index: 10002;
     justify-content: center;
     align-items: center;
     opacity: 0;
@@ -4195,7 +4201,12 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 .credit-card-outer:hover {
-    /* Hover removed - replaced with 3D tilt effect */
+    transform: translateY(-8px);
+    box-shadow: 
+        0 2px 6px rgba(0, 0, 0, 0.08),
+        0 8px 20px rgba(0, 0, 0, 0.12),
+        0 16px 36px rgba(0, 0, 0, 0.15),
+        0 24px 48px rgba(0, 0, 0, 0.18);
 }
 
 /* Plastic shine overlay - diagonal line following tilt - ONLY in credit card overlay, not battle cards */
@@ -4280,7 +4291,7 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     -moz-user-select: none;
     -ms-user-select: none;
     -webkit-touch-callout: none;
-    cursor: default;
+    cursor: pointer;
 }
 
 .credit-card * {
@@ -4432,6 +4443,16 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.defunct-marker {
+    display: inline-block;
+    font-size: 1.5em;
+    font-weight: 700;
+    margin-left: 6px;
+    opacity: 0.85;
+    line-height: 0;
+    vertical-align: middle;
 }
 
 .credit-card-divider {
@@ -4670,35 +4691,38 @@ body.dark-mode .credit-card-close:hover {
 }
 
 /* ===== BATTLE HISTORY BUTTON ===== */
+#battleHistoryBtn,
 .history-nav-btn {
-    position: absolute !important;
-    top: 20px !important;
-    right: 20px !important;
-    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%) !important;
-    color: white !important;
-    border: none !important;
-    padding: 10px 18px !important;
-    border-radius: 8px !important;
-    font-size: 0.95em !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25) !important;
-    white-space: nowrap !important;
-    z-index: 999 !important;
-    display: inline-block !important;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #4CA1AF 0%, #2C3E50 100%);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 12px rgba(76, 161, 175, 0.25);
+    white-space: nowrap;
+    z-index: 999;
+    display: inline-block;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+#battleHistoryBtn:hover,
 .history-nav-btn:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.35) !important;
-    background: linear-gradient(135deg, #5ab1bf 0%, #3d4f61 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(76, 161, 175, 0.35);
+    background: linear-gradient(135deg, #5ab1bf 0%, #3d4f61 100%);
 }
 
+#battleHistoryBtn:active,
 .history-nav-btn:active {
-    transform: translateY(0) !important;
-    box-shadow: 0 2px 8px rgba(76, 161, 175, 0.2) !important;
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(76, 161, 175, 0.2);
 }
 
 #battle-tab .history-nav-btn {

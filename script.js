@@ -61,11 +61,7 @@
             coastersDataLuca = parseCSV(lucaText);
             coastersDataWouter = parseCSV(wouterText);
             
-            // Count operational coasters
-            const lucaOperational = coastersDataLuca.filter(c => c.operatief === 1).length;
-            const wouterOperational = coastersDataWouter.filter(c => c.operatief === 1).length;
-            
-            console.info(`Reloaded CSV: Luca=${coastersDataLuca.length} (${lucaOperational} operational), Wouter=${coastersDataWouter.length} (${wouterOperational} operational)`);
+            console.info(`Reloaded CSV: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
         } catch (error) {
             console.error('Error reloading CSV data:', error.message);
             // Don't throw - keep existing data if reload fails
@@ -137,11 +133,7 @@
             coastersDataLuca = parseCSV(lucaText);
             coastersDataWouter = parseCSV(wouterText);
             
-            // Count operational coasters
-            const lucaOperational = coastersDataLuca.filter(c => c.operatief === 1).length;
-            const wouterOperational = coastersDataWouter.filter(c => c.operatief === 1).length;
-            
-            console.info(`Loaded: Luca=${coastersDataLuca.length} (${lucaOperational} operational), Wouter=${coastersDataWouter.length} (${wouterOperational} operational)`);
+            console.info(`Loaded: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
             initializeApp();
         } catch (error) {
             console.error('Error loading data:', error.message);
@@ -226,17 +218,13 @@
             tab.style.cursor = 'pointer';
         });
         
-        // Load user-specific data - ONLY operational coasters (operatief === 1)
+        // Load user-specific data - including all coasters (operational and defunct)
         if (savedUser === 'luca') {
-            const allCoasters = coastersDataLuca;
-            coasters = allCoasters.filter(c => c.operatief === 1);
-            const nonOperational = allCoasters.length - coasters.length;
-            console.log(`🎯 Selected user: Luca - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
+            coasters = coastersDataLuca;
+            console.log(`🎯 Selected user: Luca - Loading ${coasters.length} coasters`);
         } else {
-            const allCoasters = coastersDataWouter;
-            coasters = allCoasters.filter(c => c.operatief === 1);
-            const nonOperational = allCoasters.length - coasters.length;
-            console.log(`🎯 Selected user: Wouter - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
+            coasters = coastersDataWouter;
+            console.log(`🎯 Selected user: Wouter - Loading ${coasters.length} coasters`);
         }
         
         // Load user data
@@ -264,12 +252,15 @@
         // Post-initialization UI adjustments
         postInitUISetup();
         
+        // Update ranking immediately after phase setup to show seeding/waiting coasters
+        updateRanking();
+        
         // Load ALL images during loading screen before showing first battle
         await preloadAllCoasterImages();
         
         // Now display the first battle (all images loaded)
         displayBattle();
-        updateRanking();
+        updateRanking(); // Update again in case battle changed anything
         displayHome();
         
         // Restore the last active tab
@@ -2935,6 +2926,16 @@ window.addEventListener('resize', onResize, { passive: true });
     // Rating-proximity: prefer opponents whose rating is similar (more informative matches)
     let RATING_PROXIMITY_POWER = 0.1; // higher => stronger preference for similar rating
     const RATING_DIFF_SCALE = 400; // scale (in rating points) used to normalize differences
+    
+    // ========================================
+    // PHASE SYSTEM CONFIGURATION
+    // ========================================
+    // Phases: waiting (not started), seeding (onboarding, boosted frequency), ranked (active)
+    let SEEDING_TARGET_COUNT = 20;      // Target number of coasters in Seeding phase
+    let SEEDING_BATCH_SIZE = 2;          // How many to promote from Waiting per batch (staggered)
+    let SEEDING_MIN_BATTLES = 5;         // Minimum battles before exiting Seeding to Ranked
+    const SEEDING_BOOST_FACTOR = 3.5;    // Matchmaking probability boost for Seeding coasters
+    
     // Pairing strategy: hybrid — picks one under-sampled coaster
     // then picks a second that is ELO-similar while still favoring under-sampled ones.
     let pairingControlsHidden = true;
@@ -3038,17 +3039,13 @@ const DOM = {};
         // Reload CSV data to ensure we have the latest coasters
         await reloadCoasterCSVData();
         
-        // Load user-specific data - ONLY operational coasters (operatief === 1)
+        // Load user-specific data - including all coasters (operational and defunct)
         if (user === 'luca') {
-            const allCoasters = coastersDataLuca;
-            coasters = allCoasters.filter(c => c.operatief === 1);
-            const nonOperational = allCoasters.length - coasters.length;
-            console.log(`🎯 Switched to Luca - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
+            coasters = coastersDataLuca;
+            console.log(`🎯 Switched to Luca - Loading ${coasters.length} coasters`);
         } else {
-            const allCoasters = coastersDataWouter;
-            coasters = allCoasters.filter(c => c.operatief === 1);
-            const nonOperational = allCoasters.length - coasters.length;
-            console.log(`🎯 Switched to Wouter - Loading ${coasters.length} operational coasters (${nonOperational} non-operational, ${allCoasters.length} total)`);
+            coasters = coastersDataWouter;
+            console.log(`🎯 Switched to Wouter - Loading ${coasters.length} coasters`);
         }
         
         // Load or initialize stats
@@ -3158,6 +3155,10 @@ const DOM = {};
 
         coasterStats = JSON.parse(localStorage.getItem(statsKey)) || initializeStats();
         
+        // Load total battles count first (needed for phase logic)
+        totalBattlesCount = parseInt(localStorage.getItem(battlesKey)) || 0;
+        coasterHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
+        
         // Migrate from ELO to Glicko-2 if necessary
         Object.values(coasterStats).forEach(stats => {
             if (stats.elo !== undefined && stats.rating === undefined) {
@@ -3171,10 +3172,31 @@ const DOM = {};
             if (stats.rating === undefined) stats.rating = GLICKO2_RATING_BASE;
             if (stats.rd === undefined) stats.rd = GLICKO2_RD_INITIAL;
             if (stats.volatility === undefined) stats.volatility = GLICKO2_VOLATILITY_INITIAL;
+            
+            // Ensure phase field exists - default to waiting
+            if (stats.phase === undefined) {
+                stats.phase = 'waiting';
+            }
         });
         
-        totalBattlesCount = parseInt(localStorage.getItem(battlesKey)) || 0;
-        coasterHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
+        // Phase initialization logic
+        if (totalBattlesCount === 0) {
+            // No battles at all - ensure all coasters start in waiting, then promote 25 to seeding
+            Object.values(coasterStats).forEach(stats => {
+                if (stats.battles === 0) {
+                    stats.phase = 'waiting';
+                }
+            });
+            // Promote 25 random coasters to Seeding
+            promoteWaitingToSeeding(true);
+            console.log('Initialized phase system: promoted 25 random coasters to Seeding');
+        } else if (Object.values(coasterStats).some(s => s.battles > 0)) {
+            // Some battles exist - reprocess phases based on stats
+            reprocessAllPhases();
+        }
+        
+        // Save and update after phase processing
+        saveData();
         
         // Load completed pairs
         const savedPairs = localStorage.getItem(pairsKey);
@@ -3208,10 +3230,134 @@ const DOM = {};
                 volatility: GLICKO2_VOLATILITY_INITIAL,
                 battles: 0,
                 wins: 0,
-                losses: 0
+                losses: 0,
+                phase: 'waiting'  // Default phase for new coasters
             };
         });
         return stats;
+    }
+
+    // ========================================
+    // PHASE MANAGEMENT SYSTEM
+    // ========================================
+    
+    // Get phase distribution stats
+    function getPhaseDistribution() {
+        const distribution = {
+            waiting: 0,
+            seeding: 0,
+            ranked: 0
+        };
+        
+        Object.values(coasterStats).forEach(stats => {
+            const phase = stats.phase || 'waiting';
+            if (distribution.hasOwnProperty(phase)) {
+                distribution[phase]++;
+            }
+        });
+        
+        return distribution;
+    }
+    
+    // Check and update phase for a single coaster
+    function checkCoasterPhaseTransition(coasterName) {
+        const stats = coasterStats[coasterName];
+        if (!stats) return false;
+        
+        const currentPhase = stats.phase || 'waiting';
+        let transitioned = false;
+        
+        // Seeding → Ranked: minimum battles reached
+        if (currentPhase === 'seeding' && stats.battles >= SEEDING_MIN_BATTLES) {
+            stats.phase = 'ranked';
+            transitioned = true;
+            console.log(`Phase transition: ${coasterName} seeding → ranked (battles: ${stats.battles}, RD: ${Math.round(stats.rd)})`);
+        }
+        
+        return transitioned;
+    }
+    
+    // Promote coasters from Waiting to Seeding (staggered batch)
+    function promoteWaitingToSeeding(isInitial = false) {
+        const distribution = getPhaseDistribution();
+        const currentSeeding = distribution.seeding;
+        
+        // Only promote if below target
+        if (currentSeeding >= SEEDING_TARGET_COUNT) {
+            return 0;
+        }
+        
+        // Find waiting coasters
+        const waitingCoasters = Object.values(coasterStats).filter(s => s.phase === 'waiting');
+        if (waitingCoasters.length === 0) {
+            return 0;
+        }
+        
+        // Calculate how many to promote
+        const slotsAvailable = SEEDING_TARGET_COUNT - currentSeeding;
+        // For initial load, promote full batch; otherwise staggered
+        const batchSize = isInitial ? slotsAvailable : SEEDING_BATCH_SIZE;
+        const toPromote = Math.min(batchSize, slotsAvailable, waitingCoasters.length);
+        
+        // Shuffle waiting coasters for random selection
+        const shuffled = [...waitingCoasters].sort(() => Math.random() - 0.5);
+        
+        // Promote randomly selected coasters
+        let promoted = 0;
+        for (let i = 0; i < toPromote; i++) {
+            shuffled[i].phase = 'seeding';
+            console.log(`Promoted to Seeding: ${shuffled[i].name}`);
+            promoted++;
+        }
+        
+        return promoted;
+    }
+    
+    // Check if any Seeding coasters graduated and backfill
+    function manageSeedingPool() {
+        // First check all Seeding coasters for transitions to Ranked
+        const seedingCoasters = Object.values(coasterStats).filter(s => s.phase === 'seeding');
+        seedingCoasters.forEach(stats => checkCoasterPhaseTransition(stats.name));
+        
+        // Then backfill if we're below target
+        promoteWaitingToSeeding();
+    }
+    
+    // No dormancy tracking in simplified 3-phase system
+    // Glicko-2's RD naturally tracks data staleness
+    
+    // Reprocess all coaster phases based on current stats (for initialization or recalculation)
+    function reprocessAllPhases() {
+        console.log('Reprocessing all coaster phases...');
+        
+        Object.values(coasterStats).forEach(stats => {
+            const battles = stats.battles || 0;
+            
+            // Coasters with no battles stay in Waiting
+            if (battles === 0) {
+                stats.phase = 'waiting';
+            }
+            // Coasters with few battles → Seeding
+            else if (battles < SEEDING_MIN_BATTLES) {
+                stats.phase = 'seeding';
+            }
+            // 5+ battles → Ranked
+            else {
+                stats.phase = 'ranked';
+            }
+        });
+        
+        // Ensure we maintain the target number of Seeding coasters
+        const distribution = getPhaseDistribution();
+        
+        // Always try to fill Seeding pool to target count if we have Waiting coasters
+        if (distribution.waiting > 0 && distribution.seeding < SEEDING_TARGET_COUNT) {
+            console.log(`Seeding pool below target (${distribution.seeding}/${SEEDING_TARGET_COUNT}) - promoting from Waiting`);
+            promoteWaitingToSeeding(true); // Promote enough to reach target
+        }
+        
+        const finalDist = getPhaseDistribution();
+        console.log('Phase reprocessing complete:', finalDist);
     }
 
     function saveData() {
@@ -3287,19 +3433,100 @@ const DOM = {};
         if (el) el.textContent = num.toFixed(1);
         saveData();
     }
+    
+    // Phase system controls
+    function setSeedingGroupSize(val) {
+        const num = Number(val);
+        if (isNaN(num) || num < 1) return;
+        const oldTarget = SEEDING_TARGET_COUNT;
+        SEEDING_TARGET_COUNT = Math.round(num);
+        const el = document.getElementById('seedingGroupSizeValue');
+        if (el) el.textContent = SEEDING_TARGET_COUNT;
+        
+        // Get current distribution
+        const distribution = getPhaseDistribution();
+        const currentSeeding = distribution.seeding;
+        
+        // If new target is larger, promote more coasters from waiting
+        if (SEEDING_TARGET_COUNT > currentSeeding && distribution.waiting > 0) {
+            const needed = SEEDING_TARGET_COUNT - currentSeeding;
+            console.log(`Seeding target increased to ${SEEDING_TARGET_COUNT} - promoting ${needed} more coasters`);
+            promoteWaitingToSeeding(true);
+        }
+        // If new target is smaller, demote excess coasters back to waiting
+        else if (SEEDING_TARGET_COUNT < currentSeeding) {
+            const excess = currentSeeding - SEEDING_TARGET_COUNT;
+            console.log(`Seeding target decreased to ${SEEDING_TARGET_COUNT} - demoting ${excess} coasters back to waiting`);
+            
+            // Get all seeding coasters sorted by least battles first (demote those with least progress)
+            const seedingCoasters = Object.values(coasterStats)
+                .filter(s => s.phase === 'seeding')
+                .sort((a, b) => a.battles - b.battles);
+            
+            // Demote the excess coasters with fewest battles
+            for (let i = 0; i < Math.min(excess, seedingCoasters.length); i++) {
+                seedingCoasters[i].phase = 'waiting';
+                console.log(`Demoted to Waiting: ${seedingCoasters[i].name} (${seedingCoasters[i].battles} battles)`);
+            }
+        }
+        
+        saveData();
+        updateRanking();
+    }
+    
+    function setSeedingMinBattles(val) {
+        const num = Number(val);
+        if (isNaN(num) || num < 1) return;
+        const oldMinBattles = SEEDING_MIN_BATTLES;
+        SEEDING_MIN_BATTLES = Math.round(num);
+        const el = document.getElementById('seedingMinBattlesValue');
+        if (el) el.textContent = SEEDING_MIN_BATTLES;
+        
+        // Reprocess all seeding coasters to check if they should graduate to ranked
+        console.log(`Seeding min battles changed from ${oldMinBattles} to ${SEEDING_MIN_BATTLES} - checking phase transitions`);
+        
+        const seedingCoasters = Object.values(coasterStats).filter(s => s.phase === 'seeding');
+        let transitioned = 0;
+        seedingCoasters.forEach(stats => {
+            if (checkCoasterPhaseTransition(stats.name)) {
+                transitioned++;
+            }
+        });
+        
+        if (transitioned > 0) {
+            console.log(`${transitioned} coaster(s) transitioned from Seeding to Ranked`);
+            // Backfill seeding pool if needed
+            manageSeedingPool();
+        }
+        
+        saveData();
+        updateRanking();
+    }
 
     function applySettingsToUI() {
-        // update range and label for exploration power
+        // update range and label for exploration power (if still present)
         const expRange = document.getElementById('explorationPowerRange');
         const expVal = document.getElementById('explorationPowerValue');
         if (expRange) expRange.value = EXPLORATION_POWER;
         if (expVal) expVal.textContent = (Number(EXPLORATION_POWER) || 0).toFixed(1);
         
-        // update range and label for elo proximity
+        // update range and label for elo proximity (if still present)
         const range = document.getElementById('eloProximityRange');
         const val = document.getElementById('eloProximityValue');
         if (range) range.value = RATING_PROXIMITY_POWER;
         if (val) val.textContent = (Number(RATING_PROXIMITY_POWER) || 0).toFixed(1);
+        
+        // update phase system controls
+        const seedingGroupRange = document.getElementById('seedingGroupSizeRange');
+        const seedingGroupVal = document.getElementById('seedingGroupSizeValue');
+        if (seedingGroupRange) seedingGroupRange.value = SEEDING_TARGET_COUNT;
+        if (seedingGroupVal) seedingGroupVal.textContent = SEEDING_TARGET_COUNT;
+        
+        const seedingBattlesRange = document.getElementById('seedingMinBattlesRange');
+        const seedingBattlesVal = document.getElementById('seedingMinBattlesValue');
+        if (seedingBattlesRange) seedingBattlesRange.value = SEEDING_MIN_BATTLES;
+        if (seedingBattlesVal) seedingBattlesVal.textContent = SEEDING_MIN_BATTLES;
+        
         // apply pairing controls hidden state
         const pairingDiv = document.getElementById('pairingControls');
         const toggleBtn = document.getElementById('pairingControlsToggle');
@@ -3335,6 +3562,8 @@ const DOM = {};
             if (devShowData) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); } else { btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false'); }
         }
         renderDevData();
+        // Refresh ranking to show/hide phase labels
+        updateRanking();
     }
 
     function saveDevSettings() {
@@ -3362,19 +3591,21 @@ const DOM = {};
         // Reload CSV data to ensure we have the latest coasters
         await reloadCoasterCSVData();
         
-        // Update coasters array for current user with operational coasters only
+        // Update coasters array for current user
         if (currentUser === 'luca') {
-            const allCoasters = coastersDataLuca;
-            coasters = allCoasters.filter(c => c.operatief === 1);
+            coasters = coastersDataLuca;
         } else {
-            const allCoasters = coastersDataWouter;
-            coasters = allCoasters.filter(c => c.operatief === 1);
+            coasters = coastersDataWouter;
         }
         
         coasterStats = initializeStats();
         totalBattlesCount = 0;
         coasterHistory = [];
         completedPairs = new Set();
+        
+        // Initialize phase system - promote 25 random coasters to Seeding
+        promoteWaitingToSeeding(true);
+        
         saveData();
         updateRanking();
         displayHistory();
@@ -3772,6 +4003,15 @@ const DOM = {};
 
                     // record battle (keeps completedPairs) — skip immediate save to batch at the end
                     recordBattle(pair[0], pair[1], winner.naam, loser.naam, { skipSave: true, battleStats });
+                    
+                    // Check phase transitions for both coasters after battle
+                    checkCoasterPhaseTransition(winner.naam);
+                    checkCoasterPhaseTransition(loser.naam);
+                    
+                    // Periodically manage Seeding pool (every 10 battles to avoid overhead)
+                    if (simulated % 10 === 0) {
+                        manageSeedingPool();
+                    }
 
                     simulated++;
                     if (progressCallback && (simulated % 10 === 0)) progressCallback(simulated, count);
@@ -3779,6 +4019,9 @@ const DOM = {};
                 // yield to event loop between batches
                 await new Promise(r => setTimeout(r, 0));
             }
+            
+            // Final phase updates after all battles
+            manageSeedingPool();
         } finally {
             // ensure we persist progress even if an error occurs mid-run
             try { saveData(); } catch (e) { /* ignore save errors */ }
@@ -3981,9 +4224,24 @@ const DOM = {};
                         const name = coasters[i].naam;
                         const stats = coasterStats && coasterStats[name] ? coasterStats[name] : null;
                         const battles = stats && typeof stats.battles === 'number' ? stats.battles : 0;
+                        const phase = stats && stats.phase ? stats.phase : 'waiting';
+                        
+                        // Skip coasters in Waiting phase (not yet active)
+                        if (phase === 'waiting') {
+                            weights[i] = 0;
+                            continue;
+                        }
+                        
                         // base exploration weight: inverse of (1 + battles) ^ EXPLORATION_POWER
                         let w = 1 / Math.pow(1 + Math.max(0, battles), EXPLORATION_POWER);
-                        // No image bias - all coasters loaded before first battle
+                        
+                        // Apply phase-based multipliers
+                        if (phase === 'seeding') {
+                            // Boost Seeding coasters significantly to ensure frequent battles
+                            w *= SEEDING_BOOST_FACTOR;
+                        }
+                        // Ranked coasters: no multiplier (normal frequency, Glicko-2 RD handles staleness)
+                        
                         weights[i] = w;
                     } catch (e) {
                         weights[i] = 1;
@@ -4014,7 +4272,16 @@ const DOM = {};
                     for (let k = 0; k < length; k++) {
                         if (k === i) { condWeights[k] = 0; continue; }
                         const nameK = coasters[k].naam;
-                        const ratingK = (coasterStats && coasterStats[nameK]) ? displayedRating(coasterStats[nameK]) : GLICKO2_RATING_BASE;
+                        const statsK = coasterStats && coasterStats[nameK] ? coasterStats[nameK] : null;
+                        const phaseK = statsK && statsK.phase ? statsK.phase : 'waiting';
+                        
+                        // Skip Waiting coasters
+                        if (phaseK === 'waiting') {
+                            condWeights[k] = 0;
+                            continue;
+                        }
+                        
+                        const ratingK = statsK ? displayedRating(statsK) : GLICKO2_RATING_BASE;
                         const diff = Math.abs(ratingI - ratingK) / RATING_DIFF_SCALE; // normalized diff (using displayed rating)
                         const proximityFactor = 1 / Math.pow(1 + diff, RATING_PROXIMITY_POWER);
                         const base = isFinite(weights[k]) && weights[k] > 0 ? weights[k] : 1;
@@ -4795,7 +5062,7 @@ const DOM = {};
                             <div class="credit-rank-badge ${rankClass}">${rank}</div>
                         </div>
                         <div class="credit-card-info">
-                            <h1 class="credit-card-name">${escapeHtml(coaster.naam)}</h1>
+                            <h1 class="credit-card-name">${escapeHtml(coaster.naam)}${coaster.operatief === 0 ? '<span class="defunct-marker">†</span>' : ''}</h1>
                             <div class="credit-card-divider"></div>
                             <p class="credit-card-location">${escapeHtml(locationLine)}</p>
                             <p class="credit-card-meta">${escapeHtml(manuLine)}</p>
@@ -5030,6 +5297,16 @@ const DOM = {};
 
             // record and persist with comprehensive stats
             recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam, { battleStats });
+            saveData();
+            
+            // Check phase transitions for both coasters after battle
+            checkCoasterPhaseTransition(winner.naam);
+            checkCoasterPhaseTransition(loser.naam);
+            
+            // Manage Seeding pool (check if any graduated and backfill from Waiting)
+            manageSeedingPool();
+            
+            // Save again after phase updates
             saveData();
 
             // Update daily quest and session stats
@@ -6717,38 +6994,129 @@ const DOM = {};
             table.parentNode.insertBefore(container, table.nextSibling);
             rankingCardsContainer = container;
         }
-
-
         
-        if (totalBattles === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="no-battles">Start met battlen om je ranking te zien! 🎢</td></tr>';
-            rankingCardsContainer.innerHTML = '';
-            return;
+        // Unranked section containers
+        let seedingSection = document.getElementById('seedingSection');
+        if (!seedingSection) {
+            const section = document.createElement('div');
+            section.id = 'seedingSection';
+            section.style.marginTop = '40px';
+            section.innerHTML = '<h3 style="color: #f59e0b; font-size: 1.2em; margin-bottom: 15px;">Seeding Coasters (Being Ranked)</h3>';
+            const container = document.createElement('div');
+            container.id = 'seedingList';
+            section.appendChild(container);
+            const table = document.querySelector('.ranking-table');
+            table.parentNode.appendChild(section);
+            seedingSection = section;
+        }
+        
+        let unrankedSection = document.getElementById('unrankedSection');
+        if (!unrankedSection) {
+            const section = document.createElement('div');
+            section.id = 'unrankedSection';
+            section.style.marginTop = '40px';
+            section.innerHTML = '<h3 style="color: #95a5a6; font-size: 1.2em; margin-bottom: 15px;">Waiting Coasters</h3>';
+            const container = document.createElement('div');
+            container.id = 'unrankedList';
+            container.style.color = '#7f8c8d';
+            container.style.fontSize = '0.95em';
+            container.style.lineHeight = '1.8';
+            section.appendChild(container);
+            const table = document.querySelector('.ranking-table');
+            table.parentNode.appendChild(section);
+            unrankedSection = section;
         }
 
-        // First, calculate true ranks based on rating (not sort position)
-        // This ensures ranks stay consistent regardless of sorting or filtering
-        const ratingsSorted = [...statsArray].sort((a, b) => b.rating - a.rating);
+        
+        // Split coasters by phase: ranked (5+ battles) vs seeding vs waiting
+        const rankedCoasters = statsArray.filter(c => {
+            const phase = c.phase || 'waiting';
+            return phase === 'ranked';
+        });
+        const seedingCoasters = statsArray.filter(c => {
+            const phase = c.phase || 'waiting';
+            return phase === 'seeding';
+        });
+        const waitingCoasters = statsArray.filter(c => {
+            const phase = c.phase || 'waiting';
+            return phase === 'waiting';
+        });
+
+        // First, calculate true ranks based on rating (not sort position) - only for ranked coasters
+        const ratingsSorted = [...rankedCoasters].sort((a, b) => b.rating - a.rating);
         const rankMap = {};
         ratingsSorted.forEach((coaster, index) => {
             rankMap[coaster.name] = index + 1;
         });
+        
+        // Sort ranked coasters according to current sort settings
+        const sortedRanked = [...rankedCoasters].sort((a, b) => {
+            let aVal, bVal;
+            
+            switch(currentSort.column) {
+                case 'name':
+                    aVal = a.name;
+                    bVal = b.name;
+                    break;
+                case 'park':
+                    aVal = a.park;
+                    bVal = b.park;
+                    break;
+                case 'manufacturer':
+                    aVal = a.manufacturer;
+                    bVal = b.manufacturer;
+                    break;
+                case 'rating':
+                case 'elo':
+                    aVal = displayedRating(a);
+                    bVal = displayedRating(b);
+                    break;
+                case 'battles':
+                    aVal = a.battles;
+                    bVal = b.battles;
+                    break;
+                case 'wins':
+                    aVal = a.wins;
+                    bVal = b.wins;
+                    break;
+                case 'losses':
+                    aVal = a.losses;
+                    bVal = b.losses;
+                    break;
+                case 'winrate':
+                    aVal = a.battles > 0 ? (a.wins / a.battles) : 0;
+                    bVal = b.battles > 0 ? (b.wins / b.battles) : 0;
+                    break;
+                default:
+                    aVal = a.rating;
+                    bVal = b.rating;
+            }
+            
+            if (typeof aVal === 'string') {
+                return currentSort.ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            } else {
+                return currentSort.ascending ? aVal - bVal : bVal - aVal;
+            }
+        });
 
-        // Build table rows and mobile cards
+        // Build table rows and mobile cards for RANKED coasters only
         const rowsHtml = [];
         const cardsHtml = [];
 
-        sorted.forEach((coaster, index) => {
+        sortedRanked.forEach((coaster, index) => {
             const rank = rankMap[coaster.name]; // Use true rank, not sorted position
             const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
             const winrate = coaster.battles > 0 ? ((coaster.wins / coaster.battles) * 100).toFixed(1) : '0.0';
             const escapedName = coaster.name.replace(/'/g, "\\'");
+            
+            // Add phase label if dev data is shown
+            const phaseLabel = devShowData ? ` <span style="font-size: 0.75em; color: #95a5a6;">(${coaster.phase || 'unknown'})</span>` : '';
 
                 const dataId = (coaster.name || '').replace(/"/g, '&quot;');
                 rowsHtml.push(`
                     <tr data-id="${dataId}">
                         <td><span class="rank-medal">${medal}</span>${rank}</td>
-                        <td><strong>${coaster.name}</strong></td>
+                        <td><strong>${coaster.name}${phaseLabel}</strong></td>
                         <td>${coaster.park}</td>
                         <td>${coaster.manufacturer}</td>
                         <td><span class="elo-score">${Math.round(displayedRating(coaster))} ± ${Math.round(coaster.rd)}</span></td>
@@ -6760,11 +7128,12 @@ const DOM = {};
 
             // Card for mobile
             const rankBadgeClass = rank <= 3 ? 'rank-badge top-3' : 'rank-badge';
+            const phaseLabelMobile = devShowData ? `<span style="font-size: 0.7em; color: #95a5a6;"> (${coaster.phase})</span>` : '';
             cardsHtml.push(`
                 <div class="ranking-card" data-rank="${rank}">
                     <div class="${rankBadgeClass}">${rank}</div>
                     <div class="ranking-left">
-                        <div class="name">${coaster.name}</div>
+                        <div class="name">${coaster.name}${phaseLabelMobile}</div>
                         <div class="meta">${coaster.park} • ${coaster.manufacturer} • <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}-${coaster.losses}</span></div>
                     </div>
                     <div class="ranking-right">
@@ -6774,8 +7143,72 @@ const DOM = {};
             `);
         });
 
-        tbody.innerHTML = rowsHtml.join('');
-        rankingCardsContainer.innerHTML = cardsHtml.join('');
+        // If no ranked coasters yet, show message in table but continue to populate seeding/waiting sections
+        if (rankedCoasters.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="no-battles">Start met battlen om je ranking te zien! 🎢</td></tr>';
+            rankingCardsContainer.innerHTML = '';
+        } else {
+            tbody.innerHTML = rowsHtml.join('');
+            rankingCardsContainer.innerHTML = cardsHtml.join('');
+        }
+        
+        // Build seeding section (Seeding coasters - being actively ranked)
+        const seedingList = document.getElementById('seedingList');
+        if (seedingCoasters.length > 0) {
+            // Sort by number of battles (most battles first to show progress)
+            const sortedSeeding = [...seedingCoasters].sort((a, b) => b.battles - a.battles);
+            
+            let seedingTableHtml = '<table class="ranking-table" style="width: 100%; margin-top: 10px; table-layout: fixed;"><thead><tr>';
+            seedingTableHtml += '<th style="width: 60px;">Rank</th>';
+            seedingTableHtml += '<th style="min-width: 140px;">Name</th>';
+            seedingTableHtml += '<th style="min-width: 120px;">Park</th>';
+            seedingTableHtml += '<th style="min-width: 110px;">Manufacturer</th>';
+            seedingTableHtml += '<th style="width: 140px;">Rating</th>';
+            seedingTableHtml += '<th style="width: 75px;">Battles</th>';
+            seedingTableHtml += '<th style="width: 65px;">Wins</th>';
+            seedingTableHtml += '<th style="width: 75px;">Losses</th>';
+            seedingTableHtml += '</tr></thead><tbody>';
+            
+            sortedSeeding.forEach(coaster => {
+                const escapedName = coaster.name.replace(/'/g, "\\'");
+                const phaseLabel = devShowData ? ` <span style="font-size: 0.75em; color: #f59e0b;">(${coaster.phase || 'seeding'})</span>` : '';
+                const dataId = (coaster.name || '').replace(/"/g, '&quot;');
+                
+                seedingTableHtml += `
+                    <tr data-id="${dataId}">
+                        <td style="color: #f59e0b;">-</td>
+                        <td><strong>${coaster.name}${phaseLabel}</strong></td>
+                        <td>${coaster.park}</td>
+                        <td>${coaster.manufacturer}</td>
+                        <td><span class="elo-score">${Math.round(displayedRating(coaster))} ± ${Math.round(coaster.rd)}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.battles}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}</span></td>
+                        <td><span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.losses}</span></td>
+                    </tr>
+                `;
+            });
+            
+            seedingTableHtml += '</tbody></table>';
+            seedingList.innerHTML = seedingTableHtml;
+            seedingSection.style.display = 'block';
+        } else {
+            seedingSection.style.display = 'none';
+        }
+        
+        // Build waiting section (Waiting coasters - not yet started)
+        const unrankedList = document.getElementById('unrankedList');
+        if (waitingCoasters.length > 0) {
+            // Sort alphabetically by name
+            const sortedWaiting = [...waitingCoasters].sort((a, b) => a.name.localeCompare(b.name));
+            const waitingHtml = sortedWaiting.map(c => {
+                const phaseLabel = devShowData ? ` <span style="font-size: 0.85em; color: #95a5a6;">[waiting]</span>` : '';
+                return `<div style="margin-bottom: 5px;">• ${c.name} <span style="color: #95a5a6;">(${c.park})</span>${phaseLabel}</div>`;
+            }).join('');
+            unrankedList.innerHTML = waitingHtml;
+            unrankedSection.style.display = 'block';
+        } else {
+            unrankedSection.style.display = 'none';
+        }
         
         // Match tab heights after content is rendered
         setTimeout(() => matchTabHeights(), 50);
@@ -6922,13 +7355,11 @@ const DOM = {};
         // Reload CSV data to ensure we have the latest coasters
         await reloadCoasterCSVData();
         
-        // Update coasters array for current user with operational coasters only
+        // Update coasters array for current user
         if (currentUser === 'luca') {
-            const allCoasters = coastersDataLuca;
-            coasters = allCoasters.filter(c => c.operatief === 1);
+            coasters = coastersDataLuca;
         } else {
-            const allCoasters = coastersDataWouter;
-            coasters = allCoasters.filter(c => c.operatief === 1);
+            coasters = coastersDataWouter;
         }
         
         // Perform the full reset
@@ -7510,7 +7941,7 @@ function openCreditCard(coasterId) {
                 </div>
                 
                 <div class="credit-card-info">
-                    <h1 class="credit-card-name">${coaster.name}</h1>
+                    <h1 class="credit-card-name">${coaster.name}${coaster.defunct ? '<span class="defunct-marker">†</span>' : ''}</h1>
                     <div class="credit-card-divider"></div>
                     <p class="credit-card-location">${coaster.park} - ${coaster.country}${coaster.openingYear ? ' - ' + coaster.openingYear : ''}</p>
                     <p class="credit-card-meta">${coaster.manufacturer} - ${coaster.type}${coaster.models.length > 0 ? ' - ' + coaster.models.join(' / ') : ''}</p>
