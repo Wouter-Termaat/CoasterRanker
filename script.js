@@ -5036,10 +5036,25 @@ const DOM = {};
             };
             const borderColor = borderColors[coaster.fabrikant] || borderColors['Unknown'];
             
+            // Check phase - only show rank for 'ranked' phase, show ? for 'seeding'
+            const stats = coasterStats[coaster.naam] || {};
+            const phase = stats.phase || 'waiting';
+            let rankDisplay = rank;
             let rankClass = 'rank-other';
-            if (rank === 1) rankClass = 'rank-gold';
-            else if (rank === 2) rankClass = 'rank-silver';
-            else if (rank === 3) rankClass = 'rank-bronze';
+            
+            if (phase === 'seeding') {
+                rankDisplay = '?';
+                rankClass = 'rank-other';
+            } else if (phase === 'ranked') {
+                rankDisplay = rank;
+                if (rank === 1) rankClass = 'rank-gold';
+                else if (rank === 2) rankClass = 'rank-silver';
+                else if (rank === 3) rankClass = 'rank-bronze';
+            } else {
+                // waiting or unknown phase - don't show rank
+                rankDisplay = '-';
+                rankClass = 'rank-other';
+            }
             
             const displaySpeed = coaster.max_speed_kmh || '-';
             const displayHeight = coaster.track_height_m || '-';
@@ -5059,7 +5074,7 @@ const DOM = {};
                     <div class="credit-card battle-card" style="background-color: ${bgColor}; border: 9px solid ${borderColor};" data-choice="${choice}">
                         <div class="credit-card-image" style="border-color: ${borderColor};">
                             <img src="${imageUrl}" alt="${escapeHtml(coaster.naam)}" class="credit-card-img" />
-                            <div class="credit-rank-badge ${rankClass}">${rank}</div>
+                            <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
                         </div>
                         <div class="credit-card-info">
                             <h1 class="credit-card-name">${escapeHtml(coaster.naam)}${coaster.operatief === 0 ? '<span class="defunct-marker">†</span>' : ''}</h1>
