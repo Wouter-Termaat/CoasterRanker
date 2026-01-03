@@ -7215,11 +7215,39 @@ const DOM = {};
         if (waitingCoasters.length > 0) {
             // Sort alphabetically by name
             const sortedWaiting = [...waitingCoasters].sort((a, b) => a.name.localeCompare(b.name));
-            const waitingHtml = sortedWaiting.map(c => {
-                const phaseLabel = devShowData ? ` <span style="font-size: 0.85em; color: #95a5a6;">[waiting]</span>` : '';
-                return `<div style="margin-bottom: 5px;">• ${c.name} <span style="color: #95a5a6;">(${c.park})</span>${phaseLabel}</div>`;
-            }).join('');
-            unrankedList.innerHTML = waitingHtml;
+            
+            let waitingTableHtml = '<table class="ranking-table" style="width: 100%; margin-top: 10px; table-layout: fixed; opacity: 0.7;"><thead><tr>';
+            waitingTableHtml += '<th style="width: 60px;">Rank</th>';
+            waitingTableHtml += '<th style="min-width: 140px;">Name</th>';
+            waitingTableHtml += '<th style="min-width: 120px;">Park</th>';
+            waitingTableHtml += '<th style="min-width: 110px;">Manufacturer</th>';
+            waitingTableHtml += '<th style="width: 140px;">Rating</th>';
+            waitingTableHtml += '<th style="width: 75px;">Battles</th>';
+            waitingTableHtml += '<th style="width: 65px;">Wins</th>';
+            waitingTableHtml += '<th style="width: 75px;">Losses</th>';
+            waitingTableHtml += '</tr></thead><tbody>';
+            
+            sortedWaiting.forEach(coaster => {
+                const escapedName = coaster.name.replace(/'/g, "\\'");
+                const phaseLabel = devShowData ? ` <span style="font-size: 0.75em; color: #95a5a6;">(${coaster.phase || 'waiting'})</span>` : '';
+                const dataId = (coaster.name || '').replace(/"/g, '&quot;');
+                
+                waitingTableHtml += `
+                    <tr data-id="${dataId}" style="color: #95a5a6;">
+                        <td>-</td>
+                        <td><strong>${coaster.name}${phaseLabel}</strong></td>
+                        <td>${coaster.park}</td>
+                        <td>${coaster.manufacturer}</td>
+                        <td><span class="elo-score" style="color: #95a5a6;">-</span></td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                    </tr>
+                `;
+            });
+            
+            waitingTableHtml += '</tbody></table>';
+            unrankedList.innerHTML = waitingTableHtml;
             unrankedSection.style.display = 'block';
         } else {
             unrankedSection.style.display = 'none';
