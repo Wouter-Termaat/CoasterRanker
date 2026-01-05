@@ -627,6 +627,79 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         }
     }
     
+    // Helper function: Fuzzy name matching with scoring
+    // Returns {bestMatch: imageUrl, bestScore: number} or null
+    const fuzzyMatchCoasterName = (results, coasterName) => {
+        if (!results || results.length === 0) return null;
+        
+        // Helper function to normalize strings for flexible matching
+        const normalizeForMatching = (str) => {
+            return str.toLowerCase()
+                .replace(/['`´]/g, '')  // Remove apostrophes
+                .replace(/[-–—]/g, ' ')  // Replace hyphens with spaces
+                .replace(/\s+/g, ' ')    // Normalize spaces
+                .trim();
+        };
+        
+        // Get normalized version of search name
+        const normalizedSearchName = normalizeForMatching(coasterName);
+        // Also get base name (before dash/colon)
+        const baseSearchName = normalizeForMatching(
+            coasterName.split(/\s*[-:]\s*/)[0]
+        );
+        
+        // Score each candidate by name similarity
+        let bestMatch = null;
+        let bestScore = 0;
+        
+        for (const candidate of results) {
+            const candidateName = candidate.itemLabel?.value || '';
+            const normalizedCandidate = normalizeForMatching(candidateName);
+            
+            let score = 0;
+            
+            // Strategy 1: Check if normalized names match exactly
+            if (normalizedSearchName === normalizedCandidate) {
+                score = 100;
+            }
+            // Strategy 2: Check if candidate contains the base name
+            else if (baseSearchName && baseSearchName.length > 3 && normalizedCandidate.includes(baseSearchName)) {
+                score = 90;
+            }
+            // Strategy 3: Check if base name contains the candidate
+            else if (baseSearchName && baseSearchName.length > 3 && baseSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 3) {
+                score = 85;
+            }
+            // Strategy 4: Check if candidate contains the full search name
+            else if (normalizedCandidate.includes(normalizedSearchName)) {
+                score = 80;
+            }
+            // Strategy 5: Check if search name contains candidate
+            else if (normalizedSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 4) {
+                score = 75;
+            }
+            // Strategy 6: Use similarity score for partial matches
+            else {
+                const similarity = getSimilarityScore(coasterName, candidateName);
+                if (similarity >= 50) {
+                    score = similarity;
+                }
+            }
+            
+            if (score > 0) {
+                const locationLabel = candidate.locationLabel?.value || candidate.parkLabel?.value || '';
+                console.log(`    Found potential match: "${candidateName}"${locationLabel ? ' at ' + locationLabel : ''} (score: ${score})`);
+            }
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = candidate.image?.value;
+            }
+        }
+        
+        return (bestMatch && bestScore >= 50) ? {bestMatch, bestScore} : null;
+    };
+    
     // Direct label/alias matching - much more reliable than EntitySearch
     console.log(`  📝 Generated ${nameVariants.length} name variants:`, nameVariants.slice(0, 5).join(', ') + (nameVariants.length > 5 ? '...' : ''));
     if (parkVariants.length > 1) {
@@ -642,19 +715,49 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     const escapedName = escapeSPARQL(variant);
     const escapedPark = escapeSPARQL(parkVariants[0] || parkName);
     
+    // Extract base name (before dash/colon) for fuzzy matching queries
+    // E.g., "Joris en de draak - Water" → "Joris en de draak"
+    // This casts a wider net in SPARQL to find variants like "Joris en de Draak"
+    let baseName = variant.split(/\s*[-:]\s*/)[0];
+    
+    // GENERAL FIX: Get shortest meaningful substring for broad SPARQL matching
+    // Strategy: Use first significant word if >2 words, strip possessives otherwise keep base name
+    // This ensures the search term is always a SUBSTRING of the Wikidata label
+    const words = baseName.split(/\s+/);
+    let shortName;
+    
+    if (words.length > 2) {
+        // Multi-word names: use first word only
+        // "Joris en de draak" → "Joris" (matches "Joris en de Draak")
+        // "Van Helsing Factory" → "Van" (matches "Van Helsing's Factory")
+        shortName = words[0];
+    } else if (words.length === 2 && baseName.includes("'")) {
+        // Two words with possessive: try removing it
+        // "Winja's Fear" → "Winja" (matches "Winja's Fear" and "Winja's Force")
+        shortName = baseName.replace(/'s\b/gi, '').trim().split(/\s+/)[0];
+    } else {
+        // Keep base name as-is for single words or clean two-word names
+        shortName = baseName;
+    }
+    
+    const escapedBaseName = escapeSPARQL(baseName);
+    const escapedShortName = escapeSPARQL(shortName);
+    
     if (variant.length < 3) {
         console.log(`✗ Name too short: "${variant}"`);
         return null;
     }
     
-    // STRATEGY 1: Combined park + name query (most accurate, prevents wrong park matches)
-    // Check both P361 (part of) and P127 (owned by) for park relationships
-    console.log(`  🔍 Fast (Park-aware): "${variant}" at "${parkVariants[0] || parkName}"`);
+    // PARALLEL OPTIMIZATION: Run Level 1 (park-aware) and Level 5 (name-only) simultaneously
+    // This eliminates 30-40s wait for coasters that eventually succeed at Level 5
+    console.log(`  🚀 Parallel search: Park-aware + Name-only`);
     
-    // Try with first park variant only - if it doesn't work, move to fallback
-    let foundPark = false;
+    let parkAwareTimedOut = false; // Track timeout to skip redundant queries later
+    let locationQueryReturnedEmpty = false; // Track empty results to skip Level 4
     const parkVariant = parkVariants[0];
     const escapedParkVar = escapeSPARQL(parkVariant);
+    
+    // Define Level 1: Park-aware query
     const parkAwareQuery = `
         SELECT ?item ?image ?parkLabel WHERE {
           ?item rdfs:label ?itemLabel .
@@ -670,17 +773,80 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         LIMIT 1
     `;
     
-    try {
-        const result = await querySPARQL(parkAwareQuery);
-        if (result) {
-            console.log(`✓ Found "${coasterName}" with park verification (using "${parkVariant}")`);
-            return result;
-        }
-    } catch (e) {
-        console.warn(`    ⚠️ Park-aware search failed for "${parkVariant}": ${e.message}`);
+    // Define Level 5: Name-only query (with manufacturer if available)
+    let nameOnlyQuery;
+    if (manufacturer) {
+        const escapedManufacturer = escapeSPARQL(manufacturer);
+        nameOnlyQuery = `
+            SELECT ?item ?image ?mfgLabel WHERE {
+              ?item rdfs:label ?label .
+              FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+              
+              # P176 = manufacturer
+              ?item wdt:P176 ?mfg .
+              ?mfg rdfs:label ?mfgLabel .
+              FILTER(CONTAINS(LCASE(?mfgLabel), LCASE("${escapedManufacturer}")) || 
+                     CONTAINS(LCASE("${escapedManufacturer}"), LCASE(?mfgLabel)))
+            }
+            LIMIT 1
+        `;
+    } else {
+        nameOnlyQuery = `
+            SELECT ?item ?image WHERE {
+              ?item rdfs:label ?label .
+              FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+            }
+            LIMIT 1
+        `;
     }
     
-    // FALLBACK for park-aware query: Try location properties (P276, P131) if part of/owned by didn't work
+    // Execute both queries in parallel
+    const parkAwarePromise = querySPARQL(parkAwareQuery).then(result => {
+        if (result) {
+            return {source: 'park-aware', result};
+        }
+        return null;
+    }).catch(e => {
+        console.warn(`    ⚠️ Park-aware search failed for "${parkVariant}": ${e.message}`);
+        if (e.message && e.message.includes('timeout')) {
+            parkAwareTimedOut = true;
+        }
+        return null;
+    });
+    
+    const nameOnlyPromise = querySPARQL(nameOnlyQuery).then(result => {
+        if (result) {
+            return {source: 'name-only', result};
+        }
+        return null;
+    }).catch(e => {
+        console.warn(`    ⚠️ Name-only search failed: ${e.message}`);
+        return null;
+    });
+    
+    // Wait for first successful result
+    const parallelResult = await Promise.race([
+        parkAwarePromise,
+        nameOnlyPromise,
+        Promise.all([parkAwarePromise, nameOnlyPromise]).then(results => {
+            // Both completed - return first non-null
+            return results.find(r => r !== null) || null;
+        })
+    ]);
+    
+    if (parallelResult && parallelResult.result) {
+        const sourceMsg = parallelResult.source === 'park-aware' 
+            ? `with park verification (using "${parkVariant}")`
+            : manufacturer ? 'with manufacturer verification' : '(park not verified - may need retry)';
+        console.log(`✓ Found "${coasterName}" ${sourceMsg}`);
+        return parallelResult.result;
+    }
+    
+    // Both parallel queries failed - continue with Levels 2-4
     console.log(`  🔍 Trying park-aware search with location properties...`);
     const parkLocationQuery = `
         SELECT ?item ?image ?locationLabel WHERE {
@@ -707,105 +873,50 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
         console.warn(`    ⚠️ Park location search failed for "${parkVariant}": ${e.message}`);
     }
     
-    // Only try looser name matching if the park exists in Wikidata
-    // This helps find coasters with different naming conventions in Wikidata
-    console.log(`  🔍 Trying looser name match at "${parkVariant}"...`);
-    const looseNameQuery = `
-        SELECT ?item ?image ?itemLabel ?parkLabel WHERE {
-          ?item rdfs:label ?itemLabel .
-          ${coasterTypeFilter}
-          ?item wdt:P18 ?image .
-          
-          # Check both "owned by" (P127) and "part of" (P361) for park
-          { ?item wdt:P127 ?park } UNION { ?item wdt:P361 ?park }
-          ?park rdfs:label ?parkLabel .
-          FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
-        }
-        LIMIT 15
-    `;
-    
-    try {
+    // LEVEL 3: Try fuzzy matching at park (using P127/P361) unless park-aware timed out
+    // Level 2 (P276/P131) and Level 3 (P127/P361) are independent - park can exist in one but not the other
+    if (!parkAwareTimedOut) {
+        console.log(`  🔍 Trying looser name match at "${parkVariant}"...`);
+        // GENERAL FIX 3: Use shortest name for broader matching ("Winja" catches both Fear and Force variants)
+        const fuzzyNameFilter = escapedShortName;
+        const looseNameQuery = `
+            SELECT ?item ?image ?itemLabel ?parkLabel WHERE {
+              ?item rdfs:label ?itemLabel .
+              FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${fuzzyNameFilter}")))
+              ${coasterTypeFilter}
+              ?item wdt:P18 ?image .
+              
+              # Check both "owned by" (P127) and "part of" (P361) for park
+              { ?item wdt:P127 ?park } UNION { ?item wdt:P361 ?park }
+              ?park rdfs:label ?parkLabel .
+              FILTER(CONTAINS(LCASE(?parkLabel), LCASE("${escapedParkVar}")))
+            }
+            LIMIT 15
+        `;
+        
+        try {
             const results = await querySPARQLMultiple(looseNameQuery);
-            if (results && results.length > 0) {
-                // Helper function to normalize strings for flexible matching
-                const normalizeForMatching = (str) => {
-                    return str.toLowerCase()
-                        .replace(/['`´]/g, '')  // Remove apostrophes
-                        .replace(/[-–—]/g, ' ')  // Replace hyphens with spaces
-                        .replace(/\s+/g, ' ')    // Normalize spaces
-                        .trim();
-                };
-                
-                // Get normalized version of search name
-                const normalizedSearchName = normalizeForMatching(coasterName);
-                // Also get base name (before dash/colon)
-                const baseSearchName = normalizeForMatching(
-                    coasterName.split(/\s*[-:]\s*/)[0]
-                );
-                
-                // Score each candidate by name similarity
-                let bestMatch = null;
-                let bestScore = 0;
-                
-                for (const candidate of results) {
-                    const candidateName = candidate.itemLabel?.value || '';
-                    const normalizedCandidate = normalizeForMatching(candidateName);
-                    
-                    let score = 0;
-                    
-                    // Strategy 1: Check if normalized names match exactly
-                    if (normalizedSearchName === normalizedCandidate) {
-                        score = 100;
-                    }
-                    // Strategy 2: Check if candidate contains the base name (e.g., "joris en de draak" in "joris en de draak vuur")
-                    // This handles variants like "Joris en de draak - vuur" matching "Joris en de draak"
-                    else if (baseSearchName && baseSearchName.length > 3 && normalizedCandidate.includes(baseSearchName)) {
-                        score = 90;
-                    }
-                    // Strategy 3: Check if base name contains the candidate (e.g., "joris en de draak" contains "joris")
-                    else if (baseSearchName && baseSearchName.length > 3 && baseSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 3) {
-                        score = 85;
-                    }
-                    // Strategy 4: Check if candidate contains the full search name (e.g., "euro mir" in "euromir")
-                    else if (normalizedCandidate.includes(normalizedSearchName)) {
-                        score = 80;
-                    }
-                    // Strategy 5: Check if search name contains candidate (e.g., "winjas fear" contains "winja")
-                    else if (normalizedSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 4) {
-                        score = 75;
-                    }
-                    // Strategy 6: Use similarity score for partial matches
-                    else {
-                        const similarity = getSimilarityScore(coasterName, candidateName);
-                        if (similarity >= 50) {
-                            score = similarity;
-                        }
-                    }
-                    
-                    if (score > 0) {
-                        console.log(`    Found potential match: "${candidateName}" (score: ${score})`);
-                    }
-                    
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMatch = candidate.image?.value;
-                    }
-                }
-                
-                if (bestMatch && bestScore >= 50) {
-                    console.log(`✓ Found "${coasterName}" with loosened name matching (score: ${bestScore})`);
-                    return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
-                }
+            const matchResult = fuzzyMatchCoasterName(results, coasterName);
+            if (matchResult) {
+                console.log(`✓ Found "${coasterName}" with loosened name matching (score: ${matchResult.bestScore})`);
+                const {bestMatch} = matchResult;
+                return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
             }
         } catch (e) {
             console.warn(`    ⚠️ Loose name search failed: ${e.message}`);
         }
+    } else {
+        console.log(`  ⏭️  Skipping Level 3 (park query timed out - park not in Wikidata)`);
+    }
     
-    // FALLBACK: Try looser name matching with location properties if part of/owned by didn't work
+    // LEVEL 4: Try fuzzy matching with location properties
     console.log(`  🔍 Trying looser name match with location properties...`);
+    // Use shortest name for maximum matching breadth
+    const fuzzyNameFilter = escapedShortName;
     const looseLocationQuery = `
         SELECT ?item ?image ?itemLabel ?locationLabel WHERE {
           ?item rdfs:label ?itemLabel .
+          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${fuzzyNameFilter}")))
           ${coasterTypeFilter}
           ?item wdt:P18 ?image .
           
@@ -818,85 +929,24 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     `;
     
     try {
-            const results = await querySPARQLMultiple(looseLocationQuery);
-            if (results && results.length > 0) {
-                // Helper function to normalize strings for flexible matching
-                const normalizeForMatching = (str) => {
-                    return str.toLowerCase()
-                        .replace(/['`´]/g, '')  // Remove apostrophes
-                        .replace(/[-–—]/g, ' ')  // Replace hyphens with spaces
-                        .replace(/\s+/g, ' ')    // Normalize spaces
-                        .trim();
-                };
-                
-                // Get normalized version of search name
-                const normalizedSearchName = normalizeForMatching(coasterName);
-                // Also get base name (before dash/colon)
-                const baseSearchName = normalizeForMatching(
-                    coasterName.split(/\s*[-:]\s*/)[0]
-                );
-                
-                // Score each candidate by name similarity
-                let bestMatch = null;
-                let bestScore = 0;
-                
-                for (const candidate of results) {
-                    const candidateName = candidate.itemLabel?.value || '';
-                    const normalizedCandidate = normalizeForMatching(candidateName);
-                    
-                    let score = 0;
-                    
-                    // Strategy 1: Check if normalized names match exactly
-                    if (normalizedSearchName === normalizedCandidate) {
-                        score = 100;
-                    }
-                    // Strategy 2: Check if candidate contains the base name
-                    else if (baseSearchName && baseSearchName.length > 3 && normalizedCandidate.includes(baseSearchName)) {
-                        score = 90;
-                    }
-                    // Strategy 3: Check if base name contains the candidate
-                    else if (baseSearchName && baseSearchName.length > 3 && baseSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 3) {
-                        score = 85;
-                    }
-                    // Strategy 4: Check if candidate contains the full search name
-                    else if (normalizedCandidate.includes(normalizedSearchName)) {
-                        score = 80;
-                    }
-                    // Strategy 5: Check if search name contains candidate
-                    else if (normalizedSearchName.includes(normalizedCandidate) && normalizedCandidate.length > 4) {
-                        score = 75;
-                    }
-                    // Strategy 6: Use similarity score for partial matches
-                    else {
-                        const similarity = getSimilarityScore(coasterName, candidateName);
-                        if (similarity >= 50) {
-                            score = similarity;
-                        }
-                    }
-                    
-                    if (score > 0) {
-                        console.log(`    Found potential match (location): "${candidateName}" (score: ${score})`);
-                    }
-                    
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMatch = candidate.image?.value;
-                    }
-                }
-                
-                if (bestMatch && bestScore >= 50) {
-                    console.log(`✓ Found "${coasterName}" with location-based loosened matching (score: ${bestScore})`);
-                    return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
-                }
-            }
-        } catch (e) {
-            console.warn(`    ⚠️ Loose location search failed: ${e.message}`);
+        const results = await querySPARQLMultiple(looseLocationQuery);
+        const matchResult = fuzzyMatchCoasterName(results, coasterName);
+        if (matchResult) {
+            console.log(`✓ Found "${coasterName}" with location-based loosened matching (score: ${matchResult.bestScore})`);
+            const {bestMatch} = matchResult;
+            return bestMatch.startsWith('http://') ? bestMatch.replace('http://', 'https://') : bestMatch;
         }
+    } catch (e) {
+        console.warn(`    ⚠️ Loose location search failed: ${e.message}`);
+    }
     
-    // STRATEGY 2: Fallback to name-only if park search failed
-    // (Some coasters might not have park data in Wikidata)
-    console.log(`  🔍 Fast (Name-only fallback): "${variant}"`);
-    const simpleQuery = `
+    // FINAL FALLBACK: Try pure name-only search without manufacturer filter
+    // This catches coasters where:
+    // - Parallel search's manufacturer check was too strict
+    // - Park data is completely absent from Wikidata
+    // - Early queries timed out
+    console.log(`  🔍 Final fallback (Name-only without constraints): "${variant}"`);
+    const finalNameOnlyQuery = `
         SELECT ?item ?image WHERE {
           ?item rdfs:label ?label .
           FILTER(CONTAINS(LCASE(?label), LCASE("${escapedName}")))
@@ -907,15 +957,16 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     `;
     
     try {
-        const result = await querySPARQL(simpleQuery);
+        const result = await querySPARQL(finalNameOnlyQuery);
         if (result) {
-            console.log(`✓ Found "${coasterName}" (park not verified - may need retry)`);
+            console.log(`✓ Found "${coasterName}" with final name-only search (no park/manufacturer verification)`);
             return result;
         }
     } catch (e) {
-        console.warn(`    ⚠️ Fast search failed: ${e.message}`);
+        console.warn(`    ⚠️ Final fallback failed: ${e.message}`);
     }
     
+    // All search strategies exhausted
     console.log(`✗ No image found for "${coasterName}" (use retry button for intensive search)`);
     return null;
 }
@@ -1262,7 +1313,7 @@ async function intensiveImageSearch(coasterName, parkName, manufacturer) {
 }
 
 // Query SPARQL endpoint and return multiple results
-async function querySPARQLMultiple(query, timeoutMs = 20000) {
+async function querySPARQLMultiple(query, timeoutMs = 10000) {
     const url = 'https://query.wikidata.org/sparql';
     const fullUrl = `${url}?query=${encodeURIComponent(query)}&format=json`;
     
@@ -1272,7 +1323,7 @@ async function querySPARQLMultiple(query, timeoutMs = 20000) {
                 'Accept': 'application/sparql-results+json',
                 'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
             }
-        }, timeoutMs);
+        }, timeoutMs); // Reduced to 10s for standard queries, 20s for intensive
         
         if (!response.ok) {
             if (response.status === 429) {
@@ -2239,7 +2290,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
 }
 
 // Execute SPARQL query against Wikidata
-async function querySPARQL(query) {
+async function querySPARQL(query, timeoutMs = 10000) {
     const endpoint = 'https://query.wikidata.org/sparql';
     const url = `${endpoint}?query=${encodeURIComponent(query)}&format=json`;
     
@@ -2249,12 +2300,16 @@ async function querySPARQL(query) {
                 'Accept': 'application/sparql-results+json',
                 'User-Agent': 'CoasterRanker/1.0 (Educational Project)'
             }
-        }, 20000); // 20 second timeout
+        }, timeoutMs); // Reduced to 10s for standard queries, 20s for intensive
         
         if (!response.ok) {
             const errorText = await response.text();
             console.error('SPARQL query failed:', response.status, response.statusText);
             console.error('Error details:', errorText.substring(0, 500));
+            // Check for rate limiting
+            if (response.status === 429) {
+                throw new Error('RATE_LIMIT');
+            }
             throw new Error(`SPARQL query failed: ${response.status}`);
         }
         
@@ -2619,7 +2674,7 @@ async function preloadAllCoasterImages() {
     }
     
     // Load uncached items in smaller batches with delay to avoid rate limiting
-    const batchSize = 5;
+    const batchSize = 10; // Increased from 5 to 10 for faster loading (optimized queries)
     const batchDelay = 250; // Reduced from 300ms to 250ms for faster loading
     
     for (let i = 0; i < uncachedCoasters.length; i += batchSize) {
@@ -2934,7 +2989,7 @@ window.addEventListener('resize', onResize, { passive: true });
     let SEEDING_TARGET_COUNT = 20;      // Target number of coasters in Seeding phase
     let SEEDING_BATCH_SIZE = 2;          // How many to promote from Waiting per batch (staggered)
     let SEEDING_MIN_BATTLES = 5;         // Minimum battles before exiting Seeding to Ranked
-    const SEEDING_BOOST_FACTOR = 3.5;    // Matchmaking probability boost for Seeding coasters
+    const SEEDING_BOOST_FACTOR = 1.2;    // Matchmaking probability boost for Seeding coasters (reduced to allow ranked vs ranked)
     
     // Pairing strategy: hybrid — picks one under-sampled coaster
     // then picks a second that is ELO-similar while still favoring under-sampled ones.
@@ -3202,6 +3257,23 @@ const DOM = {};
         const savedPairs = localStorage.getItem(pairsKey);
         completedPairs = savedPairs ? new Set(JSON.parse(savedPairs)) : new Set();
         
+        // Rebuild completedPairs from history if it's empty but we have battles
+        if (completedPairs.size === 0 && coasterHistory.length > 0) {
+            console.log('Rebuilding completedPairs from history...');
+            coasterHistory.forEach(entry => {
+                if (entry.pairKey) {
+                    completedPairs.add(entry.pairKey);
+                } else if (entry.a && entry.b) {
+                    // Legacy entry without pairKey - generate it
+                    const key = pairKey(entry.a, entry.b);
+                    completedPairs.add(key);
+                }
+            });
+            console.log(`Rebuilt ${completedPairs.size} pairs from ${coasterHistory.length} battles`);
+            // Save the rebuilt set
+            localStorage.setItem(pairsKey, JSON.stringify([...completedPairs]));
+        }
+        
         // Load current battle if it exists
         try {
             const savedBattle = localStorage.getItem(battleKey);
@@ -3299,8 +3371,12 @@ const DOM = {};
         const batchSize = isInitial ? slotsAvailable : SEEDING_BATCH_SIZE;
         const toPromote = Math.min(batchSize, slotsAvailable, waitingCoasters.length);
         
-        // Shuffle waiting coasters for random selection
-        const shuffled = [...waitingCoasters].sort(() => Math.random() - 0.5);
+        // Proper Fisher-Yates shuffle for unbiased random selection
+        const shuffled = [...waitingCoasters];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
         
         // Promote randomly selected coasters
         let promoted = 0;
@@ -4052,11 +4128,15 @@ const DOM = {};
         const rightLoseIfLose = Math.round(leftIfWin.newLoserRating - rightStats.rating);
         const fmt = (n) => (n >= 0 ? '+' + n : n.toString());
 
-        const rank1 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.rating - a.rating); return sorted.findIndex(c => c.name === left.naam) + 1; })();
-        const rank2 = (() => { const statsArray = Object.values(coasterStats); const sorted = [...statsArray].sort((a, b) => b.rating - a.rating); return sorted.findIndex(c => c.name === right.naam) + 1; })();
+        const rank1 = getCoasterRank(left.naam);
+        const rank2 = getCoasterRank(right.naam);
 
+        const leftPhase = leftStats.phase || 'waiting';
+        const rightPhase = rightStats.phase || 'waiting';
+        
         const devLeftHtml = `
-            <div><strong>Rank:</strong> ${rank1}</div>
+            <div><strong>Rank:</strong> ${rank1 || '-'}</div>
+            <div><strong>Phase:</strong> ${leftPhase}</div>
             <div><strong>Rating:</strong> ${Math.round(leftStats.rating)} ± ${Math.round(leftStats.rd)}</div>
             <div><strong>σ:</strong> ${leftStats.volatility.toFixed(4)}</div>
             <div><strong>Δ (win):</strong> ${fmt(leftGainWin)}</div>
@@ -4070,7 +4150,8 @@ const DOM = {};
             </div>
         `;
         const devRightHtml = `
-            <div><strong>Rank:</strong> ${rank2}</div>
+            <div><strong>Rank:</strong> ${rank2 || '-'}</div>
+            <div><strong>Phase:</strong> ${rightPhase}</div>
             <div><strong>Rating:</strong> ${Math.round(rightStats.rating)} ± ${Math.round(rightStats.rd)}</div>
             <div><strong>σ:</strong> ${rightStats.volatility.toFixed(4)}</div>
             <div><strong>Δ (win):</strong> ${fmt(rightGainWin)}</div>
@@ -4150,7 +4231,14 @@ const DOM = {};
     function getCoasterRank(coasterName) {
         if (!coasterName || !coasterStats[coasterName]) return null;
         
-        const statsArray = Object.values(coasterStats);
+        const stats = coasterStats[coasterName];
+        const phase = stats.phase || 'waiting';
+        
+        // Only ranked coasters have ranks
+        if (phase !== 'ranked') return null;
+        
+        // Filter to only ranked phase coasters
+        const statsArray = Object.values(coasterStats).filter(s => (s.phase || 'waiting') === 'ranked');
         const sorted = [...statsArray].sort((a, b) => b.rating - a.rating);
         
         return sorted.findIndex(c => c.name === coasterName) + 1;
@@ -4233,11 +4321,13 @@ const DOM = {};
                         }
                         
                         // base exploration weight: inverse of (1 + battles) ^ EXPLORATION_POWER
-                        let w = 1 / Math.pow(1 + Math.max(0, battles), EXPLORATION_POWER);
+                        // Cap battles at 10 for weight calculation to prevent ranked coasters from being too disadvantaged
+                        const cappedBattles = Math.min(battles, 10);
+                        let w = 1 / Math.pow(1 + Math.max(0, cappedBattles), EXPLORATION_POWER);
                         
                         // Apply phase-based multipliers
                         if (phase === 'seeding') {
-                            // Boost Seeding coasters significantly to ensure frequent battles
+                            // Boost Seeding coasters to ensure frequent battles until they graduate
                             w *= SEEDING_BOOST_FACTOR;
                         }
                         // Ranked coasters: no multiplier (normal frequency, Glicko-2 RD handles staleness)
@@ -4311,8 +4401,17 @@ const DOM = {};
                 }
 
                 // fallback scanning approach: try to find any unseen pair deterministically
+                // But only among seeding/ranked coasters (skip waiting)
                 for (let i = 0; i < length; i++) {
+                    const statsI = coasterStats && coasterStats[coasters[i].naam] ? coasterStats[coasters[i].naam] : null;
+                    const phaseI = statsI && statsI.phase ? statsI.phase : 'waiting';
+                    if (phaseI === 'waiting') continue;
+                    
                     for (let j = i + 1; j < length; j++) {
+                        const statsJ = coasterStats && coasterStats[coasters[j].naam] ? coasterStats[coasters[j].naam] : null;
+                        const phaseJ = statsJ && statsJ.phase ? statsJ.phase : 'waiting';
+                        if (phaseJ === 'waiting') continue;
+                        
                         const a = coasters[i], b = coasters[j];
                         const key = pairKey(a.naam, b.naam);
                         if (!completedPairs.has(key)) {
@@ -4518,7 +4617,8 @@ const DOM = {};
                 volatility: GLICKO2_VOLATILITY_INITIAL,
                 battles: 0,
                 wins: 0,
-                losses: 0
+                losses: 0,
+                firstBattleDate: null
             };
         }
         return coasterStats[name];
@@ -4952,19 +5052,9 @@ const DOM = {};
 
         try { if (battleContainerEl) battleContainerEl.style.display = ''; } catch (e) {}
         
-        // Get current rankings for both coasters (cache sorted array)
-        const statsArray = Object.values(coasterStats);
-        const sortedByRating = [...statsArray].sort((a, b) => b.rating - a.rating);
-    function getRanking(coasterName) {
-        if (!sortedByRating) {
-            const statsArray = Object.values(coasterStats);
-            sortedByRating = [...statsArray].sort((a, b) => b.rating - a.rating);
-        }
-        return sortedByRating.findIndex(c => c.name === coasterName) + 1;
-    }
-        
-        const rank1 = getRanking(currentBattle[0].naam);
-        const rank2 = getRanking(currentBattle[1].naam);
+        // Get current rankings for both coasters (only ranked coasters have ranks)
+        const rank1 = getCoasterRank(currentBattle[0].naam);
+        const rank2 = getCoasterRank(currentBattle[1].naam);
         
         // dev data calculations
         const left = currentBattle[0], right = currentBattle[1];
@@ -5018,10 +5108,18 @@ const DOM = {};
         preloadNextBattles();
         
         // Check if this is a close fight (will be used for banner)
-        // Both coasters must have 3+ battles for a close fight to be valid
-        const leftStatsForCheck = coasterStats[left.naam] || { battles: 0 };
-        const rightStatsForCheck = coasterStats[right.naam] || { battles: 0 };
-        const isCloseFightMatch = ((Math.abs(rank1 - rank2) <= 3) && (leftStatsForCheck.battles >= 3) && (rightStatsForCheck.battles >= 3));
+        // Both coasters must have 3+ battles AND be in ranked phase for a close fight to be valid
+        const leftStatsForCheck = coasterStats[left.naam] || { battles: 0, phase: 'waiting' };
+        const rightStatsForCheck = coasterStats[right.naam] || { battles: 0, phase: 'waiting' };
+        const leftPhase = leftStatsForCheck.phase || 'waiting';
+        const rightPhase = rightStatsForCheck.phase || 'waiting';
+        const isCloseFightMatch = (
+            (Math.abs(rank1 - rank2) <= 3) && 
+            (leftStatsForCheck.battles >= 3) && 
+            (rightStatsForCheck.battles >= 3) &&
+            (leftPhase === 'ranked') &&
+            (rightPhase === 'ranked')
+        );
         
         // Helper function to generate credit card for battle
         const generateBattleCard = (coaster, imageUrl, rank, choice) => {
@@ -5039,8 +5137,12 @@ const DOM = {};
             // Check phase - only show rank for 'ranked' phase, show ? for 'seeding'
             const stats = coasterStats[coaster.naam] || {};
             const phase = stats.phase || 'waiting';
+            const battles = stats.battles || 0;
             let rankDisplay = rank;
             let rankClass = 'rank-other';
+            
+            // Check if this is the first battle (0 battles)
+            const isFirstBattle = (battles === 0);
             
             if (phase === 'seeding') {
                 rankDisplay = '?';
@@ -5075,6 +5177,7 @@ const DOM = {};
                         <div class="credit-card-image" style="border-color: ${borderColor};">
                             <img src="${imageUrl}" alt="${escapeHtml(coaster.naam)}" class="credit-card-img" />
                             <div class="credit-rank-badge ${rankClass}">${rankDisplay}</div>
+                            ${isFirstBattle ? '<div class="first-battle-badge">🆕 First Battle!</div>' : ''}
                         </div>
                         <div class="credit-card-info">
                             <h1 class="credit-card-name">${escapeHtml(coaster.naam)}${coaster.operatief === 0 ? '<span class="defunct-marker">†</span>' : ''}</h1>
@@ -5266,6 +5369,14 @@ const DOM = {};
                 loserStats.volatility = newLoserVolatility;
             }
 
+            // Track first battle date
+            if (winnerStats.battles === 0) {
+                winnerStats.firstBattleDate = new Date().toISOString();
+            }
+            if (loserStats.battles === 0) {
+                loserStats.firstBattleDate = new Date().toISOString();
+            }
+            
             winnerStats.battles++; winnerStats.wins++;
             loserStats.battles++; loserStats.losses++;
             totalBattlesCount++;
@@ -5274,8 +5385,14 @@ const DOM = {};
             const newWinnerRank = getCoasterRank(winner.naam);
             const newLoserRank = getCoasterRank(loser.naam);
             
-            // Determine if this was a close fight
-            const wasCloseMatchFlag = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            // Determine if this was a close fight (both must be ranked and within 3 ranks)
+            const winnerPhaseForClose = winnerStats.phase || 'waiting';
+            const loserPhaseForClose = loserStats.phase || 'waiting';
+            const wasCloseMatchFlag = winnerPhaseForClose === 'ranked' && 
+                                     loserPhaseForClose === 'ranked' && 
+                                     oldWinnerRank !== null && 
+                                     oldLoserRank !== null && 
+                                     Math.abs(oldWinnerRank - oldLoserRank) < 3;
             
             // Build comprehensive battle stats for storage
             const battleStats = {
@@ -5368,7 +5485,9 @@ const DOM = {};
             // compute rank change (newWinnerRank already calculated above)
             const rankChange = oldWinnerRank - newWinnerRank; // positive = climbed
 
-            if (rankChange > 0) {
+            // Only show rank change badge if winner is in ranked phase (seeding coasters don't have ranks yet)
+            const winnerPhase = winnerStats.phase || 'waiting';
+            if (rankChange > 0 && winnerPhase === 'ranked' && newWinnerRank !== null && oldWinnerRank !== null) {
                 const badge = document.createElement('div');
                 badge.className = 'rank-change-badge';
                 badge.innerHTML = `<span class="arrow">↑</span><span>+${rankChange}</span>`;
@@ -5395,7 +5514,14 @@ const DOM = {};
             }
 
             // after updating ranking, if this was a close matchup, show an extended celebration
-            const wasCloseMatch = Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            // Both coasters must be in ranked phase to qualify as a close match
+            const winnerInRanked = (winnerStats.phase || 'waiting') === 'ranked';
+            const loserInRanked = (loserStats.phase || 'waiting') === 'ranked';
+            const wasCloseMatch = winnerInRanked && 
+                                 loserInRanked && 
+                                 oldWinnerRank !== null && 
+                                 oldLoserRank !== null && 
+                                 Math.abs(oldWinnerRank - oldLoserRank) < 3;
             if (wasCloseMatch) {
                 // ensure any intro overlay/banner/burst is hidden before celebration (force-hide immediately)
                 try {
@@ -5593,12 +5719,13 @@ const DOM = {};
     let userLevel = 1;
     let totalXPEarned = 0;
     
-    // Calculate required XP for a given level (exponential curve)
-    // Level 1 = 250 XP (~25 battles), Level 10 = ~4000 XP cumulative (~400 battles)
+    // Calculate required XP for a given level (steeper exponential curve with rounded numbers)
+    // Level 2 = 500 XP, Level 10 = ~11,250 XP cumulative
     function getXPForLevel(level) {
         if (level <= 0) return 0;
         if (level === 1) return 0;
-        return Math.floor(250 * Math.pow(1.15, level - 2));
+        // Steeper curve (1.2) with base 500, rounded to nearest 50 for clean numbers
+        return Math.round(500 * Math.pow(1.2, level - 2) / 50) * 50;
     }
     
     // Get cumulative XP needed to reach a level
@@ -5761,6 +5888,8 @@ const DOM = {};
             return;
         }
         
+        // Calculate total cumulative XP for display
+        const cumulativeXPForNextLevel = getCumulativeXPForLevel(userLevel + 1);
         const progress = getXPProgressInLevel(totalXPEarned, userLevel);
         const percentage = progress.required > 0 ? (progress.current / progress.required * 100) : 0;
         
@@ -5769,7 +5898,7 @@ const DOM = {};
         }
         
         if (progressText) {
-            progressText.textContent = `${progress.current.toLocaleString()}/${progress.required.toLocaleString()} XP`;
+            progressText.textContent = `${totalXPEarned.toLocaleString()}/${cumulativeXPForNextLevel.toLocaleString()} XP`;
         }
         
         if (currentLevelText) {
@@ -5942,7 +6071,9 @@ const DOM = {};
         if (totalBattles === 0) {
             top3Container.innerHTML = '<div class="no-battles">Start battling to see your favorites!</div>';
         } else {
-            const sorted = [...statsArray].sort((a, b) => displayedRating(b) - displayedRating(a));
+            // Only include ranked coasters in top 3
+            const rankedOnly = statsArray.filter(s => (s.phase || 'waiting') === 'ranked');
+            const sorted = [...rankedOnly].sort((a, b) => displayedRating(b) - displayedRating(a));
             const top3 = sorted.slice(0, 3);
             
             const html = top3.map((coaster, index) => {
@@ -6127,6 +6258,27 @@ const DOM = {};
         // Render only pair, highlight winner with a green pill and add a subtle delete button
         const rows = coasterHistory.slice().reverse().map((entry, idx) => {
             const originalIndex = coasterHistory.length - 1 - idx;
+            
+            // Handle reset event specially
+            if (entry.isResetEvent) {
+                const date = new Date(entry.timestamp);
+                const dateStr = date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const timeStr = date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+                
+                return `
+                    <div class="history-row reset-event">
+                        <div class="history-pair" style="justify-content: center;">
+                            <div style="color: #f59e0b; font-weight: 700; text-align: center;">
+                                🔄 Ranking Reset - ${dateStr} ${timeStr}
+                            </div>
+                        </div>
+                        <div class="history-actions">
+                            <button class="history-delete" title="Delete this entry" onclick="deleteHistoryEntry(${originalIndex})">✖</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
             // Use stored left/right positions if available, otherwise fall back to a/b
             let a = entry.left || entry.a;
             let b = entry.right || entry.b;
@@ -6415,7 +6567,11 @@ const DOM = {};
         
         // show toast confirming deletion
         try {
-            showToast(`Removed: ${removed.a} ↔ ${removed.b}`);
+            if (removed.isResetEvent) {
+                showToast('Removed: Ranking Reset Event');
+            } else {
+                showToast(`Removed: ${removed.a} ↔ ${removed.b}`);
+            }
         } catch (e) {}
     }
 
@@ -6424,6 +6580,13 @@ const DOM = {};
         if (typeof index !== 'number' || index < 0 || index >= coasterHistory.length) return;
 
         const entry = coasterHistory[index];
+        
+        // Cannot switch winner for reset events
+        if (entry.isResetEvent) {
+            showToast('⚠️ Cannot switch reset events');
+            return;
+        }
+        
         const oldWinner = entry.winner;
         const newWinner = (entry.winner === entry.a) ? entry.b : entry.a;
         const oldLoser = newWinner; // The new winner was the old loser
@@ -7123,15 +7286,12 @@ const DOM = {};
             const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
             const winrate = coaster.battles > 0 ? ((coaster.wins / coaster.battles) * 100).toFixed(1) : '0.0';
             const escapedName = coaster.name.replace(/'/g, "\\'");
-            
-            // Add phase label if dev data is shown
-            const phaseLabel = devShowData ? ` <span style="font-size: 0.75em; color: #95a5a6;">(${coaster.phase || 'unknown'})</span>` : '';
 
                 const dataId = (coaster.name || '').replace(/"/g, '&quot;');
                 rowsHtml.push(`
                     <tr data-id="${dataId}">
                         <td><span class="rank-medal">${medal}</span>${rank}</td>
-                        <td><strong>${coaster.name}${phaseLabel}</strong></td>
+                        <td><strong>${coaster.name}</strong></td>
                         <td>${coaster.park}</td>
                         <td>${coaster.manufacturer}</td>
                         <td><span class="elo-score">${Math.round(displayedRating(coaster))} ± ${Math.round(coaster.rd)}</span></td>
@@ -7143,12 +7303,11 @@ const DOM = {};
 
             // Card for mobile
             const rankBadgeClass = rank <= 3 ? 'rank-badge top-3' : 'rank-badge';
-            const phaseLabelMobile = devShowData ? `<span style="font-size: 0.7em; color: #95a5a6;"> (${coaster.phase})</span>` : '';
             cardsHtml.push(`
                 <div class="ranking-card" data-rank="${rank}">
                     <div class="${rankBadgeClass}">${rank}</div>
                     <div class="ranking-left">
-                        <div class="name">${coaster.name}${phaseLabelMobile}</div>
+                        <div class="name">${coaster.name}</div>
                         <div class="meta">${coaster.park} • ${coaster.manufacturer} • <span class="clickable-stat" onclick="viewCoasterHistory('${escapedName}')" title="View battle history">${coaster.wins}-${coaster.losses}</span></div>
                     </div>
                     <div class="ranking-right">
@@ -7186,13 +7345,12 @@ const DOM = {};
             
             sortedSeeding.forEach(coaster => {
                 const escapedName = coaster.name.replace(/'/g, "\\'");
-                const phaseLabel = devShowData ? ` <span style="font-size: 0.75em; color: #f59e0b;">(${coaster.phase || 'seeding'})</span>` : '';
                 const dataId = (coaster.name || '').replace(/"/g, '&quot;');
                 
                 seedingTableHtml += `
                     <tr data-id="${dataId}">
                         <td style="color: #f59e0b;">-</td>
-                        <td><strong>${coaster.name}${phaseLabel}</strong></td>
+                        <td><strong>${coaster.name}</strong></td>
                         <td>${coaster.park}</td>
                         <td>${coaster.manufacturer}</td>
                         <td><span class="elo-score">${Math.round(displayedRating(coaster))} ± ${Math.round(coaster.rd)}</span></td>
@@ -7229,13 +7387,12 @@ const DOM = {};
             
             sortedWaiting.forEach(coaster => {
                 const escapedName = coaster.name.replace(/'/g, "\\'");
-                const phaseLabel = devShowData ? ` <span style="font-size: 0.75em; color: #95a5a6;">(${coaster.phase || 'waiting'})</span>` : '';
                 const dataId = (coaster.name || '').replace(/"/g, '&quot;');
                 
                 waitingTableHtml += `
                     <tr data-id="${dataId}" style="color: #95a5a6;">
                         <td>-</td>
-                        <td><strong>${coaster.name}${phaseLabel}</strong></td>
+                        <td><strong>${coaster.name}</strong></td>
                         <td>${coaster.park}</td>
                         <td>${coaster.manufacturer}</td>
                         <td><span class="elo-score" style="color: #95a5a6;">-</span></td>
@@ -7330,25 +7487,38 @@ const DOM = {};
     function confirmResetRanking() {
         closeResetRankingModal();
         
-        // Reset only ranking and battle history, preserve achievements
+        // Add a history entry for the reset event
+        const resetEntry = {
+            pairKey: 'RESET_EVENT',
+            left: null,
+            right: null,
+            a: null,
+            b: null,
+            winner: null,
+            loser: null,
+            timestamp: new Date().toISOString(),
+            seed: null,
+            isResetEvent: true
+        };
+        coasterHistory.push(resetEntry);
+        
+        // Reset only ranking stats, preserve history, level, XP, and achievements
         coasterStats = initializeStats();
         totalBattlesCount = 0;
-        coasterHistory = [];
         completedPairs = new Set();
         
-        // Reset level and XP
-        userLevel = 1;
-        totalXPEarned = 0;
-        localStorage.removeItem(`userLevel_${currentUser}`);
-        localStorage.removeItem(`totalXPEarned_${currentUser}`);
+        // Initialize seeding phase: promote 25 random coasters to seeding
+        promoteWaitingToSeeding(true);
+        console.log('Reset ranking: promoted initial batch to seeding phase');
         
-        // DO NOT reset achievements - they are preserved
+        // DO NOT reset level, XP, or achievements - they are preserved
         
         saveData();
         displayBattle();
         updateRanking();
         displayHome(); // Refresh to update level display
-        alert('Ranking is gereset! Achievements zijn behouden. 🔄');
+        displayHistory(); // Refresh history to show reset entry
+        alert('Ranking is gereset! History, XP, level en achievements zijn behouden. 🔄');
     }
 
     function resetAllData() {
@@ -7773,6 +7943,27 @@ function displayHistoryInOverlay(source) {
     // Render only pair, highlight winner with a green pill and add a subtle delete button
     const rows = coasterHistory.slice().reverse().map((entry, idx) => {
         const originalIndex = coasterHistory.length - 1 - idx;
+        
+        // Handle reset event specially
+        if (entry.isResetEvent) {
+            const date = new Date(entry.timestamp);
+            const dateStr = date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const timeStr = date.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+            
+            return `
+                <div class="history-row reset-event">
+                    <div class="history-pair" style="justify-content: center;">
+                        <div style="color: #f59e0b; font-weight: 700; text-align: center;">
+                            🔄 Ranking Reset - ${dateStr} ${timeStr}
+                        </div>
+                    </div>
+                    <div class="history-actions">
+                        <button class="history-delete" title="Delete this entry" onclick="deleteHistoryEntry(${originalIndex})">✖</button>
+                    </div>
+                </div>
+            `;
+        }
+        
         // Use stored left/right positions if available, otherwise fall back to a/b
         let a = entry.left || entry.a;
         let b = entry.right || entry.b;
