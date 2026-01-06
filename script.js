@@ -718,30 +718,9 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Extract base name (before dash/colon) for fuzzy matching queries
     // E.g., "Joris en de draak - Water" → "Joris en de draak"
     // This casts a wider net in SPARQL to find variants like "Joris en de Draak"
-    let baseName = variant.split(/\s*[-:]\s*/)[0];
-    
-    // GENERAL FIX: Get shortest meaningful substring for broad SPARQL matching
-    // Strategy: Use first significant word if >2 words, strip possessives otherwise keep base name
-    // This ensures the search term is always a SUBSTRING of the Wikidata label
-    const words = baseName.split(/\s+/);
-    let shortName;
-    
-    if (words.length > 2) {
-        // Multi-word names: use first word only
-        // "Joris en de draak" → "Joris" (matches "Joris en de Draak")
-        // "Van Helsing Factory" → "Van" (matches "Van Helsing's Factory")
-        shortName = words[0];
-    } else if (words.length === 2 && baseName.includes("'")) {
-        // Two words with possessive: try removing it
-        // "Winja's Fear" → "Winja" (matches "Winja's Fear" and "Winja's Force")
-        shortName = baseName.replace(/'s\b/gi, '').trim().split(/\s+/)[0];
-    } else {
-        // Keep base name as-is for single words or clean two-word names
-        shortName = baseName;
-    }
-    
+    // The fuzzy matcher handles case differences, accents, and scoring
+    const baseName = variant.split(/\s*[-:]\s*/)[0];
     const escapedBaseName = escapeSPARQL(baseName);
-    const escapedShortName = escapeSPARQL(shortName);
     
     if (variant.length < 3) {
         console.log(`✗ Name too short: "${variant}"`);
@@ -877,12 +856,10 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     // Level 2 (P276/P131) and Level 3 (P127/P361) are independent - park can exist in one but not the other
     if (!parkAwareTimedOut) {
         console.log(`  🔍 Trying looser name match at "${parkVariant}"...`);
-        // GENERAL FIX 3: Use shortest name for broader matching ("Winja" catches both Fear and Force variants)
-        const fuzzyNameFilter = escapedShortName;
         const looseNameQuery = `
             SELECT ?item ?image ?itemLabel ?parkLabel WHERE {
               ?item rdfs:label ?itemLabel .
-              FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${fuzzyNameFilter}")))
+              FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapedBaseName}")))
               ${coasterTypeFilter}
               ?item wdt:P18 ?image .
               
@@ -911,12 +888,10 @@ async function queryWikidataImage(coasterName, parkName, manufacturer) {
     
     // LEVEL 4: Try fuzzy matching with location properties
     console.log(`  🔍 Trying looser name match with location properties...`);
-    // Use shortest name for maximum matching breadth
-    const fuzzyNameFilter = escapedShortName;
     const looseLocationQuery = `
         SELECT ?item ?image ?itemLabel ?locationLabel WHERE {
           ?item rdfs:label ?itemLabel .
-          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${fuzzyNameFilter}")))
+          FILTER(CONTAINS(LCASE(?itemLabel), LCASE("${escapedBaseName}")))
           ${coasterTypeFilter}
           ?item wdt:P18 ?image .
           
@@ -2479,7 +2454,7 @@ async function preloadNextBattles() {
 
 // Clear all cached images from localStorage
 function clearImageCache() {
-    if (!confirm('Clear all cached coaster images? They will be re-fetched on next load.')) {
+    if (!confirm('Clear all cached coaster images? They will be re-fetched on next page refresh.')) {
         return;
     }
     
@@ -2503,12 +2478,10 @@ function clearImageCache() {
         };
         
         updateImageLoadStats();
-        showToast(`✅ Cleared ${cleared} cached images`);
+        showToast(`✅ Cleared ${cleared} cached images. Refresh page to reload.`);
         
-        // Reload images
-        if (currentUser) {
-            preloadCoasterImages();
-        }
+        // Don't reload immediately - only after page refresh
+        // This prevents unnecessary API calls when user is just clearing cache
     } catch (e) {
         console.error('Error clearing cache:', e);
         showToast('❌ Failed to clear cache');
@@ -2539,19 +2512,10 @@ function cleanOldCacheVersions() {
 
 // Update dev menu with current image loading stats
 function updateImageLoadStats() {
-    const progressEl = document.getElementById('imageLoadProgress');
     const detailsEl = document.getElementById('imageLoadDetails');
     
-    if (progressEl && imageLoadStats.total > 0) {
-        const percentage = Math.round((imageLoadStats.loaded + imageLoadStats.failed + imageLoadStats.cached) / imageLoadStats.total * 100);
-        const completed = imageLoadStats.loaded + imageLoadStats.failed + imageLoadStats.cached;
-        progressEl.textContent = `Loaded: ${completed} / ${imageLoadStats.total} (${percentage}%)`;
-    } else if (progressEl) {
-        progressEl.textContent = 'No images loaded yet';
-    }
-    
     if (detailsEl) {
-        detailsEl.textContent = `Cache hits: ${imageLoadStats.cached} | Errors: ${imageLoadStats.failed}`;
+        detailsEl.textContent = `Hit: ${imageLoadStats.cached} | Error: ${imageLoadStats.failed}`;
     }
 }
 
@@ -2972,11 +2936,13 @@ window.addEventListener('resize', onResize, { passive: true });
     let EXPLORATION_POWER = 2; // higher => stronger preference for low-battles
     // Glicko-2 rating system parameters
     const GLICKO2_RATING_BASE = 1500;     // Initial rating (same scale as ELO for compatibility)
-    const GLICKO2_RD_INITIAL = 350;       // Initial rating deviation (high uncertainty)
+    let GLICKO2_RD_INITIAL = 350;         // Initial rating deviation (high uncertainty)
+    const GLICKO2_RD_MIN = 35;            // Minimum RD floor (prevents complete rating lock-in)
     const GLICKO2_VOLATILITY_INITIAL = 0.06; // Initial volatility
-    const GLICKO2_TAU = 0.5;              // System constant (constrains volatility change, 0.3-1.2)
+    let GLICKO2_TAU = 0.5;                // System constant (constrains volatility change, 0.3-1.2)
     const GLICKO2_EPSILON = 0.000001;     // Convergence tolerance
     const GLICKO2_SCALE_FACTOR = 173.7178; // Conversion factor from Glicko to Glicko-2 scale
+    const RD_INCREASE_PER_BATTLE = 0.5;   // Small RD increase per battle (creates equilibrium, prevents freeze)
     const PRIOR_WEIGHT = 6;  // pseudo-battles pulling displayed rating toward mean (for display only)
     // Rating-proximity: prefer opponents whose rating is similar (more informative matches)
     let RATING_PROXIMITY_POWER = 0.1; // higher => stronger preference for similar rating
@@ -3579,6 +3545,121 @@ const DOM = {};
         updateRanking();
     }
 
+    function setGlickoTau(val) {
+        const num = Number(val);
+        if (isNaN(num) || num < 0.1 || num > 2.0) return;
+        GLICKO2_TAU = num;
+        const el = document.getElementById('glickoTauValue');
+        if (el) el.textContent = num.toFixed(2);
+        console.log(`Glicko-2 TAU changed to ${num.toFixed(2)}`);
+        saveData();
+    }
+
+    function setGlickoInitialRD(val) {
+        const num = Number(val);
+        if (isNaN(num) || num < 50 || num > 500) return;
+        GLICKO2_RD_INITIAL = Math.round(num);
+        const el = document.getElementById('glickoInitialRDValue');
+        if (el) el.textContent = GLICKO2_RD_INITIAL;
+        console.log(`Glicko-2 Initial RD changed to ${GLICKO2_RD_INITIAL}`);
+        saveData();
+    }
+
+    function resetSeedingGroupSize() {
+        const defaultValue = 20;
+        const rangeEl = document.getElementById('seedingGroupSizeRange');
+        if (rangeEl) rangeEl.value = defaultValue;
+        setSeedingGroupSize(defaultValue);
+    }
+
+    function resetSeedingMinBattles() {
+        const defaultValue = 5;
+        const rangeEl = document.getElementById('seedingMinBattlesRange');
+        if (rangeEl) rangeEl.value = defaultValue;
+        setSeedingMinBattles(defaultValue);
+    }
+
+    function resetGlickoTau() {
+        const defaultValue = 0.5;
+        const rangeEl = document.getElementById('glickoTauRange');
+        if (rangeEl) rangeEl.value = defaultValue;
+        setGlickoTau(defaultValue);
+    }
+
+    function resetGlickoInitialRD() {
+        const defaultValue = 350;
+        const rangeEl = document.getElementById('glickoInitialRDRange');
+        if (rangeEl) rangeEl.value = defaultValue;
+        setGlickoInitialRD(defaultValue);
+    }
+
+    async function recalculateRanking() {
+        if (!currentUser) {
+            alert('Please select a user first.');
+            return;
+        }
+        
+        if (!coasterHistory || coasterHistory.length === 0) {
+            alert('No battle history to recalculate!');
+            return;
+        }
+        
+        const btn = document.getElementById('recalculateRankingBtn');
+        if (btn) btn.disabled = true;
+        
+        console.log('🔄 Recalculating rankings with current Glicko-2 parameters...');
+        console.log(`TAU: ${GLICKO2_TAU}, Initial RD: ${GLICKO2_RD_INITIAL}`);
+        
+        try {
+            // Reset all coaster stats to initial values
+            Object.keys(coasterStats).forEach(name => {
+                coasterStats[name].rating = GLICKO2_RATING_BASE;
+                coasterStats[name].rd = GLICKO2_RD_INITIAL;
+                coasterStats[name].volatility = GLICKO2_VOLATILITY_INITIAL;
+                coasterStats[name].battles = 0;
+                coasterStats[name].wins = 0;
+                coasterStats[name].losses = 0;
+            });
+            
+            // Replay all battles
+            for (let i = 0; i < coasterHistory.length; i++) {
+                const entry = coasterHistory[i];
+                const winner = entry.winner;
+                const loser = entry.loser || (entry.winner === entry.a ? entry.b : entry.a);
+                
+                const winnerStats = coasterStats[winner];
+                const loserStats = coasterStats[loser];
+                
+                if (!winnerStats || !loserStats) continue;
+                
+                const glickoOutcome = calculateGlicko2(winnerStats, loserStats);
+                
+                winnerStats.rating = glickoOutcome.newWinnerRating;
+                winnerStats.rd = glickoOutcome.newWinnerRD;
+                winnerStats.volatility = glickoOutcome.newWinnerVolatility;
+                winnerStats.battles++;
+                winnerStats.wins++;
+                
+                loserStats.rating = glickoOutcome.newLoserRating;
+                loserStats.rd = glickoOutcome.newLoserRD;
+                loserStats.volatility = glickoOutcome.newLoserVolatility;
+                loserStats.battles++;
+                loserStats.losses++;
+            }
+            
+            saveData();
+            updateRanking();
+            
+            console.log('✅ Rankings recalculated successfully!');
+            showToast('✅ Rankings recalculated with current parameters!', 2500);
+        } catch (error) {
+            console.error('Error recalculating rankings:', error);
+            alert('An error occurred during recalculation. Check console for details.');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     function applySettingsToUI() {
         // update range and label for exploration power (if still present)
         const expRange = document.getElementById('explorationPowerRange');
@@ -3968,6 +4049,7 @@ const DOM = {};
             updateRanking();
             displayHistory();
             displayBattle();
+            displayHome();
         }
     }
 
@@ -4453,6 +4535,13 @@ const DOM = {};
         return phi * GLICKO2_SCALE_FACTOR;
     }
 
+    // Apply small RD increase before battle (prevents rating lock-in at high battle counts)
+    // Creates natural equilibrium: more battles per coaster = lower equilibrium RD = more stability
+    function applyPreBattleRDIncrease(stats) {
+        if (!stats) return;
+        stats.rd = Math.min(stats.rd + RD_INCREASE_PER_BATTLE, GLICKO2_RD_INITIAL);
+    }
+
     // g(φ) function - measures impact of opponent's RD
     function glicko2_g(phi) {
         return 1 / Math.sqrt(1 + 3 * phi * phi / (Math.PI * Math.PI));
@@ -4466,6 +4555,10 @@ const DOM = {};
     // Calculate new Glicko-2 ratings after a match
     // Returns: { newWinnerRating, newWinnerRD, newWinnerVolatility, newLoserRating, newLoserRD, newLoserVolatility }
     function calculateGlicko2(winnerStats, loserStats) {
+        // Apply small RD increase before battle (prevents rating freeze)
+        applyPreBattleRDIncrease(winnerStats);
+        applyPreBattleRDIncrease(loserStats);
+        
         // Extract current values
         const r1 = winnerStats.rating || GLICKO2_RATING_BASE;
         const rd1 = winnerStats.rd || GLICKO2_RD_INITIAL;
@@ -4526,16 +4619,19 @@ const DOM = {};
         // Step 5: Update rating and RD
         const phi_new = 1 / Math.sqrt(1 / (phi_star * phi_star) + 1 / v);
         
+        // Apply minimum RD floor (prevents complete rating lock-in)
+        const phi_new_clamped = Math.max(phi_new, glicko2ScaleRD(GLICKO2_RD_MIN));
+        
         let mu_new = mu;
         for (const opp of opponents) {
             const g_phi_j = glicko2_g(opp.phi);
             const E_val = glicko2_E(mu, opp.mu, opp.phi);
-            mu_new += phi_new * phi_new * g_phi_j * (opp.score - E_val);
+            mu_new += phi_new_clamped * phi_new_clamped * g_phi_j * (opp.score - E_val);
         }
 
         return {
             mu: mu_new,
-            phi: phi_new,
+            phi: phi_new_clamped,
             sigma: sigma_new
         };
     }
@@ -7178,8 +7274,8 @@ const DOM = {};
         if (!seedingSection) {
             const section = document.createElement('div');
             section.id = 'seedingSection';
-            section.style.marginTop = '40px';
-            section.innerHTML = '<h3 style="color: #f59e0b; font-size: 1.2em; margin-bottom: 15px;">Seeding Coasters (Being Ranked)</h3>';
+            section.style.marginTop = '24px';
+            section.innerHTML = '<h3 style="color: #2C3E50; font-size: 1.2em; margin-bottom: 15px;">Seeding Coasters (Being Ranked)</h3>';
             const container = document.createElement('div');
             container.id = 'seedingList';
             section.appendChild(container);
@@ -7192,7 +7288,7 @@ const DOM = {};
         if (!unrankedSection) {
             const section = document.createElement('div');
             section.id = 'unrankedSection';
-            section.style.marginTop = '40px';
+            section.style.marginTop = '24px';
             section.innerHTML = '<h3 style="color: #95a5a6; font-size: 1.2em; margin-bottom: 15px;">Waiting Coasters</h3>';
             const container = document.createElement('div');
             container.id = 'unrankedList';
@@ -7288,9 +7384,11 @@ const DOM = {};
             const escapedName = coaster.name.replace(/'/g, "\\'");
 
                 const dataId = (coaster.name || '').replace(/"/g, '&quot;');
+                // For top 3, show only medal; for others show rank number
+                const rankDisplay = rank <= 3 ? `<span class="rank-medal">${medal}</span>` : rank;
                 rowsHtml.push(`
                     <tr data-id="${dataId}">
-                        <td><span class="rank-medal">${medal}</span>${rank}</td>
+                        <td>${rankDisplay}</td>
                         <td><strong>${coaster.name}</strong></td>
                         <td>${coaster.park}</td>
                         <td>${coaster.manufacturer}</td>
@@ -7580,6 +7678,9 @@ const DOM = {};
         totalBattlesCount = 0;
         coasterHistory = [];
         completedPairs = new Set();
+        
+        // Initialize seeding phase with coasters (like on first load)
+        promoteWaitingToSeeding(true);
         
         // Reset level and XP
         userLevel = 1;
@@ -8210,7 +8311,7 @@ function openCreditCard(coasterId) {
     // Setup 3D tilt effect
     const cardOuter = container.querySelector('.credit-card-outer');
     const popup = document.querySelector('.credit-card-popup');
-    const maxTilt = 30; // degrees
+    const maxTilt = 35; // degrees
     
     // Mouse tracking for desktop - track across entire overlay
     function handleMouseMove(e) {
@@ -8222,12 +8323,15 @@ function openCreditCard(coasterId) {
         const mouseX = (e.clientX - centerX) / (rect.width / 2);
         const mouseY = (e.clientY - centerY) / (rect.height / 2);
         
-        // Calculate rotation (inverted for opposite movement)
+        // Mouse left (negative mouseX) -> left side tilts back (needs positive rotateY)
+        // Mouse right (positive mouseX) -> right side tilts back (needs negative rotateY)
+        // Mouse top (negative mouseY) -> top tilts back (needs negative rotateX)
+        // Mouse bottom (positive mouseY) -> bottom tilts back (needs positive rotateX)
         const rotateY = -mouseX * maxTilt;
         const rotateX = mouseY * maxTilt;
         
-        // Apply transform
-        cardOuter.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        // Apply transform with translateZ for enhanced perspective
+        cardOuter.style.transform = `translateZ(30px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
         
         // Update shine position and angle based on tilt (inverse - simulates fixed light reflecting off tilted surface)
         // When card tilts left (negative rotateY), shine appears on right side
@@ -8255,7 +8359,7 @@ function openCreditCard(coasterId) {
     
     // Reset on mouse leave
     function handleMouseLeave() {
-        cardOuter.style.transform = 'rotateX(0deg) rotateY(0deg)';
+        cardOuter.style.transform = 'translateZ(30px) rotateX(0deg) rotateY(0deg)';
         cardOuter.style.setProperty('--shine-x', '50%');
         cardOuter.style.setProperty('--shine-y', '50%');
         cardOuter.style.setProperty('--shine-angle', '135deg');
