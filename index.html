@@ -347,6 +347,34 @@
                     <tr><td colspan="8" class="no-battles">Select a user first! 🎢</td></tr>
                 </tbody>
             </table>
+
+            <!-- History Overlay (Ranking Tab) -->
+            <div id="historyOverlayRanking" class="history-overlay" style="display: none;">
+                <div class="history-overlay-header">
+                    <div class="history-overlay-top">
+                        <button class="history-back-btn" onclick="hideHistoryOverlay('ranking')">← Back to Ranking</button>
+                        <h2 class="history-overlay-title">Battle History</h2>
+                    </div>
+                    <div class="history-header-row">
+                        <div class="autocomplete-container">
+                            <div class="search-input-wrapper">
+                                <input id="historySearchRanking" type="text" class="search-box" placeholder="🔍 Search coaster..." oninput="handleHistorySearchInput('ranking')" onkeydown="handleHistorySearchKeydown(event, 'ranking')" onfocus="showHistoryAutocomplete('ranking')" style="width:100%;" />
+                                <button id="clearHistorySearchBtnRanking" class="clear-search-btn" onclick="clearHistorySearch('ranking')" style="display:none;" title="Clear search">✕</button>
+                            </div>
+                            <div id="historyAutocompleteRanking" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div class="history-filters" id="historyFiltersRanking" aria-hidden="false">
+                            <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all', 'ranking')">All battles</button>
+                            <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close', 'ranking')">Close fights</button>
+                            <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins', 'ranking')">Wins</button>
+                            <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses', 'ranking')">Losses</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="historyContainerRanking" class="history-overlay-content">
+                    <div class="no-battles">No battles yet — start choosing to build your history.</div>
+                </div>
+            </div>
         </div>
 
 

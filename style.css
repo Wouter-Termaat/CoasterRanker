@@ -1866,16 +1866,19 @@ body.coaster-selected .history-filters .filter-btn.coaster-specific {
 }
 
 /* Column widths */
-.ranking-table th:nth-child(1) { width: 60px; }  /* Rank */
-.ranking-table th:nth-child(2) { width: auto; min-width: 140px; }  /* Name */
+.ranking-table th:nth-child(1) { width: 80px; }  /* Rank */
+.ranking-table th:nth-child(2) { width: auto; min-width: 200px; }  /* Name */
 .ranking-table th:nth-child(3) { width: auto; min-width: 120px; }  /* Park */
-.ranking-table th:nth-child(4) { width: auto; min-width: 110px; }  /* Manufacturer */
-.ranking-table th:nth-child(5) { width: 140px; }  /* Rating */
+.ranking-table th:nth-child(4) { width: 115px; }  /* Manufacturer */
+.ranking-table th:nth-child(5) { width: 120px; }  /* Rating */
 .ranking-table th:nth-child(6) { width: 75px; }  /* Battles */
 .ranking-table th:nth-child(7) { width: 65px; }  /* Wins */
 .ranking-table th:nth-child(8) { width: 75px; }  /* Losses */
 
 .ranking-table td:nth-child(1) { text-align: center; vertical-align: middle; }  /* Rank column centering */
+.ranking-table td:nth-child(6) { text-align: center; vertical-align: middle; }  /* Battles column centering */
+.ranking-table td:nth-child(7) { text-align: center; vertical-align: middle; }  /* Wins column centering */
+.ranking-table td:nth-child(8) { text-align: center; vertical-align: middle; }  /* Losses column centering */
 
 .ranking-table th:hover {
     background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
