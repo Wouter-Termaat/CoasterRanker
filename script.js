@@ -3254,14 +3254,22 @@ const DOM = {};
                     }
                 });
                 // Promote 25 random coasters to Seeding
-                promoteWaitingToSeeding(true);
-                console.log('Initialized phase system: promoted 25 random coasters to Seeding');
+                const promoted = promoteWaitingToSeeding(true);
+                console.log(`Initialized phase system: promoted ${promoted} coasters to Seeding`);
+                // Save immediately to persist phase assignments
+                saveData();
+                
+                // Verify seeding coasters exist
+                const seedingCount = Object.values(coasterStats).filter(s => s.phase === 'seeding').length;
+                console.log(`Seeding pool after initialization: ${seedingCount} coasters`);
             } else {
                 // Phases already exist from localStorage, just ensure consistency
             }
         } else if (Object.values(coasterStats).some(s => s.battles > 0)) {
             // Some battles exist - reprocess phases based on stats
             reprocessAllPhases();
+            // Save after reprocessing
+            saveData();
         }
         
         // Load completed pairs
@@ -5168,6 +5176,19 @@ const DOM = {};
         // if there aren't enough active coasters, show a helpful message
         if (!coasters || coasters.length < 2) {
             (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">No active coasters found for this user. Check your CSV or the "operational" column.</div>';
+            currentBattle = null;
+            return;
+        }
+        
+        // Check if we have any seeding or ranked coasters available
+        const activeCoasters = Object.values(coasterStats).filter(s => {
+            const phase = s.phase || 'waiting';
+            return phase === 'seeding' || phase === 'ranked';
+        });
+        
+        if (activeCoasters.length < 2) {
+            console.warn('Not enough seeding/ranked coasters for battle. Available:', activeCoasters.length);
+            (DOM.battleContainer || $id('battleContainer')).innerHTML = '<div class="no-battles">Preparing coasters for battles...<br><br>Please refresh the page if this persists.</div>';
             currentBattle = null;
             return;
         }
