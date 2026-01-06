@@ -133,7 +133,6 @@
             coastersDataLuca = parseCSV(lucaText);
             coastersDataWouter = parseCSV(wouterText);
             
-            console.info(`Loaded: Luca=${coastersDataLuca.length}, Wouter=${coastersDataWouter.length}`);
             initializeApp();
         } catch (error) {
             console.error('Error loading data:', error.message);
@@ -221,10 +220,10 @@
         // Load user-specific data - including all coasters (operational and defunct)
         if (savedUser === 'luca') {
             coasters = coastersDataLuca;
-            console.log(`🎯 Selected user: Luca - Loading ${coasters.length} coasters`);
+            console.log(`Selected user: Luca - Loading ${coasters.length} coasters`);
         } else {
             coasters = coastersDataWouter;
-            console.log(`🎯 Selected user: Wouter - Loading ${coasters.length} coasters`);
+            console.log(`Selected user: Wouter - Loading ${coasters.length} coasters`);
         }
         
         // Load user data
@@ -2600,9 +2599,7 @@ async function preloadAllCoasterImages() {
         return;
     }
     
-    console.log(`📊 Image Loading Summary for ${currentUser}:`);
-    console.log(`   Total coasters to load: ${coasters.length}`);
-    console.log(`   Current user: ${currentUser}`);
+    console.log(`Image Loading Summary: ${coasters.length} coasters`);
     
     cleanOldCacheVersions();
     
@@ -2622,11 +2619,8 @@ async function preloadAllCoasterImages() {
         }
     }
     
-    console.log(`📦 Found ${cachedCount}/${coasters.length} images in cache`);
-    
     // If all are cached, load instantly without showing loading screen progress
     if (cachedCount === coasters.length) {
-        console.log(`✓ All images cached - instant load!`);
         // Just increment stats for cached images
         for (const coaster of coasters) {
             await getCoasterImage(coaster); // Will return from cache instantly
@@ -2639,7 +2633,7 @@ async function preloadAllCoasterImages() {
     updateImageLoadStats();
     updateLoadingScreen(0, coasters.length, 0);
     
-    console.log(`🚀 Loading ${coasters.length - cachedCount} new images (${cachedCount} from cache)...`);
+    console.log(`Loading ${coasters.length - cachedCount} new images (${cachedCount} cached)...`);
     
     // Load in batches to avoid rate limiting while maintaining speed
     // Larger batches for cached items, smaller for API calls
@@ -3247,23 +3241,28 @@ const DOM = {};
         });
         
         // Phase initialization logic
+        // Check if any coasters already have seeding status (from previous session)
+        const hasExistingSeedingCoasters = Object.values(coasterStats).some(s => s.phase === 'seeding');
+        
         if (totalBattlesCount === 0) {
-            // No battles at all - ensure all coasters start in waiting, then promote 25 to seeding
-            Object.values(coasterStats).forEach(stats => {
-                if (stats.battles === 0) {
-                    stats.phase = 'waiting';
-                }
-            });
-            // Promote 25 random coasters to Seeding
-            promoteWaitingToSeeding(true);
-            console.log('Initialized phase system: promoted 25 random coasters to Seeding');
+            // No battles at all
+            if (!hasExistingSeedingCoasters) {
+                // First time initialization - ensure all coasters start in waiting, then promote 25 to seeding
+                Object.values(coasterStats).forEach(stats => {
+                    if (stats.battles === 0) {
+                        stats.phase = 'waiting';
+                    }
+                });
+                // Promote 25 random coasters to Seeding
+                promoteWaitingToSeeding(true);
+                console.log('Initialized phase system: promoted 25 random coasters to Seeding');
+            } else {
+                // Phases already exist from localStorage, just ensure consistency
+            }
         } else if (Object.values(coasterStats).some(s => s.battles > 0)) {
             // Some battles exist - reprocess phases based on stats
             reprocessAllPhases();
         }
-        
-        // Save and update after phase processing
-        saveData();
         
         // Load completed pairs
         const savedPairs = localStorage.getItem(pairsKey);
@@ -3300,6 +3299,9 @@ const DOM = {};
         loadPairingSettings();
         // load developer UI settings for this user
         loadDevSettings();
+        
+        // Save and update after all data is loaded (including current battle)
+        saveData();
     }
 
     function initializeStats() {
@@ -3355,7 +3357,7 @@ const DOM = {};
         if (currentPhase === 'seeding' && stats.battles >= SEEDING_MIN_BATTLES) {
             stats.phase = 'ranked';
             transitioned = true;
-            console.log(`Phase transition: ${coasterName} seeding → ranked (battles: ${stats.battles}, RD: ${Math.round(stats.rd)})`);
+            console.log(`${coasterName} moved from seeding to ranked (${stats.battles} battles)`);
         }
         
         return transitioned;
@@ -5172,7 +5174,19 @@ const DOM = {};
 
         // If developer forced a close battle and `currentBattle` is already set, don't overwrite it.
         // Also check if we have a saved battle from previous session/tab switch
+        let needNewBattle = false;
+        
         if (!currentBattle || (!devForceCloseBattle && currentBattle.length !== 2)) {
+            needNewBattle = true;
+        } else if (currentBattle.length === 2) {
+            // Validate that the saved battle hasn't already been completed
+            const key = pairKey(currentBattle[0].naam, currentBattle[1].naam);
+            if (completedPairs.has(key)) {
+                needNewBattle = true;
+            }
+        }
+        
+        if (needNewBattle) {
             // Use pre-cached battle if available for instant display
             if (nextBattlePreloaded && nextBattlePreloaded.length === 2) {
                 currentBattle = nextBattlePreloaded;
@@ -5180,6 +5194,7 @@ const DOM = {};
             } else {
                 currentBattle = getRandomCoasters();
             }
+            console.log('Generated new battle');
         }
         const battleContainer = DOM.battleContainer || $id('battleContainer');
         
@@ -7887,6 +7902,7 @@ function checkAndShowAchievements() {
     // Show toast for each new achievement with staggered timing
     newAchievements.forEach((achievement, index) => {
         setTimeout(() => {
+            console.log(`Achievement unlocked: ${achievement.name}`);
             showAchievementToast(achievement);
         }, index * 600); // Stagger by 600ms
     });
@@ -7897,8 +7913,6 @@ function checkAndShowAchievements() {
 
 // Render the pins display (in profile overlay)
 function updatePinsDisplay() {
-    console.log('updatePinsDisplay called');
-    console.log('achievementManager exists:', typeof achievementManager !== 'undefined');
     
     if (typeof achievementManager === 'undefined') {
         console.warn('achievementManager is undefined');
@@ -7917,8 +7931,6 @@ function updatePinsDisplay() {
     const unlockedCount = achievementManager.getUnlockedCount();
     const totalCount = achievementManager.getTotalCount();
     const percentage = Math.round((unlockedCount / totalCount) * 100);
-    
-    console.log('Updating pins display:', { unlockedCount, totalCount, percentage });
     
     // Update filter counter
     if (filterCounter) filterCounter.textContent = `${unlockedCount}/${totalCount} unlocked`;
@@ -7948,8 +7960,6 @@ function updatePinsDisplay() {
             </div>
         `;
     }).join('');
-    
-    console.log('Pin cards rendered:', pins.length);
 }
 
 // Filter pins by category
