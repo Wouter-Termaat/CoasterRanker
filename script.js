@@ -5448,6 +5448,17 @@ const DOM = {};
         // ensure stats exist
         const winnerStats = ensureCoasterStats(winner) || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
         const loserStats = ensureCoasterStats(loser) || { rating:GLICKO2_RATING_BASE, rd:GLICKO2_RD_INITIAL, volatility:GLICKO2_VOLATILITY_INITIAL, battles:0, wins:0, losses:0 };
+        
+        // Calculate if this is a close fight (same logic as in displayBattle)
+        const winnerPhaseCheck = winnerStats.phase || 'waiting';
+        const loserPhaseCheck = loserStats.phase || 'waiting';
+        const isCloseFight = (
+            (Math.abs(oldWinnerRank - oldLoserRank) <= 3) && 
+            (winnerStats.battles >= 3) && 
+            (loserStats.battles >= 3) &&
+            (winnerPhaseCheck === 'ranked') &&
+            (loserPhaseCheck === 'ranked')
+        );
 
         // Capture rating values BEFORE battle
         const winnerRatingBefore = winnerStats.rating;
@@ -5528,7 +5539,7 @@ const DOM = {};
             const newWinnerRank = getCoasterRank(winner.naam);
             const newLoserRank = getCoasterRank(loser.naam);
             
-            // Use the centralized close fight check (already calculated at the beginning)
+            // Close fight flag was calculated at the beginning of chooseWinner
             const wasCloseMatchFlag = isCloseFight;
             
             // Build comprehensive battle stats for storage
@@ -5590,8 +5601,8 @@ const DOM = {};
             awardXP(xpAmount, wasCloseMatchFlag ? 'Battle (close fight)' : 'Battle');
 
             // Track for achievements
-            // Use the centralized close fight check (already calculated at the beginning)
-            const wasCloseFight = isCloseFight;
+            // wasCloseMatchFlag already calculated above, use it for achievements
+            const wasCloseFight = wasCloseMatchFlag;
             const perfectMatch = (winner.park === loser.park) && 
                                (winner.fabrikant === loser.fabrikant) &&
                                winner.park && loser.park && 
@@ -5648,8 +5659,8 @@ const DOM = {};
 
             // ===== CLOSE FIGHT CELEBRATION =====
             // If this was a close fight, show an extended celebration
-            // Use the centralized close fight check (already calculated at the beginning)
-            if (isCloseFight) {
+            // Use the wasCloseMatchFlag calculated above
+            if (wasCloseMatchFlag) {
                 // ensure any intro overlay/banner/burst is hidden before celebration (force-hide immediately)
                 try {
                     const overlayEl = document.getElementById('closeBattleOverlay');
@@ -5693,7 +5704,7 @@ const DOM = {};
             console.error('close-battle flow error', e);
             // fallback apply normally (without comprehensive stats since this is error recovery)
             winnerStats.rating = newWinnerRating; loserStats.rating = newLoserRating;
-            winnerStats.rd = newWinnerRd; loserStats.rd = newLoserRd;
+            winnerStats.rd = newWinnerRD; loserStats.rd = newLoserRD;
             winnerStats.volatility = newWinnerVolatility; loserStats.volatility = newLoserVolatility;
             winnerStats.battles++; winnerStats.wins++; loserStats.battles++; loserStats.losses++; totalBattlesCount++;
             recordBattle(currentBattle[0], currentBattle[1], winner.naam, loser.naam); // Basic record without stats
