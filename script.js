@@ -2962,7 +2962,7 @@ window.addEventListener('resize', onResize, { passive: true });
     const MAX_UNDO_STACK = 50;
     const MAX_HISTORY_KEEP = 10000; // Maximum history entries to keep
     // Exploration boost: favor coasters with few battles
-    let EXPLORATION_POWER = 2; // higher => stronger preference for low-battles
+    let EXPLORATION_POWER = 1.5; // higher => stronger preference for low-battles (reduced for more ranked vs ranked)
     // Glicko-2 rating system parameters
     const GLICKO2_RATING_BASE = 1500;     // Initial rating (same scale as ELO for compatibility)
     let GLICKO2_RD_INITIAL = 350;         // Initial rating deviation (high uncertainty)
@@ -2984,7 +2984,7 @@ window.addEventListener('resize', onResize, { passive: true });
     let SEEDING_TARGET_COUNT = 20;      // Target number of coasters in Seeding phase
     let SEEDING_BATCH_SIZE = 2;          // How many to promote from Waiting per batch (staggered)
     let SEEDING_MIN_BATTLES = 5;         // Minimum battles before exiting Seeding to Ranked
-    const SEEDING_BOOST_FACTOR = 1.2;    // Matchmaking probability boost for Seeding coasters (reduced to allow ranked vs ranked)
+    const SEEDING_BOOST_FACTOR = 0.85;   // Matchmaking weight adjustment for Seeding coasters (< 1.0 = penalty to balance 50/50 selection)
     
     // Pairing strategy: hybrid — picks one under-sampled coaster
     // then picks a second that is ELO-similar while still favoring under-sampled ones.
@@ -7249,7 +7249,7 @@ const DOM = {};
         const totalBattlesEl = document.getElementById('totalBattles');
         const totalCoastersEl = document.getElementById('totalCoasters');
         const avgBattlesEl = document.getElementById('avgBattlesPerCoaster');
-        const progressMatchupsEl = document.getElementById('progressMatchups');
+        const progressMatchupsEl = document.getElementById('rankingProgressMatchups');
         const progressPercentageEl = document.getElementById('progressPercentage');
         
         if (totalBattlesEl) totalBattlesEl.textContent = totalBattles;
