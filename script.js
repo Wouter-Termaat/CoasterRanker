@@ -2438,14 +2438,16 @@ function preloadImage(imageUrl) {
 
 // Preload images for a pair of coasters
 async function preloadBattleImages(coaster1, coaster2) {
+    if (!coaster1 || !coaster2) return;
     const url1 = getCoasterImageSync(coaster1);
     const url2 = getCoasterImageSync(coaster2);
     
     // Load both in parallel
-    await Promise.all([
+    const results = await Promise.all([
         preloadImage(url1),
         preloadImage(url2)
     ]);
+    return results.every(r => r); // Return true only if both loaded successfully
 }
 
 // Background preloader - loads images for next potential battles
@@ -3207,11 +3209,22 @@ const DOM = {};
         const pairsKey = `completedPairs_${currentUser}`;
         const battleKey = `currentBattle_${currentUser}`;
 
-        coasterStats = JSON.parse(localStorage.getItem(statsKey)) || initializeStats();
+        try {
+            coasterStats = JSON.parse(localStorage.getItem(statsKey)) || initializeStats();
+        } catch (e) {
+            console.error('Failed to parse coaster stats from localStorage:', e);
+            coasterStats = initializeStats();
+        }
         
         // Load total battles count first (needed for phase logic)
         totalBattlesCount = parseInt(localStorage.getItem(battlesKey)) || 0;
-        coasterHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
+        
+        try {
+            coasterHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
+        } catch (e) {
+            console.error('Failed to parse coaster history from localStorage:', e);
+            coasterHistory = [];
+        }
         
         // Migrate from ELO to Glicko-2 if necessary
         Object.values(coasterStats).forEach(stats => {
@@ -5236,13 +5249,14 @@ const DOM = {};
         // Start background preloading for next battles immediately (no delay)
         preloadNextBattles();
         
-        // Check if this is a close fight (will be used for banner)
+        // ===== CLOSE FIGHT CHECK - SINGLE SOURCE OF TRUTH =====
+        // Check if this is a close fight (used for banner, intro, points, achievements, celebration)
         // Both coasters must have 3+ battles AND be in ranked phase for a close fight to be valid
         const leftStatsForCheck = coasterStats[left.naam] || { battles: 0, phase: 'waiting' };
         const rightStatsForCheck = coasterStats[right.naam] || { battles: 0, phase: 'waiting' };
         const leftPhase = leftStatsForCheck.phase || 'waiting';
         const rightPhase = rightStatsForCheck.phase || 'waiting';
-        const isCloseFightMatch = (
+        const isCloseFight = (
             (Math.abs(rank1 - rank2) <= 3) && 
             (leftStatsForCheck.battles >= 3) && 
             (rightStatsForCheck.battles >= 3) &&
@@ -5340,7 +5354,7 @@ const DOM = {};
         
         // Render cards with images already loaded
         battleContainer.innerHTML = `
-            ${isCloseFightMatch ? '<div class="close-fight-banner">⚔️ CLOSE FIGHT ⚔️</div>' : ''}
+            ${isCloseFight ? '<div class="close-fight-banner">⚔️ CLOSE FIGHT ⚔️</div>' : ''}
             <div class="coaster-item">
                 ${generateBattleCard(left, leftImageUrl, rank1, 0)}
             </div>
@@ -5364,32 +5378,14 @@ const DOM = {};
             });
         });
 
-        // If this matchup qualifies as a close fight, play the intro animation
-        const getRankingNum = (coasterName) => {
-            const statsArray = Object.values(coasterStats);
-            const sorted = [...statsArray].sort((a, b) => b.rating - a.rating);
-            return sorted.findIndex(c => c.name === coasterName) + 1;
-        };
-        const r1 = getRankingNum(left.naam);
-        const r2 = getRankingNum(right.naam);
-        const leftStatsObj = coasterStats[left.naam] || { battles: 0 };
-        const rightStatsObj = coasterStats[right.naam] || { battles: 0 };
-        const isCloseEligible = ((Math.abs(r1 - r2) <= 3) && (leftStatsObj.battles >= 3) && (rightStatsObj.battles >= 3));
-        // Determine whether an epic intro will fire on the next battle (rare event)
-        function willEpicTriggerOnNext(){
-            try{
-                const counter = Number(localStorage.getItem(CR_STORAGE_COUNTER) || 0);
-                const threshold = Number(localStorage.getItem(CR_STORAGE_THRESHOLD) || randInt(25,50));
-                return (counter + 1) >= threshold;
-            }catch(e){ return false; }
-        }
-
+        // ===== CLOSE FIGHT INTRO ANIMATION =====
+        // If this matchup is a close fight, play the intro animation
         // If dev forced a close battle, show intro immediately (before cards are visible)
         if (devForceCloseBattle) {
             try { if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; } } catch (e) {}
             // Trigger intro immediately with no delay
             showCloseIntro(left, right).catch(()=>{});
-        } else if (isCloseEligible) {
+        } else if (isCloseFight) {
             // Always show the full intro sequence for close fights
             try { if (closeIntroTimeout) { clearTimeout(closeIntroTimeout); closeIntroTimeout = null; } } catch (e) {}
             closeIntroTimeout = setTimeout(() => { closeIntroTimeout = null; showCloseIntro(left, right).catch(()=>{}); }, 60);
@@ -5403,10 +5399,13 @@ const DOM = {};
 
     // Explicitly hide/show the battle UI (cards). Use this from tab switching
     function setBattleVisibility(visible) {
-        const battleContainerEl = DOM.battleContainer;
+        const battleContainerEl = DOM.battleContainer || document.getElementById('battleContainer');
+        if (!battleContainerEl) return;
         try {
-            if (battleContainerEl) battleContainerEl.style.display = visible ? '' : 'none';
-        } catch (e) {}
+            battleContainerEl.style.display = visible ? '' : 'none';
+        } catch (e) {
+            console.warn('Error setting battle visibility:', e);
+        }
     }
 
     function chooseWinner(index) {
@@ -5514,14 +5513,8 @@ const DOM = {};
             const newWinnerRank = getCoasterRank(winner.naam);
             const newLoserRank = getCoasterRank(loser.naam);
             
-            // Determine if this was a close fight (both must be ranked and within 3 ranks)
-            const winnerPhaseForClose = winnerStats.phase || 'waiting';
-            const loserPhaseForClose = loserStats.phase || 'waiting';
-            const wasCloseMatchFlag = winnerPhaseForClose === 'ranked' && 
-                                     loserPhaseForClose === 'ranked' && 
-                                     oldWinnerRank !== null && 
-                                     oldLoserRank !== null && 
-                                     Math.abs(oldWinnerRank - oldLoserRank) < 3;
+            // Use the centralized close fight check (already calculated at the beginning)
+            const wasCloseMatchFlag = isCloseFight;
             
             // Build comprehensive battle stats for storage
             const battleStats = {
@@ -5582,12 +5575,8 @@ const DOM = {};
             awardXP(xpAmount, wasCloseMatchFlag ? 'Battle (close fight)' : 'Battle');
 
             // Track for achievements
-            // Close fight requires both coasters to have 3+ battles (using stats BEFORE this battle)
-            const winnerBattlesBeforeFight = (winnerStats.battles - 1);
-            const loserBattlesBeforeFight = (loserStats.battles - 1);
-            const wasCloseFight = Math.abs(oldWinnerRank - oldLoserRank) <= 3 && 
-                                 winnerBattlesBeforeFight >= 3 && 
-                                 loserBattlesBeforeFight >= 3;
+            // Use the centralized close fight check (already calculated at the beginning)
+            const wasCloseFight = isCloseFight;
             const perfectMatch = (winner.park === loser.park) && 
                                (winner.fabrikant === loser.fabrikant) &&
                                winner.park && loser.park && 
@@ -5642,16 +5631,10 @@ const DOM = {};
                 animateSwapInRanking(winner.naam, loser.naam);
             }
 
-            // after updating ranking, if this was a close matchup, show an extended celebration
-            // Both coasters must be in ranked phase to qualify as a close match
-            const winnerInRanked = (winnerStats.phase || 'waiting') === 'ranked';
-            const loserInRanked = (loserStats.phase || 'waiting') === 'ranked';
-            const wasCloseMatch = winnerInRanked && 
-                                 loserInRanked && 
-                                 oldWinnerRank !== null && 
-                                 oldLoserRank !== null && 
-                                 Math.abs(oldWinnerRank - oldLoserRank) < 3;
-            if (wasCloseMatch) {
+            // ===== CLOSE FIGHT CELEBRATION =====
+            // If this was a close fight, show an extended celebration
+            // Use the centralized close fight check (already calculated at the beginning)
+            if (isCloseFight) {
                 // ensure any intro overlay/banner/burst is hidden before celebration (force-hide immediately)
                 try {
                     const overlayEl = document.getElementById('closeBattleOverlay');
@@ -7061,36 +7044,30 @@ const DOM = {};
                                              loserStats.volatility;
                 
                 // Recalculate using Glicko-2
-                const result = calculateGlicko2(
-                    winnerRatingBefore, winnerRdBefore, winnerVolatilityBefore,
-                    loserRatingBefore, loserRdBefore, loserVolatilityBefore,
-                    1.0 // winner wins
-                );
+                const tempWinnerStats = { rating: winnerRatingBefore, rd: winnerRdBefore, volatility: winnerVolatilityBefore };
+                const tempLoserStats = { rating: loserRatingBefore, rd: loserRdBefore, volatility: loserVolatilityBefore };
+                const result = calculateGlicko2(tempWinnerStats, tempLoserStats);
                 
                 // Apply new ratings
-                winnerStats.rating = result.rating1;
-                winnerStats.rd = result.rd1;
-                winnerStats.volatility = result.volatility1;
-                loserStats.rating = result.rating2;
-                loserStats.rd = result.rd2;
-                loserStats.volatility = result.volatility2;
+                winnerStats.rating = result.newWinnerRating;
+                winnerStats.rd = result.newWinnerRD;
+                winnerStats.volatility = result.newWinnerVolatility;
+                loserStats.rating = result.newLoserRating;
+                loserStats.rd = result.newLoserRD;
+                loserStats.volatility = result.newLoserVolatility;
                 
                 // Get new ranks
                 const winnerRankAfter = getCoasterRank(winner);
                 const loserRankAfter = getCoasterRank(loser);
                 
                 // Calculate potential gains/losses (needed for logging and stats update)
-                const winnerPotentialGain = result.rating1 - winnerRatingBefore;
-                const loserPotentialLoss = result.rating2 - loserRatingBefore;
+                const winnerPotentialGain = result.newWinnerRating - winnerRatingBefore;
+                const loserPotentialLoss = result.newLoserRating - loserRatingBefore;
                 
                 // Calculate what would have happened if outcome was reversed
-                const reversedResult = calculateGlicko2(
-                    winnerRatingBefore, winnerRdBefore, winnerVolatilityBefore,
-                    loserRatingBefore, loserRdBefore, loserVolatilityBefore,
-                    0.0 // winner loses
-                );
-                const winnerPotentialLoss = reversedResult.rating1 - winnerRatingBefore;
-                const loserPotentialGain = reversedResult.rating2 - loserRatingBefore;
+                const reversedResult = calculateGlicko2(tempLoserStats, tempWinnerStats);
+                const winnerPotentialLoss = reversedResult.newLoserRating - winnerRatingBefore;
+                const loserPotentialGain = reversedResult.newWinnerRating - loserRatingBefore;
                 
                 // Update battle stats in history
                 if (entry.statsA && entry.statsB) {
@@ -7103,12 +7080,12 @@ const DOM = {};
                     entry.statsB.volatilityBefore = (entry.b === winner) ? winnerVolatilityBefore : loserVolatilityBefore;
                     
                     // Update ratingAfter/rdAfter/volatilityAfter with recalculated values
-                    entry.statsA.ratingAfter = (entry.a === winner) ? result.rating1 : result.rating2;
-                    entry.statsB.ratingAfter = (entry.b === winner) ? result.rating1 : result.rating2;
-                    entry.statsA.rdAfter = (entry.a === winner) ? result.rd1 : result.rd2;
-                    entry.statsB.rdAfter = (entry.b === winner) ? result.rd1 : result.rd2;
-                    entry.statsA.volatilityAfter = (entry.a === winner) ? result.volatility1 : result.volatility2;
-                    entry.statsB.volatilityAfter = (entry.b === winner) ? result.volatility1 : result.volatility2;
+                    entry.statsA.ratingAfter = (entry.a === winner) ? result.newWinnerRating : result.newLoserRating;
+                    entry.statsB.ratingAfter = (entry.b === winner) ? result.newWinnerRating : result.newLoserRating;
+                    entry.statsA.rdAfter = (entry.a === winner) ? result.newWinnerRD : result.newLoserRD;
+                    entry.statsB.rdAfter = (entry.b === winner) ? result.newWinnerRD : result.newLoserRD;
+                    entry.statsA.volatilityAfter = (entry.a === winner) ? result.newWinnerVolatility : result.newLoserVolatility;
+                    entry.statsB.volatilityAfter = (entry.b === winner) ? result.newWinnerVolatility : result.newLoserVolatility;
                     
                     // Update ranks
                     entry.statsA.rankAfter = (entry.a === winner) ? winnerRankAfter : loserRankAfter;
@@ -7120,9 +7097,12 @@ const DOM = {};
                     entry.statsB.potentialGain = (entry.b === winner) ? winnerPotentialGain : loserPotentialGain;
                     entry.statsB.potentialLoss = (entry.b === winner) ? winnerPotentialLoss : loserPotentialLoss;
                     
-                    // Store expected win probabilities
-                    entry.statsA.expectedWinProbability = (entry.a === winner) ? result.expectedScore1 : (1 - result.expectedScore1);
-                    entry.statsB.expectedWinProbability = (entry.b === winner) ? result.expectedScore1 : (1 - result.expectedScore1);
+                    // Calculate expected win probabilities
+                    const mu_w = glicko2Scale(winnerRatingBefore);
+                    const phi_l = glicko2ScaleRD(loserRdBefore);
+                    const expectedScore1 = glicko2_E(mu_w, glicko2Scale(loserRatingBefore), phi_l);
+                    entry.statsA.expectedWinProbability = (entry.a === winner) ? expectedScore1 : (1 - expectedScore1);
+                    entry.statsB.expectedWinProbability = (entry.b === winner) ? expectedScore1 : (1 - expectedScore1);
                 }
                 
                 // Update progress every 50 battles
@@ -7868,8 +7848,12 @@ function getGameStats() {
     
     // Get unique parks and manufacturers from battled coasters
     const battledCoasters = statsArray.filter(s => s.battles > 0);
-    const uniqueParks = new Set(battledCoasters.map(s => s.park).filter(Boolean)).size;
-    const uniqueManufacturers = new Set(battledCoasters.map(s => s.manufacturer).filter(Boolean)).size;
+    const uniqueParks = new Set();
+    const uniqueManufacturers = new Set();
+    for (const coaster of battledCoasters) {
+        if (coaster.park) uniqueParks.add(coaster.park);
+        if (coaster.manufacturer) uniqueManufacturers.add(coaster.manufacturer);
+    }
     
     return {
         totalBattles: totalBattlesCount,
@@ -7884,8 +7868,8 @@ function getGameStats() {
         rightStreak: achievementManager.rightStreak,
         alternatingStreak: achievementManager.alternatingStreak,
         perfectMatches: achievementManager.perfectMatches,
-        uniqueParks,
-        uniqueManufacturers,
+        uniqueParks: uniqueParks.size,
+        uniqueManufacturers: uniqueManufacturers.size,
         consecutiveDays: achievementManager.consecutiveDays,
         siblingBattles: achievementManager.siblingBattles,
         usedKeyboard: achievementManager.usedKeyboard,
