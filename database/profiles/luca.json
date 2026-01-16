@@ -68,7 +68,7 @@
       "operational": true
     },
     {
-      "coasterId": "C045001812",
+      "coasterId": "C045001809",
       "rank": null,
       "operational": true
     },
@@ -143,12 +143,12 @@
       "operational": true
     },
     {
-      "coasterId": "C032001709",
+      "coasterId": "C032001706",
       "rank": null,
       "operational": false
     },
     {
-      "coasterId": "C049003406",
+      "coasterId": "C057001301",
       "rank": null,
       "operational": true
     },
@@ -173,7 +173,12 @@
       "operational": true
     },
     {
-      "coasterId": "C043004930",
+      "coasterId": "C049010406",
+      "rank": null,
+      "operational": false
+    },
+    {
+      "coasterId": "C043004926",
       "rank": null,
       "operational": true
     },
@@ -233,12 +238,12 @@
       "operational": true
     },
     {
-      "coasterId": "C031031001401",
+      "coasterId": "C031001403",
       "rank": null,
       "operational": true
     },
     {
-      "coasterId": "C031031001402",
+      "coasterId": "C031001404",
       "rank": null,
       "operational": true
     },
@@ -268,9 +273,14 @@
       "operational": true
     },
     {
-      "coasterId": "C032000311",
+      "coasterId": "C032000310",
       "rank": null,
       "operational": true
+    },
+    {
+      "coasterId": "C049003408",
+      "rank": null,
+      "operational": false
     },
     {
       "coasterId": "C049003409",
@@ -298,12 +308,17 @@
       "operational": false
     },
     {
+      "coasterId": "C031003312",
+      "rank": null,
+      "operational": true
+    },
+    {
       "coasterId": "C049003411",
       "rank": null,
       "operational": true
     },
     {
-      "coasterId": "C048000505",
+      "coasterId": "C001001202",
       "rank": null,
       "operational": true
     },
@@ -333,7 +348,7 @@
       "operational": true
     },
     {
-      "coasterId": "C031003309",
+      "coasterId": "C031003313",
       "rank": null,
       "operational": true
     },
@@ -353,12 +368,7 @@
       "operational": true
     },
     {
-      "coasterId": "C034034002701",
-      "rank": null,
-      "operational": true
-    },
-    {
-      "coasterId": "C034034002702",
+      "coasterId": "C034002705",
       "rank": null,
       "operational": true
     },
@@ -378,12 +388,12 @@
       "operational": true
     },
     {
-      "coasterId": "C049049011601",
+      "coasterId": "C049011610",
       "rank": null,
       "operational": true
     },
     {
-      "coasterId": "C049049011602",
+      "coasterId": "C049011609",
       "rank": null,
       "operational": true
     },
@@ -403,12 +413,12 @@
       "operational": false
     },
     {
-      "coasterId": "C031031001403",
+      "coasterId": "C031003309",
       "rank": null,
       "operational": true
     },
     {
-      "coasterId": "C031031001404",
+      "coasterId": "C031001409",
       "rank": null,
       "operational": true
     },
@@ -428,7 +438,7 @@
       "operational": true
     },
     {
-      "coasterId": "C049003402",
+      "coasterId": "C049003401",
       "rank": null,
       "operational": true
     },
@@ -438,7 +448,7 @@
       "operational": true
     },
     {
-      "coasterId": "C049010412",
+      "coasterId": "C049011603",
       "rank": null,
       "operational": true
     },
@@ -468,6 +478,11 @@
       "operational": true
     },
     {
+      "coasterId": "C032001709",
+      "rank": null,
+      "operational": true
+    },
+    {
       "coasterId": "C034002701",
       "rank": null,
       "operational": true
@@ -483,7 +498,7 @@
       "operational": true
     },
     {
-      "coasterId": "C049006209",
+      "coasterId": "C001088805",
       "rank": null,
       "operational": true
     },
@@ -498,7 +513,7 @@
       "operational": true
     },
     {
-      "coasterId": "C031000507",
+      "coasterId": "C031000506",
       "rank": null,
       "operational": true
     },
@@ -593,7 +608,7 @@
       "operational": true
     },
     {
-      "coasterId": "C049008001",
+      "coasterId": "C049013701",
       "rank": null,
       "operational": true
     },
@@ -638,17 +653,7 @@
       "operational": true
     },
     {
-      "coasterId": "C049003410",
-      "rank": null,
-      "operational": true
-    },
-    {
-      "coasterId": "C0310310033121",
-      "rank": null,
-      "operational": true
-    },
-    {
-      "coasterId": "C0310310033122",
+      "coasterId": "C001060606",
       "rank": null,
       "operational": true
     }
