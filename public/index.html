@@ -1,0 +1,818 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coaster Ranker</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="stylesheet" href="style.css?v=20260115019">
+</head>
+<body>
+    <!-- Loading Screen (hidden by default, only shown when fetching images) -->
+    <div id="imageLoadingOverlay" class="loading-overlay hidden" style="display: none;">
+        <div class="loading-content">
+            <h2>Loading Coaster Images...</h2>
+            <div class="roller-coaster-container">
+                <svg class="coaster-track" viewBox="0 0 400 80" preserveAspectRatio="none">
+                    <!-- Straight track -->
+                    <line x1="0" y1="60" x2="400" y2="60" class="track-line" stroke="white" stroke-width="5" stroke-linecap="round" />
+                </svg>
+                <div id="coasterTrain" class="coaster-train">
+                    <div class="train-car"></div>
+                    <div class="train-car"></div>
+                    <div class="train-car"></div>
+                </div>
+            </div>
+            <p id="loadingProgressText">Preparing images (0/0)</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-inner">
+                <div class="header-left">
+                    <div class="current-user-badge" id="currentUserBadge">Select a user</div>
+                </div>
+
+                <div class="header-center">
+                    <h1>Coaster Ranker</h1>
+                </div>
+
+                <div class="header-right">
+                    <button id="userMenuToggle" class="hamburger-btn" aria-haspopup="true" aria-expanded="false" title="Menu" onclick="toggleUserMenu()">☰</button>
+                    <div id="userMenu" class="user-menu" aria-hidden="true">
+                        <button class="user-btn" onclick="openSettings()" id="btn-settings">Settings</button>
+                        <button class="user-btn" onclick="toggleDarkMode()" id="btn-darkmode">Dark Mode</button>
+                        <button class="user-btn" onclick="logoutUser()" id="btn-logout">Log Out</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('home')">
+                <span class="tab-icon"><img src="images/user.svg" alt="Profile" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Profile</span>
+            </button>
+            <button class="tab" onclick="switchTab('credits')">
+                <span class="tab-icon"><img src="images/coaster.svg" alt="Credits" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Credits</span>
+            </button>
+            <button class="tab" onclick="switchTab('battle')">
+                <span class="tab-icon"><img src="images/sword.svg" alt="Battle" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Battle</span>
+            </button>
+            <button class="tab" onclick="switchTab('ranking')">
+                <span class="tab-icon"><img src="images/chart-line-up.svg" alt="Ranking" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Ranking</span>
+            </button>
+            <button class="tab" onclick="switchTab('duel')">
+                <span class="tab-icon"><img src="images/duel.svg" alt="Duel" style="width: 1em; height: 1em;"></span>
+                <span class="tab-text">Duel</span>
+            </button>
+        </div>
+
+        <div id="home-tab" class="tab-content active">
+            <!-- User Selection Screen (shown when not logged in) -->
+            <div id="userSelectionScreen" class="user-selection-screen" style="display: flex;">
+                <div class="user-selection-content">
+                    <h1 class="user-selection-title">Welcome to Coaster Ranker!</h1>
+                    <p class="user-selection-subtitle">Choose your profile to get started</p>
+                    <div class="user-selection-cards">
+                        <div class="user-card" onclick="selectUser('luca')">
+                            <div class="user-card-icon">👤</div>
+                            <div class="user-card-name">Luca</div>
+                        </div>
+                        <div class="user-card" onclick="selectUser('wouter')">
+                            <div class="user-card-icon">👤</div>
+                            <div class="user-card-name">Wouter</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Normal Profile Content (shown when logged in) -->
+            <div id="profileContent" class="profile-content" style="display: none;">
+            <div class="home-welcome">
+                <h2 id="homeWelcome">Welcome to Coaster Ranker!</h2>
+                <div class="level-xp-inline">
+                    <div class="xp-text-inline" id="xpProgressText">0/250 XP</div>
+                    <div class="level-progress-inline">
+                        <span class="level-number" id="currentLevelText">1</span>
+                        <div class="xp-bar-inline">
+                            <div class="xp-bar-fill-inline" id="xpProgressFill" style="width: 0%"></div>
+                        </div>
+                        <span class="level-number" id="nextLevelText">2</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Stats Card (Full Width) -->
+            <div class="home-card home-card-full">
+                <div class="stats-summary">
+                    <div class="stat-item clickable" onclick="switchTab('battle')">
+                        <div class="stat-value" id="homeTotalBattles">0</div>
+                        <div class="stat-label">Total Battles</div>
+                    </div> 
+                    <div class="stat-item clickable" onclick="switchTab('credits')">
+                        <div class="stat-value" id="homeTotalCoasters">0</div>
+                        <div class="stat-label">Coaster Credits</div>
+                    </div>
+                    <div class="stat-item clickable" onclick="switchTab('ranking')">
+                        <div class="stat-value" id="homeProgressMatchups">0/0</div>
+                        <div class="stat-label">Matchups Completed</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="homeProgressPercentage">0%</div>
+                        <div class="stat-label">Progress</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Daily Quest + Session Stats -->
+            <div class="home-grid">
+                <div class="home-card">
+                    <h3 class="home-card-title">🎯 Daily Quest</h3>
+                    <div class="daily-quest">
+                        <p class="quest-description">Complete 25 battles today</p>
+                        <div class="quest-progress">
+                            <div class="quest-progress-bar">
+                                <div class="quest-progress-fill" id="questProgressFill" style="width: 0%"></div>
+                            </div>
+                            <p class="quest-text" id="questProgressText">0/25 battles</p>
+                        </div>
+                    </div>
+                    <button class="home-link-btn" onclick="switchTab('battle')" style="width: 100%; margin-top: 12px;">Start Battle →</button>
+                </div>
+
+                <div class="home-card">
+                    <h3 class="home-card-title">⚡ Session Stats</h3>
+                    <div class="session-stats">
+                        <div class="session-stat">
+                            <span class="session-stat-value" id="sessionBattles">0</span>
+                            <span class="session-stat-label">Battles this session</span>
+                        </div>
+                        <div class="session-stat">
+                            <span class="session-stat-value" id="sessionCloseFights">0</span>
+                            <span class="session-stat-label">Close fights</span>
+                        </div>
+                        <div class="session-stat">
+                            <span class="session-stat-value" id="sessionXP">0 XP</span>
+                            <span class="session-stat-label">XP Gained</span>
+                        </div>
+                    </div>
+                    <button class="home-link-btn" onclick="showHistoryOverlay('profile')" style="margin-top: 12px;">View Battle History →</button>
+                </div>
+            </div>
+
+            <!-- Row 3: Top 3 + Achievements -->
+            <div class="home-grid">
+                <div class="home-card">
+                    <h3 class="home-card-title"> Your Top 3</h3>
+                    <div class="top-coasters" id="homeTop3">
+                        <div class="no-battles">No rankings yet</div>
+                    </div>
+                    <button class="home-link-btn" onclick="switchTab('ranking')">View Full Ranking →</button>
+                </div>
+
+                <div class="home-card">
+                    <h3 class="home-card-title">🏅 Pin Collection</h3>
+                    <div class="achievement-summary">
+                        <div class="achievement-count">
+                            <span class="achievement-count-big" id="homeAchievementCount">0/0</span>
+                            <span class="achievement-count-label">Unlocked</span>
+                        </div>
+                        <div class="recent-achievements" id="homeRecentAchievements">
+                            <!-- Recent achievement icons will go here -->
+                        </div>
+                    </div>
+                    <button class="home-link-btn" onclick="showPinsOverlay()">View All Pins →</button>
+                </div>
+            </div>
+            </div>
+
+            <!-- Pins Collection Overlay -->
+            <div id="pinsOverlay" class="pins-overlay" style="display: none;">
+                <div class="pins-overlay-header">
+                    <div class="pins-overlay-top">
+                        <button class="pins-back-btn" onclick="hidePinsOverlay()">← Back to Profile</button>
+                        <h2 class="pins-overlay-title">Pin Collection</h2>
+                    </div>
+                    <div class="achievement-filters">
+                        <div class="achievement-counter" id="achievementFilterCounter">0/31 unlocked</div>
+                        <div class="filter-tags-container">
+                            <button class="filter-tag active" data-category="all" onclick="filterPins('all')">
+                                All
+                            </button>
+                            <button class="filter-tag" data-category="battles" onclick="filterPins('battles')">
+                                ⚔️ Battles
+                            </button>
+                            <button class="filter-tag" data-category="close-fights" onclick="filterPins('close-fights')">
+                                💥 Close Fights
+                            </button>
+                            <button class="filter-tag" data-category="patterns" onclick="filterPins('patterns')">
+                                🔄 Patterns
+                            </button>
+                            <button class="filter-tag" data-category="collection" onclick="filterPins('collection')">
+                                🌍 Collection
+                            </button>
+                            <button class="filter-tag" data-category="siblings" onclick="filterPins('siblings')">
+                                👯 Siblings
+                            </button>
+                            <button class="filter-tag" data-category="ranking" onclick="filterPins('ranking')">
+                                📊 Ranking
+                            </button>
+                            <button class="filter-tag" data-category="special" onclick="filterPins('special')">
+                                ✨ Special
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="achievements-grid pins-overlay-content" id="pinsGrid">
+                    <!-- Pin cards will be inserted here dynamically -->
+                </div>
+            </div>
+
+            <!-- History Overlay (Profile Tab) -->
+            <div id="historyOverlayProfile" class="history-overlay" style="display: none;">
+                <div class="history-overlay-header">
+                    <div class="history-overlay-top">
+                        <button class="history-back-btn" onclick="hideHistoryOverlay('profile')">← Back to Profile</button>
+                        <h2 class="history-overlay-title">Battle History</h2>
+                    </div>
+                    <div class="history-header-row">
+                        <div class="autocomplete-container">
+                            <div class="search-input-wrapper">
+                                <input id="historySearchProfile" type="text" class="search-box" placeholder="🔍 Search coaster..." oninput="handleHistorySearchInput('profile')" onkeydown="handleHistorySearchKeydown(event, 'profile')" onfocus="showHistoryAutocomplete('profile')" style="width:100%;" />
+                                <button id="clearHistorySearchBtnProfile" class="clear-search-btn" onclick="clearHistorySearch('profile')" style="display:none;" title="Clear search">✕</button>
+                            </div>
+                            <div id="historyAutocompleteProfile" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div class="history-filters" id="historyFiltersProfile" aria-hidden="false">
+                            <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all', 'profile')">All battles</button>
+                            <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close', 'profile')">Close fights</button>
+                            <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins', 'profile')">Wins</button>
+                            <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses', 'profile')">Losses</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="historyContainerProfile" class="history-overlay-content">
+                    <div class="no-battles">No battles yet — start choosing to build your history.</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="battle-tab" class="tab-content">
+            <div class="battle-area">
+            <button id="battleHistoryBtn" class="history-nav-btn" onclick="showHistoryOverlay('battle')">History</button>
+            <div class="vs-overlay">VS</div>
+            <div class="battle-container" id="battleContainer">
+            </div>
+        
+            </div>
+
+            <!-- History Overlay (Battle Tab) -->
+            <div id="historyOverlayBattle" class="history-overlay" style="display: none;">
+                <div class="history-overlay-header">
+                    <div class="history-overlay-top">
+                        <button class="history-back-btn" onclick="hideHistoryOverlay('battle')">← Back to Battle</button>
+                        <h2 class="history-overlay-title">Battle History</h2>
+                    </div>
+                    <div class="history-header-row">
+                        <div class="autocomplete-container">
+                            <div class="search-input-wrapper">
+                                <input id="historySearchBattle" type="text" class="search-box" placeholder="🔍 Search coaster..." oninput="handleHistorySearchInput('battle')" onkeydown="handleHistorySearchKeydown(event, 'battle')" onfocus="showHistoryAutocomplete('battle')" style="width:100%;" />
+                                <button id="clearHistorySearchBtnBattle" class="clear-search-btn" onclick="clearHistorySearch('battle')" style="display:none;" title="Clear search">✕</button>
+                            </div>
+                            <div id="historyAutocompleteBattle" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div class="history-filters" id="historyFiltersBattle" aria-hidden="false">
+                            <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all', 'battle')">All battles</button>
+                            <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close', 'battle')">Close fights</button>
+                            <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins', 'battle')">Wins</button>
+                            <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses', 'battle')">Losses</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="historyContainerBattle" class="history-overlay-content">
+                    <div class="no-battles">No battles yet — start choosing to build your history.</div>
+                </div>
+            </div>
+        </div>
+        <div id="duel-tab" class="tab-content">
+            <!-- Duel Page Header -->
+            <div class="ranking-header">
+                <h2 style="margin: 0; font-size: 1.5em; line-height: 1.4;">Classic Duel Mode</h2>
+                <div class="ranking-actions">
+                    <button class="download-btn" onclick="openDeckBuilder()">Build Your Deck</button>
+                </div>
+            </div>
+            
+            <!-- Coming Soon Message -->
+            <div style="display: flex; align-items: center; justify-content: center; min-height: 400px;">
+                <div style="text-align: center; color: #6b7280;">
+                    <h3 style="font-size: 2em; margin-bottom: 0.5rem; color: #374151;">Coming Soon</h3>
+                    <p style="font-size: 1.1em;">Build your deck to get started with Classic Duel Mode</p>
+                </div>
+            </div>
+
+            <!-- Build Deck Overlay -->
+            <div id="deckBuilderOverlay" class="credits-overlay" style="display: none;">
+                <div class="credits-overlay-header">
+                    <div class="credits-overlay-top">
+                        <button class="credits-back-btn" onclick="closeDeckBuilder()">← Back</button>
+                        <h2 class="credits-overlay-title">Build Your Deck</h2>
+                        <div class="deck-counter-overlay">
+                            <span id="deckCountDisplay">0</span> / 10
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="credits-overlay-content" style="padding: 1rem !important; background: white !important;">
+                    <!-- Deck Slots (10 slots in 2 rows of 5) -->
+                    <div class="deck-slots-container" style="padding: 1.5rem 1rem !important; background: #f8f9fa !important; border-radius: 12px !important; margin-bottom: 1.5rem !important;">
+                        <div class="deck-slots-row" style="display: flex !important; gap: 0.75rem !important; justify-content: center !important; margin-bottom: 0.75rem !important;">
+                            <div class="deck-slot" data-slot="0" ondrop="dropOnSlot(event, 0)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="1" ondrop="dropOnSlot(event, 1)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="2" ondrop="dropOnSlot(event, 2)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="3" ondrop="dropOnSlot(event, 3)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="4" ondrop="dropOnSlot(event, 4)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                        </div>
+                        <div class="deck-slots-row" style="display: flex !important; gap: 0.75rem !important; justify-content: center !important;">
+                            <div class="deck-slot" data-slot="5" ondrop="dropOnSlot(event, 5)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="6" ondrop="dropOnSlot(event, 6)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="7" ondrop="dropOnSlot(event, 7)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="8" ondrop="dropOnSlot(event, 8)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                            <div class="deck-slot" data-slot="9" ondrop="dropOnSlot(event, 9)" ondragover="allowDrop(event)" ondragleave="dragLeaveSlot(event)" style="background: #f8fafc !important; border: 3px dashed #94a3b8 !important; width: 231px !important; height: 344px !important; min-width: 231px !important; min-height: 344px !important; border-radius: 12px !important; flex-shrink: 0 !important;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Deck Filter Controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: white; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;">
+                        <div class="filter-container" style="display: flex; gap: 8px; align-items: center;">
+                            <div class="select-wrapper">
+                                <select id="deckFilterPark" onchange="filterDeckCards()" style="padding: 10px 35px 10px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95em; background: white; cursor: pointer; transition: border 0.3s;">
+                                    <option value="">All Parks</option>
+                                </select>
+                                <button class="clear-filter-btn" id="clearDeckParkFilter" onclick="clearDeckFilter('park')" style="display: none;" title="Clear filter">×</button>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="deckFilterManufacturer" onchange="filterDeckCards()" style="padding: 10px 35px 10px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95em; background: white; cursor: pointer; transition: border 0.3s;">
+                                    <option value="">All Manufacturers</option>
+                                </select>
+                                <button class="clear-filter-btn" id="clearDeckManufacturerFilter" onclick="clearDeckFilter('manufacturer')" style="display: none;" title="Clear filter">×</button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <label style="font-weight: 600; color: #2C3E50; font-size: 0.95em;">Sort:</label>
+                            <select id="deckSortBy" onchange="sortDeckCards()" style="padding: 10px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95em; background: white; cursor: pointer; transition: border 0.3s;">
+                                <option value="name">Name</option>
+                                <option value="park">Park</option>
+                                <option value="manufacturer">Manufacturer</option>
+                                <option value="speed">Speed</option>
+                                <option value="height">Height</option>
+                                <option value="length">Length</option>
+                                <option value="year">Opening Year</option>
+                                <option value="inversions">Inversions</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Available Cards Section (reusing credits-grid CSS) -->
+                    <div style="margin-top: 2rem;" ondrop="dropOnAvailable(event)" ondragover="allowDrop(event)">
+                        <div class="credits-grid" id="deckAvailableCards"></div>
+                    </div>
+                    
+                    <!-- Invalid Cards Section (collapsible) -->
+                    <div id="deckInvalidSection" style="margin-top: 2rem; display: none;">
+                        <div onclick="toggleInvalidCards()" style="cursor: pointer; padding: 1rem 1.5rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <span id="invalidToggleIcon" style="font-size: 1.2em; transition: transform 0.2s;">▶</span>
+                                <span style="font-weight: 600; color: #6b7280;" id="invalidCardsCount">0 Coasters with Incomplete Data</span>
+                            </div>
+                            <span style="font-size: 0.85em; color: #9ca3af;">Click to expand</span>
+                        </div>
+                        <div id="deckInvalidCards" class="credits-grid" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Duel Game Screen (hidden initially) -->
+            <div id="duelGameScreen" style="display: none;">
+                <div class="duel-game-content">
+                    <p style="text-align: center; color: #6b7280; padding: 2rem;">Duel game will appear here...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="credits-tab" class="tab-content">
+            <div class="ranking-header">
+                <h2 style="margin: 0; font-size: 1.5em; line-height: 1.4;">Coaster Credits</h2>
+                <div class="filter-container" style="display: flex; gap: 8px; align-items: center;">
+                    <div class="select-wrapper">
+                        <select id="creditsFilterPark" onchange="filterCredits()" style="padding: 10px 35px 10px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95em; background: white; cursor: pointer; transition: border 0.3s;">
+                            <option value="">All Parks</option>
+                        </select>
+                        <button class="clear-filter-btn" id="clearParkFilter" onclick="clearCreditsFilter('park')" style="display: none;" title="Clear filter">×</button>
+                    </div>
+                    <div class="select-wrapper">
+                        <select id="creditsFilterManufacturer" onchange="filterCredits()" style="padding: 10px 35px 10px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95em; background: white; cursor: pointer; transition: border 0.3s;">
+                            <option value="">All Manufacturers</option>
+                        </select>
+                        <button class="clear-filter-btn" id="clearManufacturerFilter" onclick="clearCreditsFilter('manufacturer')" style="display: none;" title="Clear filter">×</button>
+                    </div>
+                </div>
+                <div class="ranking-actions" style="display: flex; gap: 8px; align-items: center;">
+                    <label style="font-weight: 600; color: #2C3E50; font-size: 0.95em;">Sort:</label>
+                    <select id="creditsSortBy" onchange="sortCredits()" style="padding: 10px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95em; background: white; cursor: pointer; transition: border 0.3s;">
+                        <option value="name">Name</option>
+                        <option value="rank">Rank</option>
+                        <option value="park">Park</option>
+                        <option value="manufacturer">Manufacturer</option>
+                        <option value="speed">Speed</option>
+                        <option value="height">Height</option>
+                        <option value="length">Length</option>
+                        <option value="year">Opening Year</option>
+                        <option value="inversions">Inversions</option>
+                    </select>
+                    <button class="download-btn" onclick="addCredits()">Add Credits</button>
+                </div>
+            </div>
+            <div id="creditsLoadingSpinner" class="credits-loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading credits...</p>
+            </div>
+            <div class="credits-grid" id="creditsGrid">
+                <!-- Cards will be populated dynamically by JavaScript -->
+            </div>
+
+            <!-- Add Credits Overlay -->
+            <div id="creditsOverlay" class="credits-overlay" style="display: none;">
+                <div class="credits-overlay-header">
+                    <div class="credits-overlay-top">
+                        <button class="credits-back-btn" onclick="handleCreditsBack()">← Back</button>
+                        <h2 class="credits-overlay-title">Add Credits</h2>
+                        <button class="credits-save-btn" onclick="saveCreditsChanges()">Save Changes</button>
+                    </div>
+                    <div class="credits-search-row">
+                        <input type="text" id="creditsSearchInput" class="credits-search-input" placeholder="Search for a coaster, park, or country..." autocomplete="off">
+                        <div id="creditsAutocomplete" class="autocomplete-dropdown" style="display: none;"></div>
+                    </div>
+                </div>
+                <div class="credits-overlay-content" id="creditsHierarchyContainer">
+                    <!-- Hierarchy will be populated dynamically by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div id="ranking-tab" class="tab-content">
+
+            <div class="ranking-header">
+                <div class="filter-container">
+                    <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search coaster, park or manufacturer..." onkeyup="filterRanking()">
+                </div>
+                <div class="ranking-stats-minimal">
+                    <span class="ranking-info-box"><span id="rankingProgressMatchups">0/0</span> Matchups</span>
+                </div>
+                <div class="ranking-actions">
+                    <button class="download-btn" onclick="resetRankingOnly()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);">Reset Ranking</button>
+                    <button class="download-btn" onclick="downloadRankingCSV()">Download Ranking</button>
+                </div>
+            </div>
+
+            <table class="ranking-table" id="rankingTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortRanking('rank')">Rank</th>
+                        <th onclick="sortRanking('name')">Name</th>
+                        <th onclick="sortRanking('park')">Park</th>
+                        <th onclick="sortRanking('manufacturer')">Manufacturer</th>
+                        <th onclick="sortRanking('rating')">Rating</th>
+                        <th onclick="sortRanking('battles')">Battles</th>
+                        <th onclick="sortRanking('wins')">Wins</th>
+                        <th onclick="sortRanking('losses')">Losses</th>
+                    </tr>
+                </thead>
+                <tbody id="rankingBody">
+                    <tr><td colspan="8" class="no-battles">Select a user first! 🎢</td></tr>
+                </tbody>
+            </table>
+
+            <!-- History Overlay (Ranking Tab) -->
+            <div id="historyOverlayRanking" class="history-overlay" style="display: none;">
+                <div class="history-overlay-header">
+                    <div class="history-overlay-top">
+                        <button class="history-back-btn" onclick="hideHistoryOverlay('ranking')">← Back to Ranking</button>
+                        <h2 class="history-overlay-title">Battle History</h2>
+                    </div>
+                    <div class="history-header-row">
+                        <div class="autocomplete-container">
+                            <div class="search-input-wrapper">
+                                <input id="historySearchRanking" type="text" class="search-box" placeholder="🔍 Search coaster..." oninput="handleHistorySearchInput('ranking')" onkeydown="handleHistorySearchKeydown(event, 'ranking')" onfocus="showHistoryAutocomplete('ranking')" style="width:100%;" />
+                                <button id="clearHistorySearchBtnRanking" class="clear-search-btn" onclick="clearHistorySearch('ranking')" style="display:none;" title="Clear search">✕</button>
+                            </div>
+                            <div id="historyAutocompleteRanking" class="autocomplete-dropdown"></div>
+                        </div>
+                        <div class="history-filters" id="historyFiltersRanking" aria-hidden="false">
+                            <button class="filter-btn active" data-filter="all" onclick="setHistoryFilter('all', 'ranking')">All battles</button>
+                            <button class="filter-btn" data-filter="close" onclick="setHistoryFilter('close', 'ranking')">Close fights</button>
+                            <button class="filter-btn coaster-specific" data-filter="wins" onclick="setHistoryFilter('wins', 'ranking')">Wins</button>
+                            <button class="filter-btn coaster-specific" data-filter="losses" onclick="setHistoryFilter('losses', 'ranking')">Losses</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="historyContainerRanking" class="history-overlay-content">
+                    <div class="no-battles">No battles yet — start choosing to build your history.</div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Developer button (bottom-left) -->
+    <button id="devToggleBtn" class="dev-toggle dev-btn" aria-haspopup="true" aria-expanded="false" title="Developer options" onclick="toggleDevMenu()">
+        <svg class="icon icon-gear" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7zm8.2-3a6.7 6.7 0 0 0-.1-1l2.1-1.6-2-3.4-2.5.6a7 7 0 0 0-1.6-.9L15 2h-6l-.6 2.2c-.5.2-1 .5-1.6.9L4.3 4.5 2.3 7.9l2.1 1.6c-.1.3-.1.6-.1 1s0 .7.1 1L2.3 15.1 4.3 18.5l2.5-.6c.5.4 1.1.7 1.6.9L9 22h6l.6-2.2c.5-.2 1-.5 1.6-.9l2.5.6 2-3.4-2.1-1.6c.1-.3.1-.6.1-1z"/>
+        </svg>
+    </button>
+    <div id="devMenu" class="dev-menu" aria-hidden="true" role="dialog" aria-label="Developer options">
+        <div class="dev-menu-header">Developer Options</div>
+        <div class="dev-menu-body">
+            <!-- Core Configuration -->
+            <div class="dev-option">
+                <div style="font-size:0.9em;font-weight:700;margin-bottom:8px;color:#111827;">Phase System</div>
+                
+                <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                        <label style="font-size:0.8em;color:#666;">Transfer Track Group Size (5-50)</label>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span id="transferTrackGroupSizeValue" style="min-width:32px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.85em;">20</span>
+                            <button onclick="resetTransferTrackGroupSize()" style="padding:2px 6px;font-size:0.7em;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;color:#6b7280;" title="Reset to default (20)">↺</button>
+                        </div>
+                    </div>
+                    <input id="transferTrackGroupSizeRange" type="range" min="5" max="50" step="1" value="20" oninput="setTransferTrackGroupSize(this.value)" style="width:100%;" title="Transfer Track Group Size (5-50)">
+                </div>
+                
+                <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                        <label style="font-size:0.8em;color:#666;">Transfer Track → Ranked Battles (3-15)</label>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span id="transferTrackMinBattlesValue" style="min-width:32px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.85em;">5</span>
+                            <button onclick="resetTransferTrackMinBattles()" style="padding:2px 6px;font-size:0.7em;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;color:#6b7280;" title="Reset to default (5)">↺</button>
+                        </div>
+                    </div>
+                    <input id="transferTrackMinBattlesRange" type="range" min="3" max="15" step="1" value="5" oninput="setTransferTrackMinBattles(this.value)" style="width:100%;" title="Transfer Track → Ranked Battles (3-15)">
+                </div>
+            </div>
+
+            <div class="dev-option" style="margin-top:10px;border-top:1px solid #ddd;padding-top:10px;">
+                <div style="font-size:0.9em;font-weight:700;margin-bottom:8px;color:#111827;">Glicko-2 Parameters</div>
+                
+                <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                        <label style="font-size:0.8em;color:#666;">TAU (τ) (0.3-1.2)</label>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span id="glickoTauValue" style="min-width:32px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.85em;">0.50</span>
+                            <button onclick="resetGlickoTau()" style="padding:2px 6px;font-size:0.7em;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;color:#6b7280;" title="Reset to default (0.5)">↺</button>
+                        </div>
+                    </div>
+                    <input id="glickoTauRange" type="range" min="0.3" max="1.2" step="0.05" value="0.5" oninput="setGlickoTau(this.value)" style="width:100%;" title="TAU (0.3-1.2)">
+                </div>
+                
+                <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                        <label style="font-size:0.8em;color:#666;">Initial RD (200-500)</label>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span id="glickoInitialRDValue" style="min-width:32px;text-align:center;font-weight:700;color:#2c3e50;font-size:0.85em;">350</span>
+                            <button onclick="resetGlickoInitialRD()" style="padding:2px 6px;font-size:0.7em;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;color:#6b7280;" title="Reset to default (350)">↺</button>
+                        </div>
+                    </div>
+                    <input id="glickoInitialRDRange" type="range" min="200" max="500" step="10" value="350" oninput="setGlickoInitialRD(this.value)" style="width:100%;" title="Initial RD (200-500)">
+                </div>
+                
+                <button id="recalculateRankingBtn" class="simulate-btn dev-btn" onclick="recalculateRanking()" style="width:100%;margin-top:4px;" title="Recalculate all battles with current Glicko-2 parameters">
+                    Recalculate Rankings
+                </button>
+            </div>
+
+            <!-- Testing & Debug Tools -->
+            <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input id="simulateCount" class="sim-input" type="number" min="1" value="100" />
+                    <button id="simulateBtn" class="simulate-btn dev-btn" onclick="simulateBattlesFromUI()">Simulate</button>
+                </div>
+                <div id="simulateProgress" class="dev-progress" aria-hidden="true" style="display:none;margin-top:8px;font-size:0.9em;color:#4CA1AF;"></div>
+            </div>
+
+            <div class="dev-option" style="margin-top:12px;">
+                <button id="devToggleDataBtn" class="dev-btn dev-toggle-data" onclick="toggleDevData()" aria-pressed="false">Show dev-data</button>
+            </div>
+
+            <div class="dev-option" style="margin-top:8px;">
+                <button id="forceCloseBtn" class="dev-btn" onclick="forceNextCloseFight()" title="Force a close fight">Force close fight</button>
+            </div>
+
+            <!-- Technical/Maintenance -->
+            <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
+                <button class="dev-btn" onclick="clearImageCache()" style="width:100%;background:linear-gradient(135deg,#92400e 0%,#78350f 100%);color:white;">
+                    Clear Images -&nbsp;<span id="imageLoadDetails">Hit: 0 | No hit: 0</span>
+                </button>
+            </div>
+
+            <!-- Destructive Actions -->
+            <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
+                <button class="reset-btn dev-reset-btn dev-btn" onclick="resetAllData()">Reset All Data</button>
+            </div>
+
+            <!-- Data Management -->
+            <div class="dev-option" style="margin-top:12px;border-top:1px solid #ddd;padding-top:12px;">
+                <div style="display: flex; gap: 8px;">
+                    <button class="dev-btn" onclick="exportUserData()" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
+                        Export User Data
+                    </button>
+                    <button class="dev-btn" onclick="document.getElementById('importFileInput').click()" style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                        Import User Data
+                    </button>
+                </div>
+            </div>
+            <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importUserData(event)" />
+        </div>
+    </div>
+
+    <!-- Close-battle full-screen overlay (visuals only; pointer-events:none so UI stays clickable) -->
+    <div id="closeBattleOverlay" class="close-battle-overlay" aria-hidden="true" style="display: none; opacity: 0;">
+        <div class="arena-lights"></div>
+        <div class="arena-center">
+            <div class="coaster-side" id="cLeft">
+                <div class="coaster-name" id="cLeftName"></div>
+            </div>
+            <div class="coaster-side" id="cRight">
+                <div class="coaster-name" id="cRightName"></div>
+            </div>
+        </div>
+
+        <div class="winner-burst" id="winnerBurst" aria-hidden="true">
+            <div class="winner-text" id="winnerText">Winner!</div>
+        </div>
+        <div class="close-banner" id="closeBanner" aria-hidden="true">CLOSE FIGHT</div>
+    </div>
+
+    <!-- Reset All Data Modal -->
+    <div id="resetModal" class="custom-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚠️ Reset All Data</h2>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset <strong>all</strong> data for <span id="resetUserName"></span>?</p>
+                <p class="modal-warning">This will permanently delete:</p>
+                <ul class="modal-list">
+                    <li>All battle history</li>
+                    <li>All coaster rankings</li>
+                    <li>All pins</li>
+                    <li>Level and XP progress</li>
+                    <li>All progress and statistics</li>
+                </ul>
+                <p class="modal-warning-strong">This action cannot be undone!</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeResetModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm" onclick="confirmReset()">Reset Everything</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Ranking Only Modal -->
+    <div id="resetRankingModal" class="custom-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header modal-header-warning">
+                <h2>🔄 Reset Ranking</h2>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset the ranking for <span id="resetRankingUserName"></span>?</p>
+                <p class="modal-warning">This will reset:</p>
+                <ul class="modal-list">
+                    <li>All coaster rankings and battle stats</li>
+                    <li>Matchup pairs (you can battle them again)</li>
+                </ul>
+                <p class="modal-info">Your battle history, level, XP, pins, and daily progress will be preserved.</p>
+                <p style="margin-top: 12px; font-size: 0.95em; color: #666;">A reset event will be logged in your history.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeResetRankingModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm-warning" onclick="confirmResetRanking()">Reset Ranking</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credit Card Popup Overlay -->
+    <div id="creditCardOverlay" class="credit-card-overlay" onclick="closeCreditCard(event)">
+        <div class="credit-card-popup" onclick="event.stopPropagation()">
+            <button class="credit-card-close" onclick="closeCreditCard()">✕</button>
+            <div id="creditCardContainer" class="credit-card-template">
+                <!-- Card content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Remove Credits Confirmation Modal -->
+    <div id="removeCreditsConfirmModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Remove Credit?</h3>
+            </div>
+            <div class="modal-body">
+                <p id="removeCreditsMessage">Are you sure you want to remove this coaster from your credits?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeRemoveCreditsModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm-warning" onclick="confirmRemoveCredit()">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Credits Confirmation Modal -->
+    <div id="saveCreditsConfirmModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Save Changes?</h3>
+            </div>
+            <div class="modal-body">
+                <p id="saveCreditsMessage">Review your changes before saving.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeSaveCreditsModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm" onclick="confirmSaveCredits()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unsaved Changes Modal -->
+    <div id="unsavedChangesModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Unsaved Changes</h3>
+            </div>
+            <div class="modal-body">
+                <p>You have unsaved changes. Do you want to discard them?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeUnsavedChangesModal()">Cancel</button>
+                <button class="modal-btn modal-btn-confirm-warning" onclick="confirmDiscardChanges()">Discard Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credits Unsaved Changes Modal -->
+    <div id="creditsUnsavedModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 100000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="position: relative; max-width: 420px; width: 90%; margin: 0 auto;">
+            <div class="modal-header modal-header-warning">
+                <h3>⚠️ Unsaved Changes</h3>
+            </div>
+            <div class="modal-body">
+                <p id="creditsUnsavedMessage">You have unsaved changes.</p>
+                <p class="modal-info" style="margin-top: 8px; font-size: 0.95em;">These changes will be lost if you continue.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeCreditsUnsavedModal()">Keep Editing</button>
+                <button class="modal-btn modal-btn-confirm-warning" onclick="confirmDiscardCreditsChanges()">Discard Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credits Success Modal -->
+    <div id="creditsSuccessModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 100000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="position: relative; max-width: 380px; width: 90%; margin: 0 auto;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                <h3>✓ Success</h3>
+            </div>
+            <div class="modal-body">
+                <p id="creditsSuccessMessage">Changes saved successfully!</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-confirm" onclick="closeCreditsSuccessModal()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credits Error Modal -->
+    <div id="creditsErrorModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 100000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="position: relative; max-width: 420px; width: 90%; margin: 0 auto;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                <h3>❌ Error</h3>
+            </div>
+            <div class="modal-body">
+                <p id="creditsErrorMessage">An error occurred.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-confirm-warning" onclick="closeCreditsErrorModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/dataLoader.js?v=20260115007"></script>
+    <script src="js/achievements.js?v=20260115007"></script>
+    <script src="js/script.js?v=20260116002"></script>
+</body></html>

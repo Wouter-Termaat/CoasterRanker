@@ -1,0 +1,842 @@
+{
+  "Afghanistan": {
+    "code": "093",
+    "name": "Afghanistan",
+    "continent": "Asia",
+    "parkCount": 3
+  },
+  "Albania": {
+    "code": "355",
+    "name": "Albania",
+    "continent": "Europe",
+    "parkCount": 2
+  },
+  "Algeria": {
+    "code": "213",
+    "name": "Algeria",
+    "continent": "Africa",
+    "parkCount": 24
+  },
+  "Andorra": {
+    "code": "376",
+    "name": "Andorra",
+    "continent": "Europe",
+    "parkCount": 2
+  },
+  "Angola": {
+    "code": "244",
+    "name": "Angola",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Argentina": {
+    "code": "054",
+    "name": "Argentina",
+    "continent": "South America",
+    "parkCount": 25
+  },
+  "Armenia": {
+    "code": "374",
+    "name": "Armenia",
+    "continent": "Europe",
+    "parkCount": 4
+  },
+  "Australia": {
+    "code": "061",
+    "name": "Australia",
+    "continent": "Oceania",
+    "parkCount": 32
+  },
+  "Austria": {
+    "code": "043",
+    "name": "Austria",
+    "continent": "Europe",
+    "parkCount": 53
+  },
+  "Azerbaijan": {
+    "code": "994",
+    "name": "Azerbaijan",
+    "continent": "Europe",
+    "parkCount": 11
+  },
+  "Bahrain": {
+    "code": "973",
+    "name": "Bahrain",
+    "continent": "Middle East",
+    "parkCount": 6
+  },
+  "Bangladesh": {
+    "code": "880",
+    "name": "Bangladesh",
+    "continent": "Asia",
+    "parkCount": 21
+  },
+  "Belarus": {
+    "code": "375",
+    "name": "Belarus",
+    "continent": "Europe",
+    "parkCount": 9
+  },
+  "Belgium": {
+    "code": "032",
+    "name": "Belgium",
+    "continent": "Europe",
+    "parkCount": 18
+  },
+  "Bolivia": {
+    "code": "591",
+    "name": "Bolivia",
+    "continent": "South America",
+    "parkCount": 2
+  },
+  "Bosnia and Herzegovina": {
+    "code": "387",
+    "name": "Bosnia and Herzegovina",
+    "continent": "Europe",
+    "parkCount": 2
+  },
+  "Botswana": {
+    "code": "267",
+    "name": "Botswana",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Brazil": {
+    "code": "055",
+    "name": "Brazil",
+    "continent": "South America",
+    "parkCount": 99
+  },
+  "Brunei": {
+    "code": "673",
+    "name": "Brunei",
+    "continent": "Asia",
+    "parkCount": 1
+  },
+  "Bulgaria": {
+    "code": "359",
+    "name": "Bulgaria",
+    "continent": "Europe",
+    "parkCount": 10
+  },
+  "Cambodia": {
+    "code": "855",
+    "name": "Cambodia",
+    "continent": "Asia",
+    "parkCount": 8
+  },
+  "Canada": {
+    "code": "001",
+    "name": "Canada",
+    "continent": "North America",
+    "parkCount": 70
+  },
+  "Chile": {
+    "code": "056",
+    "name": "Chile",
+    "continent": "South America",
+    "parkCount": 7
+  },
+  "China": {
+    "code": "086",
+    "name": "China",
+    "continent": "Asia",
+    "parkCount": 1250
+  },
+  "Colombia": {
+    "code": "057",
+    "name": "Colombia",
+    "continent": "South America",
+    "parkCount": 16
+  },
+  "Costa Rica": {
+    "code": "506",
+    "name": "Costa Rica",
+    "continent": "North America",
+    "parkCount": 2
+  },
+  "Croatia": {
+    "code": "385",
+    "name": "Croatia",
+    "continent": "Europe",
+    "parkCount": 3
+  },
+  "Cuba": {
+    "code": "999",
+    "name": "Cuba",
+    "continent": "North America",
+    "parkCount": 8
+  },
+  "Cyprus": {
+    "code": "357",
+    "name": "Cyprus",
+    "continent": "Europe",
+    "parkCount": 5
+  },
+  "Czech Republic": {
+    "code": "420",
+    "name": "Czech Republic",
+    "continent": "Europe",
+    "parkCount": 20
+  },
+  "Côte d'Ivoire": {
+    "code": "225",
+    "name": "Côte d'Ivoire",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Democratic Republic of the Congo": {
+    "code": "999",
+    "name": "Democratic Republic of the Congo",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Denmark": {
+    "code": "045",
+    "name": "Denmark",
+    "continent": "Europe",
+    "parkCount": 20
+  },
+  "Dominican Republic": {
+    "code": "809",
+    "name": "Dominican Republic",
+    "continent": "North America",
+    "parkCount": 6
+  },
+  "Drenthe": {
+    "code": "999",
+    "name": "Drenthe",
+    "continent": "Unknown",
+    "parkCount": 1
+  },
+  "Ecuador": {
+    "code": "593",
+    "name": "Ecuador",
+    "continent": "South America",
+    "parkCount": 7
+  },
+  "Egypt": {
+    "code": "020",
+    "name": "Egypt",
+    "continent": "Africa",
+    "parkCount": 27
+  },
+  "El Salvador": {
+    "code": "999",
+    "name": "El Salvador",
+    "continent": "North America",
+    "parkCount": 3
+  },
+  "Estonia": {
+    "code": "372",
+    "name": "Estonia",
+    "continent": "Europe",
+    "parkCount": 3
+  },
+  "Ethiopia": {
+    "code": "999",
+    "name": "Ethiopia",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Finland": {
+    "code": "358",
+    "name": "Finland",
+    "continent": "Europe",
+    "parkCount": 10
+  },
+  "France": {
+    "code": "033",
+    "name": "France",
+    "continent": "Europe",
+    "parkCount": 140
+  },
+  "Georgia": {
+    "code": "001",
+    "name": "Georgia",
+    "continent": "Europe",
+    "parkCount": 12
+  },
+  "Germany": {
+    "code": "049",
+    "name": "Germany",
+    "continent": "Europe",
+    "parkCount": 173
+  },
+  "Greece": {
+    "code": "030",
+    "name": "Greece",
+    "continent": "Europe",
+    "parkCount": 14
+  },
+  "Guatemala": {
+    "code": "502",
+    "name": "Guatemala",
+    "continent": "North America",
+    "parkCount": 8
+  },
+  "Haiti": {
+    "code": "509",
+    "name": "Haiti",
+    "continent": "North America",
+    "parkCount": 2
+  },
+  "Honduras": {
+    "code": "504",
+    "name": "Honduras",
+    "continent": "North America",
+    "parkCount": 4
+  },
+  "Hong Kong": {
+    "code": "852",
+    "name": "Hong Kong",
+    "continent": "Asia",
+    "parkCount": 1
+  },
+  "Hungary": {
+    "code": "036",
+    "name": "Hungary",
+    "continent": "Europe",
+    "parkCount": 16
+  },
+  "India": {
+    "code": "091",
+    "name": "India",
+    "continent": "Asia",
+    "parkCount": 100
+  },
+  "Indonesia": {
+    "code": "062",
+    "name": "Indonesia",
+    "continent": "Asia",
+    "parkCount": 58
+  },
+  "Iran": {
+    "code": "098",
+    "name": "Iran",
+    "continent": "Middle East",
+    "parkCount": 51
+  },
+  "Iraq": {
+    "code": "964",
+    "name": "Iraq",
+    "continent": "Middle East",
+    "parkCount": 43
+  },
+  "Ireland": {
+    "code": "353",
+    "name": "Ireland",
+    "continent": "Europe",
+    "parkCount": 8
+  },
+  "Israel": {
+    "code": "972",
+    "name": "Israel",
+    "continent": "Middle East",
+    "parkCount": 17
+  },
+  "Italy": {
+    "code": "039",
+    "name": "Italy",
+    "continent": "Europe",
+    "parkCount": 103
+  },
+  "Jamaica": {
+    "code": "876",
+    "name": "Jamaica",
+    "continent": "North America",
+    "parkCount": 3
+  },
+  "Japan": {
+    "code": "081",
+    "name": "Japan",
+    "continent": "Asia",
+    "parkCount": 249
+  },
+  "Jordan": {
+    "code": "962",
+    "name": "Jordan",
+    "continent": "Middle East",
+    "parkCount": 20
+  },
+  "Kazakhstan": {
+    "code": "007",
+    "name": "Kazakhstan",
+    "continent": "Unknown",
+    "parkCount": 25
+  },
+  "Kenya": {
+    "code": "254",
+    "name": "Kenya",
+    "continent": "Africa",
+    "parkCount": 3
+  },
+  "Kosovo": {
+    "code": "383",
+    "name": "Kosovo",
+    "continent": "Europe",
+    "parkCount": 1
+  },
+  "Kuwait": {
+    "code": "965",
+    "name": "Kuwait",
+    "continent": "Middle East",
+    "parkCount": 16
+  },
+  "Kyrgyzstan": {
+    "code": "996",
+    "name": "Kyrgyzstan",
+    "continent": "Asia",
+    "parkCount": 4
+  },
+  "La Libertad": {
+    "code": "999",
+    "name": "La Libertad",
+    "continent": "Unknown",
+    "parkCount": 1
+  },
+  "Laos": {
+    "code": "856",
+    "name": "Laos",
+    "continent": "Asia",
+    "parkCount": 1
+  },
+  "Latvia": {
+    "code": "371",
+    "name": "Latvia",
+    "continent": "Europe",
+    "parkCount": 4
+  },
+  "Lebanon": {
+    "code": "961",
+    "name": "Lebanon",
+    "continent": "Middle East",
+    "parkCount": 14
+  },
+  "Libya": {
+    "code": "218",
+    "name": "Libya",
+    "continent": "Africa",
+    "parkCount": 5
+  },
+  "Lithuania": {
+    "code": "370",
+    "name": "Lithuania",
+    "continent": "Europe",
+    "parkCount": 5
+  },
+  "Madagascar": {
+    "code": "261",
+    "name": "Madagascar",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Malawi": {
+    "code": "999",
+    "name": "Malawi",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Malaysia": {
+    "code": "060",
+    "name": "Malaysia",
+    "continent": "Asia",
+    "parkCount": 18
+  },
+  "Maldives": {
+    "code": "960",
+    "name": "Maldives",
+    "continent": "Asia",
+    "parkCount": 1
+  },
+  "Malta": {
+    "code": "356",
+    "name": "Malta",
+    "continent": "Europe",
+    "parkCount": 1
+  },
+  "Mauritius": {
+    "code": "999",
+    "name": "Mauritius",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Mexico": {
+    "code": "052",
+    "name": "Mexico",
+    "continent": "North America",
+    "parkCount": 47
+  },
+  "Moldova": {
+    "code": "373",
+    "name": "Moldova",
+    "continent": "Europe",
+    "parkCount": 3
+  },
+  "Mongolia": {
+    "code": "976",
+    "name": "Mongolia",
+    "continent": "Asia",
+    "parkCount": 2
+  },
+  "Montenegro": {
+    "code": "382",
+    "name": "Montenegro",
+    "continent": "Europe",
+    "parkCount": 1
+  },
+  "Morocco": {
+    "code": "212",
+    "name": "Morocco",
+    "continent": "Africa",
+    "parkCount": 12
+  },
+  "Mozambique": {
+    "code": "999",
+    "name": "Mozambique",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Myanmar": {
+    "code": "095",
+    "name": "Myanmar",
+    "continent": "Asia",
+    "parkCount": 9
+  },
+  "Nepal": {
+    "code": "977",
+    "name": "Nepal",
+    "continent": "Asia",
+    "parkCount": 4
+  },
+  "Netherlands": {
+    "code": "031",
+    "name": "Netherlands",
+    "continent": "Europe",
+    "parkCount": 34
+  },
+  "New Zealand": {
+    "code": "064",
+    "name": "New Zealand",
+    "continent": "Oceania",
+    "parkCount": 7
+  },
+  "Nicaragua": {
+    "code": "505",
+    "name": "Nicaragua",
+    "continent": "North America",
+    "parkCount": 1
+  },
+  "Nigeria": {
+    "code": "234",
+    "name": "Nigeria",
+    "continent": "Africa",
+    "parkCount": 14
+  },
+  "North Korea": {
+    "code": "999",
+    "name": "North Korea",
+    "continent": "Asia",
+    "parkCount": 4
+  },
+  "Norway": {
+    "code": "047",
+    "name": "Norway",
+    "continent": "Europe",
+    "parkCount": 8
+  },
+  "Oman": {
+    "code": "968",
+    "name": "Oman",
+    "continent": "Middle East",
+    "parkCount": 10
+  },
+  "Pakistan": {
+    "code": "092",
+    "name": "Pakistan",
+    "continent": "Asia",
+    "parkCount": 21
+  },
+  "Palestine": {
+    "code": "970",
+    "name": "Palestine",
+    "continent": "Middle East",
+    "parkCount": 10
+  },
+  "Panama": {
+    "code": "507",
+    "name": "Panama",
+    "continent": "North America",
+    "parkCount": 3
+  },
+  "Paraguay": {
+    "code": "999",
+    "name": "Paraguay",
+    "continent": "Unknown",
+    "parkCount": 1
+  },
+  "Peru": {
+    "code": "051",
+    "name": "Peru",
+    "continent": "South America",
+    "parkCount": 19
+  },
+  "Philippines": {
+    "code": "063",
+    "name": "Philippines",
+    "continent": "Asia",
+    "parkCount": 29
+  },
+  "Poland": {
+    "code": "048",
+    "name": "Poland",
+    "continent": "Europe",
+    "parkCount": 52
+  },
+  "Portugal": {
+    "code": "351",
+    "name": "Portugal",
+    "continent": "Europe",
+    "parkCount": 9
+  },
+  "Qatar": {
+    "code": "974",
+    "name": "Qatar",
+    "continent": "Middle East",
+    "parkCount": 11
+  },
+  "Romania": {
+    "code": "040",
+    "name": "Romania",
+    "continent": "Europe",
+    "parkCount": 20
+  },
+  "Russia": {
+    "code": "007",
+    "name": "Russia",
+    "continent": "Europe",
+    "parkCount": 156
+  },
+  "Rwanda": {
+    "code": "250",
+    "name": "Rwanda",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Saudi Arabia": {
+    "code": "966",
+    "name": "Saudi Arabia",
+    "continent": "Middle East",
+    "parkCount": 86
+  },
+  "Senegal": {
+    "code": "221",
+    "name": "Senegal",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Serbia": {
+    "code": "381",
+    "name": "Serbia",
+    "continent": "Europe",
+    "parkCount": 5
+  },
+  "Singapore": {
+    "code": "065",
+    "name": "Singapore",
+    "continent": "Asia",
+    "parkCount": 4
+  },
+  "Slovakia": {
+    "code": "421",
+    "name": "Slovakia",
+    "continent": "Europe",
+    "parkCount": 8
+  },
+  "Slovenia": {
+    "code": "386",
+    "name": "Slovenia",
+    "continent": "Europe",
+    "parkCount": 4
+  },
+  "Somalia": {
+    "code": "999",
+    "name": "Somalia",
+    "continent": "Unknown",
+    "parkCount": 1
+  },
+  "South Africa": {
+    "code": "027",
+    "name": "South Africa",
+    "continent": "Africa",
+    "parkCount": 8
+  },
+  "South Korea": {
+    "code": "082",
+    "name": "South Korea",
+    "continent": "Asia",
+    "parkCount": 53
+  },
+  "Spain": {
+    "code": "034",
+    "name": "Spain",
+    "continent": "Europe",
+    "parkCount": 35
+  },
+  "Sri Lanka": {
+    "code": "094",
+    "name": "Sri Lanka",
+    "continent": "Asia",
+    "parkCount": 3
+  },
+  "Sudan": {
+    "code": "249",
+    "name": "Sudan",
+    "continent": "Africa",
+    "parkCount": 4
+  },
+  "Sweden": {
+    "code": "046",
+    "name": "Sweden",
+    "continent": "Europe",
+    "parkCount": 23
+  },
+  "Switzerland": {
+    "code": "041",
+    "name": "Switzerland",
+    "continent": "Europe",
+    "parkCount": 27
+  },
+  "Syria": {
+    "code": "963",
+    "name": "Syria",
+    "continent": "Middle East",
+    "parkCount": 5
+  },
+  "Taiwan": {
+    "code": "886",
+    "name": "Taiwan",
+    "continent": "Asia",
+    "parkCount": 22
+  },
+  "Tajikistan": {
+    "code": "992",
+    "name": "Tajikistan",
+    "continent": "Asia",
+    "parkCount": 3
+  },
+  "Tanzania": {
+    "code": "255",
+    "name": "Tanzania",
+    "continent": "Africa",
+    "parkCount": 2
+  },
+  "Thailand": {
+    "code": "066",
+    "name": "Thailand",
+    "continent": "Asia",
+    "parkCount": 21
+  },
+  "Togo": {
+    "code": "999",
+    "name": "Togo",
+    "continent": "Africa",
+    "parkCount": 1
+  },
+  "Trinidad and Tobago": {
+    "code": "868",
+    "name": "Trinidad and Tobago",
+    "continent": "North America",
+    "parkCount": 2
+  },
+  "Tunisia": {
+    "code": "216",
+    "name": "Tunisia",
+    "continent": "Africa",
+    "parkCount": 12
+  },
+  "Turkey": {
+    "code": "090",
+    "name": "Turkey",
+    "continent": "Middle East",
+    "parkCount": 100
+  },
+  "Turkmenistan": {
+    "code": "993",
+    "name": "Turkmenistan",
+    "continent": "Asia",
+    "parkCount": 6
+  },
+  "Uganda": {
+    "code": "256",
+    "name": "Uganda",
+    "continent": "Africa",
+    "parkCount": 2
+  },
+  "Ukraine": {
+    "code": "380",
+    "name": "Ukraine",
+    "continent": "Europe",
+    "parkCount": 28
+  },
+  "United Arab Emirates": {
+    "code": "971",
+    "name": "United Arab Emirates",
+    "continent": "Middle East",
+    "parkCount": 48
+  },
+  "United Kingdom": {
+    "code": "044",
+    "name": "United Kingdom",
+    "continent": "Europe",
+    "parkCount": 195
+  },
+  "United States": {
+    "code": "001",
+    "name": "United States",
+    "continent": "North America",
+    "parkCount": 1050
+  },
+  "Uruguay": {
+    "code": "598",
+    "name": "Uruguay",
+    "continent": "South America",
+    "parkCount": 2
+  },
+  "Uzbekistan": {
+    "code": "998",
+    "name": "Uzbekistan",
+    "continent": "Asia",
+    "parkCount": 31
+  },
+  "Venezuela": {
+    "code": "058",
+    "name": "Venezuela",
+    "continent": "South America",
+    "parkCount": 24
+  },
+  "Vietnam": {
+    "code": "084",
+    "name": "Vietnam",
+    "continent": "Asia",
+    "parkCount": 65
+  },
+  "Yemen": {
+    "code": "967",
+    "name": "Yemen",
+    "continent": "Middle East",
+    "parkCount": 10
+  },
+  "Zambia": {
+    "code": "260",
+    "name": "Zambia",
+    "continent": "Africa",
+    "parkCount": 2
+  },
+  "Zimbabwe": {
+    "code": "263",
+    "name": "Zimbabwe",
+    "continent": "Africa",
+    "parkCount": 1
+  }
+}

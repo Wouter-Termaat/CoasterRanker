@@ -1,0 +1,656 @@
+{
+  "userId": "luca",
+  "username": "Luca",
+  "coasters": [
+    {
+      "coasterId": "C049006007",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003005",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001510",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049011608",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000513",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003414",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002704",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006203",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000519",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034000602",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001707",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006002",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003310",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C045001812",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049011604",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001401",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001715",
+      "rank": null,
+      "operational": false
+    },
+    {
+      "coasterId": "C049011601",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000501",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049002803",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003408",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006205",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003003",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003415",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006301",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049010415",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002702",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001501",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001709",
+      "rank": null,
+      "operational": false
+    },
+    {
+      "coasterId": "C049003406",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003413",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049002802",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001504",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031002101",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C043004930",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003403",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002703",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006004",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003306",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001407",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006208",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003001",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003002",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000517",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003307",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049002801",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031031001401",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031031001402",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003407",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002708",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000305",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003412",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001712",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000311",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003409",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003404",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049011602",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001701",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001405",
+      "rank": null,
+      "operational": false
+    },
+    {
+      "coasterId": "C049003411",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000505",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006303",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006006",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C045001806",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000312",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001406",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003309",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006201",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001714",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001708",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034034002701",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034034002702",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001408",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000304",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000309",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049049011601",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049049011602",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003004",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003311",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001402",
+      "rank": null,
+      "operational": false
+    },
+    {
+      "coasterId": "C031031001403",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031031001404",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003308",
+      "rank": null,
+      "operational": false
+    },
+    {
+      "coasterId": "C048000508",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C045001802",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003402",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049002804",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049010412",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049011607",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049002806",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000502",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001702",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006202",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002701",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000516",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003302",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006209",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049010408",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002707",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031000507",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000307",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049010403",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000514",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006001",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049010407",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031002103",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031001601",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006005",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031000504",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006206",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006207",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031000601",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049002805",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001704",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034002706",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003405",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000509",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C031003303",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049008001",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C034000601",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000507",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032001503",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000303",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C032000308",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049006003",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C043004938",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C048000518",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C049003410",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C0310310033121",
+      "rank": null,
+      "operational": true
+    },
+    {
+      "coasterId": "C0310310033122",
+      "rank": null,
+      "operational": true
+    }
+  ]
+}
